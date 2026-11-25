@@ -14,10 +14,16 @@ import java.util.UUID
 
 data class EditorExerciseDraftItem(
     val occurrenceKey: String,
-    val exercise: ExerciseDefinition,
+    val exerciseId: String,
+    val exercise: ExerciseDefinition?,
     val notes: String? = null,
     val sets: List<PlannedSetDraft>,
 ) {
+    val isUnavailable: Boolean get() = exercise == null
+
+    val displayName: String
+        get() = exercise?.name ?: "Unavailable Exercise ($exerciseId)"
+
     val setsCount: Int get() = sets.size
 
     val hasMixedReps: Boolean
@@ -50,13 +56,14 @@ data class EditorExerciseDraftItem(
         }
 
     val metadataLine: String
-        get() = "${exercise.muscleGroup.displayLabel().uppercase()} • ${exercise.trackingSupportBadge()}"
+        get() = exercise?.let { "${it.muscleGroup.displayLabel().uppercase()} • ${it.trackingSupportBadge()}" }
+            ?: "UNAVAILABLE IN CATALOG"
 
     val equipmentLabel: String
-        get() = exercise.equipment.displayLabel()
+        get() = exercise?.equipment?.displayLabel() ?: "Missing reference"
 
     val thumbnailRes: Int
-        get() = resolveExerciseThumbnailRes(exercise.imageKey, exercise.muscleGroup)
+        get() = resolveExerciseThumbnailRes(exercise?.imageKey, exercise?.muscleGroup)
 
     fun adjustSetCount(delta: Int): EditorExerciseDraftItem {
         val nextCount = (sets.size + delta).coerceIn(1, PulseValidators.MAX_SETS_PER_EXERCISE)
@@ -117,7 +124,7 @@ data class EditorExerciseDraftItem(
     }
 
     fun toDomainDraft(orderIndex: Int): PlanExerciseDraft = PlanExerciseDraft(
-        exerciseId = exercise.id,
+        exerciseId = exerciseId,
         orderIndex = orderIndex,
         notes = notes?.takeIf { it.isNotBlank() },
         plannedSets = sets.mapIndexed { idx, set ->
@@ -135,6 +142,7 @@ data class EditorExerciseDraftItem(
             occurrenceKey: String = UUID.randomUUID().toString(),
         ): EditorExerciseDraftItem = EditorExerciseDraftItem(
             occurrenceKey = occurrenceKey,
+            exerciseId = exercise.id,
             exercise = exercise,
             notes = null,
             sets = (1..DEFAULT_SETS_COUNT).map { idx ->

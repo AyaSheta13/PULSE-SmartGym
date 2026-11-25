@@ -36,6 +36,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -160,12 +164,11 @@ fun ExercisePickerScreenContent(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    BasicText(
-                        text = "🔍",
-                        style = PulseTheme.typography.contentPrimary.copy(
-                            fontSize = 14.sp,
-                            color = WorkoutPalette.TextBrownMuted,
-                        ),
+                    Image(
+                        imageVector = PickerSearchIcon,
+                        contentDescription = "Search",
+                        colorFilter = ColorFilter.tint(Color(0xFF8E7069)),
+                        modifier = Modifier.size(16.dp),
                     )
                     Box(
                         modifier = Modifier.weight(1f),
@@ -510,4 +513,29 @@ private fun ExercisePickerRowCard(
             }
         }
     }
+}
+
+private val PickerSearchIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "PickerSearchIcon",
+        defaultWidth = 16.dp,
+        defaultHeight = 16.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = 2.2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+        ) {
+            // Circle centered at (11, 11) with radius 7
+            moveTo(18f, 11f)
+            arcTo(7f, 7f, 0f, isMoreThanHalf = true, isPositiveArc = true, 4f, 11f)
+            arcTo(7f, 7f, 0f, isMoreThanHalf = true, isPositiveArc = true, 18f, 11f)
+            // Handle from (16, 16) to (21, 21)
+            moveTo(16f, 16f)
+            lineTo(21f, 21f)
+        }
+    }.build()
 }

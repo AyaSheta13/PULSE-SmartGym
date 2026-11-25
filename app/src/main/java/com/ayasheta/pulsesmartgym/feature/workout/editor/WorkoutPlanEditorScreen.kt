@@ -37,10 +37,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -68,7 +72,7 @@ import kotlin.math.roundToInt
 @Composable
 fun WorkoutPlanEditorScreen(
     viewModel: WorkoutPlanEditorViewModel,
-    onOpenExercisePicker: (planId: String?) -> Unit,
+    onOpenExercisePicker: (planId: String?, editorSessionId: String) -> Unit,
     onPlanCreated: (planId: String) -> Unit,
     onPlanUpdated: (planId: String) -> Unit,
     onPlanDeleted: () -> Unit,
@@ -104,7 +108,7 @@ fun WorkoutPlanEditorScreen(
         onDescriptionChanged = viewModel::onDescriptionChanged,
         onAddExerciseClick = {
             if (viewModel.prepareOpenExercisePicker()) {
-                onOpenExercisePicker(uiState.planId)
+                onOpenExercisePicker(uiState.planId, viewModel.editorSessionId)
             }
         },
         onRemoveExercise = viewModel::removeExercise,
@@ -305,6 +309,28 @@ fun WorkoutPlanEditorScreenContent(
                         }
                     }
 
+                    if (uiState.hasUnresolvedExercises) {
+                        item(key = "unresolved_banner") {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(WorkoutPalette.ErrorBg)
+                                    .padding(12.dp)
+                                    .testTag("editor_unresolved_banner"),
+                            ) {
+                                BasicText(
+                                    text = "One or more exercises in this plan are missing from the local catalog. Saving is blocked until you remove them so stored sets are not lost.",
+                                    style = PulseTheme.typography.contentPrimary.copy(
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = WorkoutPalette.ErrorText,
+                                    ),
+                                )
+                            }
+                        }
+                    }
+
                     val errorMsg = uiState.validationError ?: uiState.actionError
                     if (errorMsg != null) {
                         item(key = "error_banner") {
@@ -327,73 +353,75 @@ fun WorkoutPlanEditorScreenContent(
                             }
                         }
                     }
-                }
 
-                // Bottom Actions Container
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(WorkoutPalette.Background.copy(alpha = 0.96f))
-                        .navigationBarsPadding()
-                        .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    val primaryLabel = if (uiState.mode == WorkoutPlanEditorMode.CREATE) {
-                        "Create Workout Plan"
-                    } else {
-                        "Save Changes"
-                    }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp)
-                            .shadow(
-                                elevation = 4.dp,
-                                shape = RoundedCornerShape(12.dp),
-                                ambientColor = Color(0x1A000000),
-                                spotColor = Color(0x1A000000),
-                            )
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(WorkoutPalette.PrimaryCoral)
-                            .clickable(enabled = !uiState.isSaving && !uiState.isDeleting, onClick = onSaveClick)
-                            .testTag("editor_save_button"),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        if (uiState.isSaving) {
-                            PulseLoadingIndicator(modifier = Modifier.size(20.dp))
-                        } else {
-                            BasicText(
-                                text = primaryLabel,
-                                style = PulseTheme.typography.ctaPrimary.copy(
-                                    fontSize = 15.sp,
-                                    lineHeight = 22.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                ),
-                            )
+                    item(key = "bottom_actions") {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .navigationBarsPadding()
+                                .padding(top = 8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            val primaryLabel = if (uiState.mode == WorkoutPlanEditorMode.CREATE) {
+                                "Create Workout Plan"
+                            } else {
+                                "Save Changes"
+                            }
+                            val saveEnabled = !uiState.isSaving && !uiState.isDeleting && !uiState.hasUnresolvedExercises
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(52.dp)
+                                    .alpha(if (uiState.hasUnresolvedExercises) 0.5f else 1f)
+                                    .shadow(
+                                        elevation = 4.dp,
+                                        shape = RoundedCornerShape(12.dp),
+                                        ambientColor = Color(0x1A000000),
+                                        spotColor = Color(0x1A000000),
+                                    )
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(WorkoutPalette.PrimaryCoral)
+                                    .clickable(enabled = saveEnabled, onClick = onSaveClick)
+                                    .testTag("editor_save_button"),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (uiState.isSaving) {
+                                    PulseLoadingIndicator(modifier = Modifier.size(20.dp))
+                                } else {
+                                    BasicText(
+                                        text = primaryLabel,
+                                        style = PulseTheme.typography.ctaPrimary.copy(
+                                            fontSize = 15.sp,
+                                            lineHeight = 22.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                        ),
+                                    )
+                                }
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(WorkoutPalette.NeutralButtonBg)
+                                    .clickable(enabled = !uiState.isSaving && !uiState.isDeleting, onClick = onCancelClick)
+                                    .testTag("editor_cancel_button"),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                BasicText(
+                                    text = "Cancel",
+                                    style = PulseTheme.typography.ctaPrimary.copy(
+                                        fontSize = 14.sp,
+                                        lineHeight = 20.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = WorkoutPalette.TextPrimary,
+                                    ),
+                                )
+                            }
                         }
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(WorkoutPalette.NeutralButtonBg)
-                            .clickable(enabled = !uiState.isSaving && !uiState.isDeleting, onClick = onCancelClick)
-                            .testTag("editor_cancel_button"),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        BasicText(
-                            text = "Cancel",
-                            style = PulseTheme.typography.ctaPrimary.copy(
-                                fontSize = 14.sp,
-                                lineHeight = 20.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = WorkoutPalette.TextPrimary,
-                            ),
-                        )
                     }
                 }
             }
@@ -657,7 +685,16 @@ private fun EmptyExercisesCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(Color.White)
-            .border(BorderStroke(1.5.dp, Color(0xFFE0E0E0)), RoundedCornerShape(16.dp))
+            .drawBehind {
+                drawRoundRect(
+                    color = Color(0xFFE0E0E0),
+                    cornerRadius = CornerRadius(16.dp.toPx(), 16.dp.toPx()),
+                    style = Stroke(
+                        width = 1.5.dp.toPx(),
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f),
+                    ),
+                )
+            }
             .clickable(onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 32.dp)
             .testTag("editor_empty_exercises"),
@@ -737,7 +774,7 @@ private fun ConfiguredExerciseCard(
         ) {
             Image(
                 painter = painterResource(id = item.thumbnailRes),
-                contentDescription = item.exercise.name,
+                contentDescription = item.displayName,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(44.dp)
@@ -749,12 +786,12 @@ private fun ConfiguredExerciseCard(
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 BasicText(
-                    text = item.exercise.name,
+                    text = item.displayName,
                     style = PulseTheme.typography.cardTitle.copy(
                         fontSize = 15.sp,
                         lineHeight = 20.sp,
                         fontWeight = FontWeight.Bold,
-                        color = WorkoutPalette.TextEditorPrimary,
+                        color = if (item.isUnavailable) WorkoutPalette.ErrorText else WorkoutPalette.TextEditorPrimary,
                     ),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -768,7 +805,7 @@ private fun ConfiguredExerciseCard(
                         style = PulseTheme.typography.label.copy(
                             fontSize = 10.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFFC2400D),
+                            color = if (item.isUnavailable) WorkoutPalette.ErrorText else Color(0xFFC2400D),
                         ),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -804,7 +841,7 @@ private fun ConfiguredExerciseCard(
             ) {
                 Image(
                     imageVector = Trash,
-                    contentDescription = "Remove ${item.exercise.name}",
+                    contentDescription = "Remove ${item.displayName}",
                     colorFilter = ColorFilter.tint(Color(0xFF70737A)),
                     modifier = Modifier.size(18.dp),
                 )
@@ -1234,7 +1271,7 @@ fun DeletePlanConfirmationModal(
                     .border(BorderStroke(1.dp, WorkoutPalette.InputBackground), RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
                     .clickable(enabled = false, onClick = {})
                     .navigationBarsPadding()
-                    .padding(start = 16.dp, end = 16.dp, top = 25.dp, bottom = 24.dp)
+                    .padding(start = 16.dp, end = 16.dp, top = 25.dp, bottom = 32.dp)
                     .testTag("modal_delete_plan"),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {

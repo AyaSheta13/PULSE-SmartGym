@@ -335,6 +335,7 @@ fun rememberPulseEntryProvider(
     entry<CreateWorkoutPlan> {
         val viewModel: WorkoutPlanEditorViewModel = viewModel {
             WorkoutPlanEditorViewModel(
+                savedStateHandle = createSavedStateHandle(),
                 planId = null,
                 authRepository = dataContainer.authRepository,
                 workoutPlanRepository = dataContainer.workoutPlanRepository,
@@ -345,7 +346,9 @@ fun rememberPulseEntryProvider(
         }
         WorkoutPlanEditorScreen(
             viewModel = viewModel,
-            onOpenExercisePicker = { planId -> navigator.navigate(ExercisePicker(planId = planId)) },
+            onOpenExercisePicker = { planId, editorSessionId ->
+                navigator.navigate(ExercisePicker(planId = planId, editorSessionId = editorSessionId))
+            },
             onPlanCreated = { createdPlanId -> navigator.replaceTopWithWorkoutDetails(createdPlanId) },
             onPlanUpdated = { navigator.navigateBack() },
             onPlanDeleted = { navigator.navigateBack() },
@@ -356,6 +359,7 @@ fun rememberPulseEntryProvider(
     entry<EditWorkoutPlan> { key ->
         val viewModel: WorkoutPlanEditorViewModel = viewModel {
             WorkoutPlanEditorViewModel(
+                savedStateHandle = createSavedStateHandle(),
                 planId = key.planId,
                 authRepository = dataContainer.authRepository,
                 workoutPlanRepository = dataContainer.workoutPlanRepository,
@@ -366,7 +370,9 @@ fun rememberPulseEntryProvider(
         }
         WorkoutPlanEditorScreen(
             viewModel = viewModel,
-            onOpenExercisePicker = { planId -> navigator.navigate(ExercisePicker(planId = planId)) },
+            onOpenExercisePicker = { planId, editorSessionId ->
+                navigator.navigate(ExercisePicker(planId = planId, editorSessionId = editorSessionId))
+            },
             onPlanCreated = { navigator.navigateBack() },
             onPlanUpdated = { navigator.navigateBack() },
             onPlanDeleted = { navigator.popWorkoutPlanFlowAfterDelete(key.planId) },
@@ -379,6 +385,7 @@ fun rememberPulseEntryProvider(
             ExercisePickerViewModel(
                 savedStateHandle = createSavedStateHandle(),
                 routePlanId = key.planId,
+                routeEditorSessionId = key.editorSessionId,
                 authRepository = dataContainer.authRepository,
                 exerciseRepository = dataContainer.exerciseRepository,
                 selectionBridge = workoutSelectionBridge,

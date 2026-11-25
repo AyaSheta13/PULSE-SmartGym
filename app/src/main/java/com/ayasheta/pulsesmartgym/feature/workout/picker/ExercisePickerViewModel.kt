@@ -24,10 +24,18 @@ import kotlinx.coroutines.flow.stateIn
 class ExercisePickerViewModel(
     private val savedStateHandle: SavedStateHandle,
     private val routePlanId: String?,
+    private val routeEditorSessionId: String? = null,
     authRepository: AuthRepository,
     private val exerciseRepository: ExerciseRepository,
     private val selectionBridge: WorkoutPlanSelectionBridge,
 ) : ViewModel() {
+
+    private val effectiveEditorSessionId: String = routeEditorSessionId
+        ?: savedStateHandle.get<String>(KEY_EDITOR_SESSION_ID)
+        ?: selectionBridge.pickerTarget.value
+            ?.takeIf { it.targetPlanId == routePlanId }
+            ?.editorSessionId
+        ?: "picker_unscoped"
 
     private val queryFlow = MutableStateFlow(savedStateHandle.get<String>(KEY_QUERY) ?: "")
     private val filterFlow = MutableStateFlow(
@@ -44,6 +52,7 @@ class ExercisePickerViewModel(
 
     init {
         savedStateHandle[KEY_SELECTED_IDS] = ArrayList(selectedIdsFlow.value)
+        savedStateHandle[KEY_EDITOR_SESSION_ID] = effectiveEditorSessionId
     }
 
     val uiState: StateFlow<ExercisePickerUiState> = combine(
@@ -98,7 +107,8 @@ class ExercisePickerViewModel(
 
     private fun resolveInitialSelectionFromBridge(): List<String> {
         val target = selectionBridge.pickerTarget.value
-        return if (target != null && target.targetPlanId == routePlanId) {
+        val matchesSession = routeEditorSessionId == null || target?.editorSessionId == routeEditorSessionId
+        return if (target != null && target.targetPlanId == routePlanId && matchesSession) {
             target.preselectedExerciseIds.distinct()
         } else {
             emptyList()
@@ -129,6 +139,7 @@ class ExercisePickerViewModel(
         val ownerId = currentOwnerId ?: return false
         selectionBridge.commitSelection(
             ownerId = ownerId,
+            editorSessionId = effectiveEditorSessionId,
             targetPlanId = routePlanId,
             selectedExerciseIds = selectedIdsFlow.value,
         )
@@ -138,6 +149,7 @@ class ExercisePickerViewModel(
     fun cancelSelection() {
         selectionBridge.cancelPicker(
             ownerId = currentOwnerId,
+            editorSessionId = effectiveEditorSessionId,
             targetPlanId = routePlanId,
         )
     }
@@ -170,5 +182,6 @@ class ExercisePickerViewModel(
         const val KEY_QUERY = "picker_query"
         const val KEY_FILTER = "picker_filter"
         const val KEY_SELECTED_IDS = "picker_selected_ids"
+        const val KEY_EDITOR_SESSION_ID = "picker_editor_session_id"
     }
 }

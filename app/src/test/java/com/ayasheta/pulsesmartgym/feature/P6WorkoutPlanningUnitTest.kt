@@ -115,6 +115,7 @@ class P6WorkoutPlanningUnitTest {
         val bridge = WorkoutPlanSelectionBridge()
 
         val vm = WorkoutPlanEditorViewModel(
+            savedStateHandle = SavedStateHandle(),
             planId = null,
             authRepository = authRepo,
             workoutPlanRepository = planRepo,
@@ -207,6 +208,7 @@ class P6WorkoutPlanningUnitTest {
         planRepo.putRawPlan(seeded)
 
         val vm = WorkoutPlanEditorViewModel(
+            savedStateHandle = SavedStateHandle(),
             planId = "plan_mixed",
             authRepository = authRepo,
             workoutPlanRepository = planRepo,
@@ -322,6 +324,131 @@ class P6WorkoutPlanningUnitTest {
         assertTrue(notFound is WorkoutDetailsUiState.NotFound)
 
         collectJob.cancel()
+    }
+
+    @Test
+    fun editPlan_preservesUnresolvedCatalogExerciseAndBlocksDestructiveSave() = runBlocking {
+        val authRepo = InMemoryAuthRepo(AuthState.Authenticated(user("owner_a")))
+        val planRepo = InMemoryWorkoutPlanRepo()
+        val exerciseRepo = InMemoryExerciseRepo()
+        val prefsRepo = InMemoryPrefsRepo()
+        val bridge = WorkoutPlanSelectionBridge()
+
+        planRepo.putRawPlan(
+            WorkoutPlan(
+                id = "plan_unresolved",
+                ownerProfileId = "owner_a",
+                name = "Legacy Custom Plan",
+                description = null,
+                createdAtEpochMs = 1L,
+                updatedAtEpochMs = 1L,
+                exercises = listOf(
+                    PlanExercise(
+                        id = "pe_valid",
+                        planId = "plan_unresolved",
+                        exerciseId = "ex_bench_press",
+                        orderIndex = 0,
+                        plannedSets = listOf(PlannedSet("ps_1", "pe_valid", 1, 10, null, 90)),
+                    ),
+                    PlanExercise(
+                        id = "pe_missing",
+                        planId = "plan_unresolved",
+                        exerciseId = "ex_removed_from_catalog",
+                        orderIndex = 1,
+                        plannedSets = listOf(PlannedSet("ps_2", "pe_missing", 1, 12, WeightLoad.fromKilograms(40.0), 60)),
+                    ),
+                ),
+            ),
+        )
+
+        val vm = WorkoutPlanEditorViewModel(
+            savedStateHandle = SavedStateHandle(),
+            planId = "plan_unresolved",
+            authRepository = authRepo,
+            workoutPlanRepository = planRepo,
+            exerciseRepository = exerciseRepo,
+            userPreferencesRepository = prefsRepo,
+            selectionBridge = bridge,
+        )
+        val loaded = vm.uiState.awaitValue { !it.isLoading && it.draft.exercises.size == 2 }
+        assertTrue(loaded.hasUnresolvedExercises)
+        assertFalse(loaded.canSubmit)
+        assertEquals("ex_removed_from_catalog", loaded.draft.exercises[1].exerciseId)
+        assertEquals(40_000L, loaded.draft.exercises[1].sets.first().targetLoad?.grams)
+
+        // Attempt save while unresolved -> blocked without mutating repository
+        vm.onNameChanged("Updated Name")
+        vm.savePlan()
+        assertNotNull(vm.uiState.value.validationError)
+        assertEquals("Legacy Custom Plan", planRepo.getPlan("owner_a", "plan_unresolved")?.name)
+
+        // Removing the unavailable exercise unblocks saving
+        vm.removeExercise("pe_missing")
+        assertFalse(vm.uiState.value.hasUnresolvedExercises)
+        vm.savePlan()
+        vm.uiState.awaitValue { !it.isSaving && !it.hasUnsavedChanges }
+        val saved = planRepo.getPlan("owner_a", "plan_unresolved")!!
+        assertEquals("Updated Name", saved.name)
+        assertEquals(1, saved.exercises.size)
+    }
+
+    @Test
+    fun pickerSelection_isolatesSimultaneousCreateAndEditFlowsForSameOwner() = runBlocking {
+        val authRepo = InMemoryAuthRepo(AuthState.Authenticated(user("owner_a")))
+        val planRepo = InMemoryWorkoutPlanRepo()
+        val exerciseRepo = InMemoryExerciseRepo()
+        val prefsRepo = InMemoryPrefsRepo()
+        val bridge = WorkoutPlanSelectionBridge()
+
+        planRepo.seedPlan("owner_a", "plan_shared", "Shared Plan", listOf("ex_bench_press"))
+
+        // Two simultaneous Create flows
+        val createA = WorkoutPlanEditorViewModel(SavedStateHandle(), null, authRepo, planRepo, exerciseRepo, prefsRepo, bridge)
+        val createB = WorkoutPlanEditorViewModel(SavedStateHandle(), null, authRepo, planRepo, exerciseRepo, prefsRepo, bridge)
+        createA.uiState.awaitValue { !it.isLoading && it.ownerId != null }
+        createB.uiState.awaitValue { !it.isLoading && it.ownerId != null }
+
+        assertTrue(createA.prepareOpenExercisePicker())
+        val pickerA = ExercisePickerViewModel(
+            savedStateHandle = SavedStateHandle(),
+            routePlanId = null,
+            routeEditorSessionId = createA.editorSessionId,
+            authRepository = authRepo,
+            exerciseRepository = exerciseRepo,
+            selectionBridge = bridge,
+        )
+        val pickerACollect = launch { pickerA.uiState.collect {} }
+        pickerA.uiState.awaitValue { !it.isLoading }
+        pickerA.toggleExercise("ex_cable_row")
+        assertTrue(pickerA.confirmSelection())
+
+        createA.uiState.awaitValue { it.draft.exercises.size == 1 }
+        assertEquals(0, createB.uiState.value.draft.exercises.size)
+        pickerACollect.cancel()
+
+        // Two simultaneous Edit flows targeting the same planId
+        val edit1 = WorkoutPlanEditorViewModel(SavedStateHandle(), "plan_shared", authRepo, planRepo, exerciseRepo, prefsRepo, bridge)
+        val edit2 = WorkoutPlanEditorViewModel(SavedStateHandle(), "plan_shared", authRepo, planRepo, exerciseRepo, prefsRepo, bridge)
+        edit1.uiState.awaitValue { !it.isLoading && it.draft.exercises.size == 1 }
+        edit2.uiState.awaitValue { !it.isLoading && it.draft.exercises.size == 1 }
+
+        assertTrue(edit1.prepareOpenExercisePicker())
+        val pickerEdit1 = ExercisePickerViewModel(
+            savedStateHandle = SavedStateHandle(),
+            routePlanId = "plan_shared",
+            routeEditorSessionId = edit1.editorSessionId,
+            authRepository = authRepo,
+            exerciseRepository = exerciseRepo,
+            selectionBridge = bridge,
+        )
+        val picker1Collect = launch { pickerEdit1.uiState.collect {} }
+        pickerEdit1.uiState.awaitValue { !it.isLoading }
+        pickerEdit1.toggleExercise("ex_lateral_raise")
+        assertTrue(pickerEdit1.confirmSelection())
+
+        edit1.uiState.awaitValue { it.draft.exercises.size == 2 }
+        assertEquals(1, edit2.uiState.value.draft.exercises.size)
+        picker1Collect.cancel()
     }
 }
 

@@ -29,6 +29,9 @@ data class WorkoutPlanEditorUiState(
     val estimatedMinutes: Int?
         get() = WorkoutDurationEstimator.estimateMinutes(draft.toDomainDraft())
 
+    val hasUnresolvedExercises: Boolean
+        get() = draft.exercises.any { it.isUnavailable }
+
     val canSubmit: Boolean
-        get() = !isLoading && !isSaving && !isDeleting && !isPlanMissing && !isSignedOut && ownerId != null
+        get() = !isLoading && !isSaving && !isDeleting && !isPlanMissing && !isSignedOut && ownerId != null && !hasUnresolvedExercises
 }

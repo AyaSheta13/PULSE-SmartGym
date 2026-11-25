@@ -96,21 +96,25 @@ class P6ScreenshotCaptureTest {
         val editorExercises = listOf(
             EditorExerciseDraftItem(
                 occurrenceKey = "occ_1",
+                exerciseId = "ex_bench_press",
                 exercise = ExerciseDefinition("ex_bench_press", "Barbell Bench Press", MuscleGroup.CHEST, EquipmentCategory.BARBELL, TrackingCategory.LINEAR, imageKey = "bench_press"),
                 sets = (1..4).map { PlannedSetDraft(it, 10, null, 90) },
             ),
             EditorExerciseDraftItem(
                 occurrenceKey = "occ_2",
+                exerciseId = "ex_db_incline_press",
                 exercise = ExerciseDefinition("ex_db_incline_press", "Incline Dumbbell Press", MuscleGroup.CHEST, EquipmentCategory.DUMBBELL, TrackingCategory.LINEAR, imageKey = "db_incline_press"),
                 sets = (1..4).map { PlannedSetDraft(it, 9, null, 75) },
             ),
             EditorExerciseDraftItem(
                 occurrenceKey = "occ_3",
+                exerciseId = "ex_barbell_row",
                 exercise = ExerciseDefinition("ex_barbell_row", "Bent-Over Barbell Row", MuscleGroup.BACK, EquipmentCategory.BARBELL, TrackingCategory.COMPOUND, imageKey = "barbell_row"),
                 sets = (1..4).map { PlannedSetDraft(it, 8, null, 90) },
             ),
             EditorExerciseDraftItem(
                 occurrenceKey = "occ_4",
+                exerciseId = "ex_db_shoulder_press",
                 exercise = ExerciseDefinition("ex_db_shoulder_press", "DB Shoulder Press", MuscleGroup.SHOULDERS, EquipmentCategory.DUMBBELL, TrackingCategory.LINEAR, imageKey = "db_shoulder_press"),
                 sets = (1..4).map { PlannedSetDraft(it, 10, null, 60) },
             ),

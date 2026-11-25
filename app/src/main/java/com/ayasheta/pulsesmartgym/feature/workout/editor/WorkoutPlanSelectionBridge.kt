@@ -7,21 +7,23 @@ import kotlinx.coroutines.flow.asStateFlow
 
 data class PickerTargetContext(
     val ownerId: String,
+    val editorSessionId: String,
     val targetPlanId: String?,
     val preselectedExerciseIds: List<String>,
 )
 
 data class CommittedPickerSelection(
     val ownerId: String,
+    val editorSessionId: String,
     val targetPlanId: String?,
     val selectedExerciseIds: List<String>,
     val nonce: Long,
 )
 
 /**
- * Account-scoped in-memory handoff bridge between WorkoutPlanEditor and ExercisePicker.
- * Lives in a ViewModel scoped to the authenticated session epoch so logout or account switching
- * clears any pending or committed picker selections automatically.
+ * Account- and editor-session-scoped in-memory handoff bridge between WorkoutPlanEditor and ExercisePicker.
+ * Keyed by `(ownerId, editorSessionId, targetPlanId)` so simultaneous Create flows or two editors
+ * targeting the same plan across tabs remain strictly isolated, and logout/account switches clear all state.
  */
 class WorkoutPlanSelectionBridge : ViewModel() {
     private var activeOwnerId: String? = null
@@ -43,12 +45,14 @@ class WorkoutPlanSelectionBridge : ViewModel() {
 
     fun preparePicker(
         ownerId: String,
+        editorSessionId: String,
         targetPlanId: String?,
         preselectedExerciseIds: List<String>,
     ) {
         syncOwner(ownerId)
         _pickerTarget.value = PickerTargetContext(
             ownerId = ownerId,
+            editorSessionId = editorSessionId,
             targetPlanId = targetPlanId,
             preselectedExerciseIds = preselectedExerciseIds.distinct(),
         )
@@ -56,6 +60,7 @@ class WorkoutPlanSelectionBridge : ViewModel() {
 
     fun commitSelection(
         ownerId: String,
+        editorSessionId: String,
         targetPlanId: String?,
         selectedExerciseIds: List<String>,
     ) {
@@ -63,6 +68,7 @@ class WorkoutPlanSelectionBridge : ViewModel() {
         activeOwnerId = ownerId
         _committedSelection.value = CommittedPickerSelection(
             ownerId = ownerId,
+            editorSessionId = editorSessionId,
             targetPlanId = targetPlanId,
             selectedExerciseIds = selectedExerciseIds.distinct(),
             nonce = nextNonce++,
@@ -70,20 +76,35 @@ class WorkoutPlanSelectionBridge : ViewModel() {
         _pickerTarget.value = null
     }
 
-    fun cancelPicker(ownerId: String?, targetPlanId: String?) {
+    fun cancelPicker(
+        ownerId: String?,
+        editorSessionId: String,
+        targetPlanId: String?,
+    ) {
         val current = _pickerTarget.value
-        if (current != null && current.ownerId == ownerId && current.targetPlanId == targetPlanId) {
+        if (
+            current != null &&
+            current.ownerId == ownerId &&
+            current.editorSessionId == editorSessionId &&
+            current.targetPlanId == targetPlanId
+        ) {
             _pickerTarget.value = null
         }
     }
 
     fun consumeSelection(
         ownerId: String,
+        editorSessionId: String,
         targetPlanId: String?,
         nonce: Long,
     ) {
         val current = _committedSelection.value ?: return
-        if (current.ownerId == ownerId && current.targetPlanId == targetPlanId && current.nonce == nonce) {
+        if (
+            current.ownerId == ownerId &&
+            current.editorSessionId == editorSessionId &&
+            current.targetPlanId == targetPlanId &&
+            current.nonce == nonce
+        ) {
             _committedSelection.value = null
         }
     }

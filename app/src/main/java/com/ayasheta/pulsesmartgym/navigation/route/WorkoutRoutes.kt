@@ -13,4 +13,7 @@ data object CreateWorkoutPlan : NavKey
 data class EditWorkoutPlan(val planId: String) : NavKey
 
 @Serializable
-data class ExercisePicker(val planId: String? = null) : NavKey
+data class ExercisePicker(
+    val planId: String? = null,
+    val editorSessionId: String? = null,
+) : NavKey

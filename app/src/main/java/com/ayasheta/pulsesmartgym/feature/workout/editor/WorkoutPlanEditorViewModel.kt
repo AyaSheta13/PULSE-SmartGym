@@ -1,7 +1,9 @@
 package com.ayasheta.pulsesmartgym.feature.workout.editor
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import java.util.UUID
 import com.ayasheta.pulsesmartgym.core.model.common.DomainResult
 import com.ayasheta.pulsesmartgym.core.model.common.PulseValidators
 import com.ayasheta.pulsesmartgym.core.model.common.WeightLoad
@@ -33,6 +35,7 @@ sealed interface WorkoutPlanEditorEvent {
 }
 
 class WorkoutPlanEditorViewModel(
+    private val savedStateHandle: SavedStateHandle,
     private val planId: String?,
     private val authRepository: AuthRepository,
     private val workoutPlanRepository: WorkoutPlanRepository,
@@ -40,6 +43,9 @@ class WorkoutPlanEditorViewModel(
     private val userPreferencesRepository: UserPreferencesRepository,
     private val selectionBridge: WorkoutPlanSelectionBridge,
 ) : ViewModel() {
+
+    val editorSessionId: String = savedStateHandle.get<String>(KEY_EDITOR_SESSION_ID)
+        ?: UUID.randomUUID().toString().also { savedStateHandle[KEY_EDITOR_SESSION_ID] = it }
 
     private val mode: WorkoutPlanEditorMode =
         if (planId == null) WorkoutPlanEditorMode.CREATE else WorkoutPlanEditorMode.EDIT
@@ -177,7 +183,13 @@ class WorkoutPlanEditorViewModel(
             selectionBridge.committedSelection.collectLatest { selection ->
                 if (selection == null) return@collectLatest
                 val ownerId = activeOwnerId ?: return@collectLatest
-                if (selection.ownerId != ownerId || selection.targetPlanId != planId) return@collectLatest
+                if (
+                    selection.ownerId != ownerId ||
+                    selection.editorSessionId != editorSessionId ||
+                    selection.targetPlanId != planId
+                ) {
+                    return@collectLatest
+                }
 
                 val catalog = exerciseRepository.observeAll().first().associateBy { it.id }
                 applySelectedExerciseIds(
@@ -186,6 +198,7 @@ class WorkoutPlanEditorViewModel(
                 )
                 selectionBridge.consumeSelection(
                     ownerId = ownerId,
+                    editorSessionId = editorSessionId,
                     targetPlanId = planId,
                     nonce = selection.nonce,
                 )
@@ -199,8 +212,8 @@ class WorkoutPlanEditorViewModel(
     ) {
         updateDraft { current ->
             val selectedSet = selectedIds.toSet()
-            val keptExisting = current.exercises.filter { it.exercise.id in selectedSet }
-            val existingIds = keptExisting.map { it.exercise.id }.toSet()
+            val keptExisting = current.exercises.filter { it.exerciseId in selectedSet || it.isUnavailable }
+            val existingIds = keptExisting.map { it.exerciseId }.toSet()
             val newlyAdded = selectedIds
                 .filter { it !in existingIds }
                 .mapNotNull { id -> catalogById[id]?.let { EditorExerciseDraftItem.defaultFor(it) } }
@@ -218,9 +231,13 @@ class WorkoutPlanEditorViewModel(
 
     fun prepareOpenExercisePicker(): Boolean {
         val ownerId = activeOwnerId ?: return false
-        val currentIds = _uiState.value.draft.exercises.map { it.exercise.id }.distinct()
+        val currentIds = _uiState.value.draft.exercises
+            .filterNot { it.isUnavailable }
+            .map { it.exerciseId }
+            .distinct()
         selectionBridge.preparePicker(
             ownerId = ownerId,
+            editorSessionId = editorSessionId,
             targetPlanId = planId,
             preselectedExerciseIds = currentIds,
         )
@@ -331,6 +348,15 @@ class WorkoutPlanEditorViewModel(
 
     fun savePlan() {
         val current = _uiState.value
+        if (current.hasUnresolvedExercises) {
+            _uiState.update {
+                it.copy(
+                    validationError = "Remove unavailable exercises before saving so no stored sets are lost.",
+                    actionError = null,
+                )
+            }
+            return
+        }
         if (!current.canSubmit) return
         val ownerId = activeOwnerId ?: return
 
@@ -472,11 +498,11 @@ class WorkoutPlanEditorViewModel(
     ): WorkoutPlanDraftState = WorkoutPlanDraftState(
         name = name,
         description = description.orEmpty(),
-        exercises = exercises.sortedBy { it.orderIndex }.mapNotNull { planExercise ->
-            val def = catalogById[planExercise.exerciseId] ?: return@mapNotNull null
+        exercises = exercises.sortedBy { it.orderIndex }.map { planExercise ->
             EditorExerciseDraftItem(
                 occurrenceKey = planExercise.id,
-                exercise = def,
+                exerciseId = planExercise.exerciseId,
+                exercise = catalogById[planExercise.exerciseId],
                 notes = planExercise.notes,
                 sets = planExercise.plannedSets.sortedBy { it.setIndex }.map { set ->
                     PlannedSetDraft(
@@ -490,4 +516,8 @@ class WorkoutPlanEditorViewModel(
         },
         preferredWeightUnit = preferredWeightUnit,
     )
+
+    private companion object {
+        const val KEY_EDITOR_SESSION_ID = "editor_session_id"
+    }
 }

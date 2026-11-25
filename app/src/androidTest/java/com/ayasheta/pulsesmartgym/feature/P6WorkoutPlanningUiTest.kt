@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -114,7 +115,7 @@ class P6WorkoutPlanningUiTest {
                 true
             }.getOrDefault(false)
         }
-        composeRule.onNodeWithTag("editor_save_button").performClick()
+        composeRule.onNodeWithTag("editor_save_button").performScrollTo().performClick()
 
         // 5. Navigated to Workout Details -> verify Start Workout deferred notice & accordion
         composeRule.waitUntil(5_000) {
