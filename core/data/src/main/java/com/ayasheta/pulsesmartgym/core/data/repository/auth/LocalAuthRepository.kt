@@ -78,6 +78,7 @@ class LocalAuthRepository(
                                 email = account.email,
                                 isDemoUser = false,
                                 isGuest = false,
+                                createdAtEpochMs = account.createdAtEpochMs,
                             ),
                         )
                     }
@@ -161,6 +162,7 @@ class LocalAuthRepository(
             email = normalizedEmail,
             isDemoUser = false,
             isGuest = false,
+            createdAtEpochMs = entity.createdAtEpochMs,
         )
         preferencesDataSource.setActiveSession(
             kind = PersistedSessionKind.LOCAL_ACCOUNT,
@@ -203,6 +205,7 @@ class LocalAuthRepository(
             email = account.email,
             isDemoUser = false,
             isGuest = false,
+            createdAtEpochMs = account.createdAtEpochMs,
         )
         preferencesDataSource.setActiveSession(
             kind = PersistedSessionKind.LOCAL_ACCOUNT,

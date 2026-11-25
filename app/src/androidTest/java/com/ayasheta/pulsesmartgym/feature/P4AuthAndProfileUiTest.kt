@@ -144,14 +144,14 @@ class P4AuthAndProfileUiTest {
         // Enters Main Shell (HomeTab)
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching {
-                composeRule.onNodeWithText("Route: HomeTab").assertExists()
+                composeRule.onNodeWithText("THIS WEEK'S PROGRESS").assertExists()
                 true
             }.getOrDefault(false)
         }
 
         // Logout from ProfileTab returns to AuthEntry
         composeRule.onNodeWithText(PulseTab.PROFILE.label).performClick()
-        composeRule.onNodeWithText("Return to Auth Entry").performClick()
+        composeRule.onNodeWithTag("profile_logout_button").performScrollTo().performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching {
                 composeRule.onNodeWithText("Elevate Every Rep").assertExists()

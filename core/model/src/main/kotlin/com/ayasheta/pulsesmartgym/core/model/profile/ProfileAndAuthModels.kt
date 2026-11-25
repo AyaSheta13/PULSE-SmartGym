@@ -14,6 +14,7 @@ data class AuthUser(
     val email: String,
     val isDemoUser: Boolean,
     val isGuest: Boolean = false,
+    val createdAtEpochMs: Long? = null,
 )
 
 sealed interface AuthState {

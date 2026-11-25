@@ -1,5 +1,7 @@
 package com.ayasheta.pulsesmartgym.navigation
 
+import android.content.Context
+import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -8,13 +10,21 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.ayasheta.pulsesmartgym.MainActivity
 import com.ayasheta.pulsesmartgym.app.PulseApp
 import com.ayasheta.pulsesmartgym.app.PulseAppShell
+import com.ayasheta.pulsesmartgym.core.data.di.PulseDataContainer
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTab
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
+import com.ayasheta.pulsesmartgym.core.model.profile.ExperienceLevel
+import com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoal
+import com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoalsDraft
+import com.ayasheta.pulsesmartgym.core.model.profile.GenderIdentity
+import com.ayasheta.pulsesmartgym.core.model.profile.PersonalInfoDraft
+import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -31,31 +41,30 @@ class PulseNavigationUiTest {
             PulseApp(
                 isDebugEntryEnabled = true,
                 initialFlow = AppEntryFlow.MAIN,
-                initialTab = PulseTab.HOME,
+                initialTab = PulseTab.WORKOUTS,
             )
         }
 
-        // Mutate non-default Compose state on HomeTab
-        composeRule.onNodeWithText("Route: HomeTab").assertIsDisplayed()
+        composeRule.onNodeWithText("Route: WorkoutsTab").assertIsDisplayed()
         composeRule.onNodeWithText("Increment Local State").performClick()
         composeRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
 
-        // Switch to WorkoutsTab and mutate its own state twice
-        composeRule.onNodeWithText(PulseTab.WORKOUTS.label).performClick()
-        composeRule.onNodeWithText("Route: WorkoutsTab").assertIsDisplayed()
+        // Switch to HistoryTab and mutate its own state twice
+        composeRule.onNodeWithText(PulseTab.HISTORY.label).performClick()
+        composeRule.onNodeWithText("Route: HistoryTab").assertIsDisplayed()
         composeRule.onNodeWithText("Saved State Counter: 0").assertIsDisplayed()
         composeRule.onNodeWithText("Increment Local State").performClick()
         composeRule.onNodeWithText("Increment Local State").performClick()
         composeRule.onNodeWithText("Saved State Counter: 2").assertIsDisplayed()
 
-        // Switch back to HomeTab -> state 1 is preserved
-        composeRule.onNodeWithText(PulseTab.HOME.label).performClick()
-        composeRule.onNodeWithText("Route: HomeTab").assertIsDisplayed()
-        composeRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
-
-        // Switch back to WorkoutsTab -> state 2 is preserved
+        // Switch back to WorkoutsTab -> state 1 is preserved
         composeRule.onNodeWithText(PulseTab.WORKOUTS.label).performClick()
         composeRule.onNodeWithText("Route: WorkoutsTab").assertIsDisplayed()
+        composeRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
+
+        // Switch back to HistoryTab -> state 2 is preserved
+        composeRule.onNodeWithText(PulseTab.HISTORY.label).performClick()
+        composeRule.onNodeWithText("Route: HistoryTab").assertIsDisplayed()
         composeRule.onNodeWithText("Saved State Counter: 2").assertIsDisplayed()
     }
 
@@ -68,7 +77,7 @@ class PulseNavigationUiTest {
                     initialFlow = AppEntryFlow.MAIN,
                     initialTab = PulseTab.HOME,
                 )
-                navigator = androidx.compose.runtime.remember(state) { PulseNavigator(state) }
+                navigator = remember(state) { PulseNavigator(state) }
                 PulseAppShell(
                     navigationState = state,
                     navigator = navigator,
@@ -78,7 +87,7 @@ class PulseNavigationUiTest {
         }
 
         // Open WorkoutDetails("plan_sample_1") under HomeTab and increment to 1
-        composeRule.onNodeWithText("Open Workout Details").performClick()
+        composeRule.runOnIdle { navigator.openWorkoutDetails("plan_sample_1") }
         composeRule.onNodeWithText("Route: WorkoutDetails").assertIsDisplayed()
         composeRule.onNodeWithText("Increment Local State").performClick()
         composeRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
@@ -101,9 +110,9 @@ class PulseNavigationUiTest {
 
     @Test
     fun releaseMode_hidesDebugAuthBypassAcrossAuthFlow() {
-        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
-        val container = com.ayasheta.pulsesmartgym.core.data.di.PulseDataContainer(context)
-        kotlinx.coroutines.runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val container = PulseDataContainer(context)
+        runBlocking {
             container.userPreferencesRepository.setOnboardingCompleted(false)
             container.authRepository.signOut()
         }
@@ -116,7 +125,6 @@ class PulseNavigationUiTest {
             )
         }
 
-        // Splash resolves to Onboarding (first launch) -> Skip to AuthEntry
         composeRule.waitUntil(timeoutMillis = 5_000) {
             runCatching {
                 composeRule.onNodeWithText("Welcome to PULSE").assertExists()
@@ -126,7 +134,6 @@ class PulseNavigationUiTest {
         composeRule.onNodeWithText("Skip").performClick()
         composeRule.onNodeWithText("Elevate Every Rep").assertIsDisplayed()
 
-        // Navigate to Log In and verify debug error-simulation button is hidden in release mode
         composeRule.onNodeWithText("Log In").performClick()
         composeRule.onNodeWithText("Welcome Back").assertIsDisplayed()
         composeRule.onNodeWithText("⚠ Test Invalid Login & Error Feedback").assertDoesNotExist()
@@ -134,22 +141,49 @@ class PulseNavigationUiTest {
 
     @Test
     fun modalSheet_dismissesWithSystemBackWithoutPoppingUnderlyingRoute() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val container = PulseDataContainer(context)
+        runBlocking {
+            val guest = (container.authRepository.continueAsGuest() as com.ayasheta.pulsesmartgym.core.model.common.DomainResult.Success).data
+            container.userProfileRepository.saveCompletedProfile(
+                ownerId = guest.id,
+                personalInfo = PersonalInfoDraft("Alex Miller", GenderIdentity.MALE, 28, 182, 78.0),
+                goals = FitnessGoalsDraft(FitnessGoal.HYPERTROPHY, ExperienceLevel.INTERMEDIATE, 4),
+            )
+        }
+
         composeRule.setContent {
             PulseApp(
                 isDebugEntryEnabled = true,
                 initialFlow = AppEntryFlow.MAIN,
                 initialTab = PulseTab.PROFILE,
+                dataContainer = container,
             )
         }
 
-        composeRule.onNodeWithText("Route: ProfileTab").assertIsDisplayed()
-        composeRule.onNodeWithText("Open Modal Sheet").performClick()
-        composeRule.onNodeWithText("Sample Modal Sheet").assertIsDisplayed()
-
-        Espresso.pressBack()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("settings_row_account").assertExists()
+                true
+            }.getOrDefault(false)
+        }
+        composeRule.onNodeWithTag("settings_row_account").performClick()
+        composeRule.onNodeWithTag("sheet_account_preferences").assertIsDisplayed()
+        composeRule.onNodeWithText("Got It").assertIsDisplayed()
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Sample Modal Sheet").assertDoesNotExist()
-        composeRule.onNodeWithText("Route: ProfileTab").assertIsDisplayed()
+        Thread.sleep(600)
+
+        val pfd = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+            .uiAutomation
+            .executeShellCommand("input keyevent 4")
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(pfd).use { it.readBytes() }
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("sheet_account_preferences").assertDoesNotExist()
+                true
+            }.getOrDefault(false)
+        }
+        composeRule.onNodeWithText("Profile & Settings").assertIsDisplayed()
     }
 }
 
@@ -161,7 +195,6 @@ class PulseActivityRecreationUiTest {
 
     @Test
     fun activityRecreation_preservesSelectedTabAndSaveableState() {
-        // Enter Main via Guest -> Profile Setup (or directly if already completed from prior tests)
         activityRule.waitUntil(timeoutMillis = 5_000) {
             val onOnboarding = runCatching {
                 activityRule.onNodeWithText("Skip").assertExists()
@@ -176,7 +209,7 @@ class PulseActivityRecreationUiTest {
                 true
             }.getOrDefault(false)
             val onHome = runCatching {
-                activityRule.onNodeWithText("Route: HomeTab").assertExists()
+                activityRule.onNodeWithText("THIS WEEK'S PROGRESS").assertExists()
                 true
             }.getOrDefault(false)
             onOnboarding || onAuthEntry || onPersonalInfo || onHome
@@ -207,7 +240,7 @@ class PulseActivityRecreationUiTest {
 
         activityRule.waitUntil(timeoutMillis = 5_000) {
             runCatching {
-                activityRule.onNodeWithText("Route: HomeTab").assertExists()
+                activityRule.onNodeWithText("THIS WEEK'S PROGRESS").assertExists()
                 true
             }.getOrDefault(false)
         }

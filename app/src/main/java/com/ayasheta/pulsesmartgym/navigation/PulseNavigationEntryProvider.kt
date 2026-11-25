@@ -22,10 +22,16 @@ import com.ayasheta.pulsesmartgym.feature.auth.recovery.ForgotPasswordScreen
 import com.ayasheta.pulsesmartgym.feature.auth.recovery.ForgotPasswordViewModel
 import com.ayasheta.pulsesmartgym.feature.auth.signup.SignUpScreen
 import com.ayasheta.pulsesmartgym.feature.auth.signup.SignUpViewModel
+import com.ayasheta.pulsesmartgym.feature.home.HomeScreen
+import com.ayasheta.pulsesmartgym.feature.home.HomeViewModel
 import com.ayasheta.pulsesmartgym.feature.navigationdemo.NavigationDemoAction
 import com.ayasheta.pulsesmartgym.feature.navigationdemo.NavigationPlaceholderScreen
 import com.ayasheta.pulsesmartgym.feature.onboarding.OnboardingScreen
 import com.ayasheta.pulsesmartgym.feature.onboarding.OnboardingViewModel
+import com.ayasheta.pulsesmartgym.feature.profile.ProfileScreen
+import com.ayasheta.pulsesmartgym.feature.profile.ProfileViewModel
+import com.ayasheta.pulsesmartgym.feature.profile.edit.EditProfileScreen
+import com.ayasheta.pulsesmartgym.feature.profile.edit.EditProfileViewModel
 import com.ayasheta.pulsesmartgym.feature.profilesetup.ProfileSetupDraftHolder
 import com.ayasheta.pulsesmartgym.feature.profilesetup.goals.FitnessGoalsScreen
 import com.ayasheta.pulsesmartgym.feature.profilesetup.goals.FitnessGoalsViewModel
@@ -217,25 +223,23 @@ fun rememberPulseEntryProvider(
 
     // --- Five Main Tab Roots ---
     entry<HomeTab> {
-        NavigationPlaceholderScreen(
-            title = "Home",
-            routeLabel = "HomeTab",
-            topBarStyle = PulseTopAppBarStyle.HomeGreetingHeader(
-                greeting = "Welcome back",
-                userName = "PULSE Athlete",
-                bluetoothStatus = PulseBluetoothChipStatus.DISCONNECTED,
-                avatarInitial = "P",
-                onBluetoothClick = { navigator.navigate(MyDevice) },
-                onAvatarClick = { navigator.selectTab(PulseTab.PROFILE) },
-            ),
-            actions = listOf(
-                NavigationDemoAction("Open Workout Details", isPrimary = true) {
-                    navigator.openWorkoutDetails(planId = "plan_sample_1")
-                },
-                NavigationDemoAction("Open My Device") {
-                    navigator.navigate(MyDevice)
-                },
-            ),
+        val viewModel: HomeViewModel = viewModel {
+            HomeViewModel(
+                authRepository = dataContainer.authRepository,
+                userProfileRepository = dataContainer.userProfileRepository,
+                workoutPlanRepository = dataContainer.workoutPlanRepository,
+                workoutSessionRepository = dataContainer.workoutSessionRepository,
+                workoutHistoryRepository = dataContainer.workoutHistoryRepository,
+            )
+        }
+        HomeScreen(
+            viewModel = viewModel,
+            onAvatarClick = { navigator.selectTab(PulseTab.PROFILE) },
+            onDeviceStatusClick = { navigator.navigate(MyDevice) },
+            onSeeAllPlansClick = { navigator.selectTab(PulseTab.WORKOUTS) },
+            onPlanClick = { planId -> navigator.openWorkoutDetails(planId = planId) },
+            onProgressClick = { navigator.selectTab(PulseTab.PROGRESS) },
+            onLastSessionClick = { sessionId -> navigator.navigate(SessionDetails(sessionId = sessionId)) },
         )
     }
 
@@ -285,25 +289,18 @@ fun rememberPulseEntryProvider(
     }
 
     entry<ProfileTab> {
-        NavigationPlaceholderScreen(
-            title = "Profile & Settings",
-            routeLabel = "ProfileTab",
-            topBarStyle = PulseTopAppBarStyle.TitleOnly("Profile & Settings"),
-            actions = listOf(
-                NavigationDemoAction("Edit Profile", isPrimary = true) {
-                    navigator.navigate(EditProfile)
-                },
-                NavigationDemoAction("My Device") {
-                    navigator.navigate(MyDevice)
-                },
-                NavigationDemoAction("Return to Auth Entry") {
-                    coroutineScope.launch {
-                        dataContainer.authRepository.signOut()
-                        navigator.resetToAuth(AuthEntry)
-                    }
-                },
-            ),
-            supportsSheetDemo = true,
+        val viewModel: ProfileViewModel = viewModel {
+            ProfileViewModel(
+                authRepository = dataContainer.authRepository,
+                userProfileRepository = dataContainer.userProfileRepository,
+                userPreferencesRepository = dataContainer.userPreferencesRepository,
+            )
+        }
+        ProfileScreen(
+            viewModel = viewModel,
+            onEditProfileClick = { navigator.navigate(EditProfile) },
+            onDeviceClick = { navigator.navigate(MyDevice) },
+            onLoggedOut = { navigator.resetToAuth(AuthEntry) },
         )
     }
 
@@ -540,11 +537,16 @@ fun rememberPulseEntryProvider(
     }
 
         entry<EditProfile> {
-            NavigationPlaceholderScreen(
-                title = "Edit Profile",
-                routeLabel = "EditProfile",
-                topBarStyle = PulseTopAppBarStyle.BackWithTitle("Edit Profile", onBackClick = { navigator.navigateBack() }),
+            val viewModel: EditProfileViewModel = viewModel {
+                EditProfileViewModel(
+                    authRepository = dataContainer.authRepository,
+                    userProfileRepository = dataContainer.userProfileRepository,
+                )
+            }
+            EditProfileScreen(
+                viewModel = viewModel,
                 onBackClick = { navigator.navigateBack() },
+                onSaveSuccess = { navigator.navigateBack() },
             )
         }
     }
