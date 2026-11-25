@@ -1249,6 +1249,8 @@ private fun OfflinePlanReadinessBanner(
     }
 }
 
+val LocalRenderModalsInWindow = androidx.compose.runtime.staticCompositionLocalOf { false }
+
 @Composable
 fun DeletePlanConfirmationModal(
     planName: String,
@@ -1266,7 +1268,11 @@ fun DeletePlanConfirmationModal(
                 .testTag("modal_delete_plan_scrim"),
             contentAlignment = Alignment.BottomCenter,
         ) {
-            val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            val navBarBottom = if (inWindow || LocalRenderModalsInWindow.current) {
+                0.dp
+            } else {
+                WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            }
             val sheetBottomPadding = (navBarBottom + 8.dp).coerceAtLeast(32.dp)
             Column(
                 modifier = Modifier
@@ -1343,7 +1349,7 @@ fun DeletePlanConfirmationModal(
         }
     }
 
-    if (inWindow) {
+    if (inWindow || LocalRenderModalsInWindow.current) {
         modalBody()
     } else {
         Dialog(

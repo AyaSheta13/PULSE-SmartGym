@@ -139,7 +139,7 @@ class P6WorkoutPlanningUnitTest {
 
         // Simulate picker selection handoff
         assertTrue(vm.prepareOpenExercisePicker())
-        bridge.commitSelection("owner_a", null, listOf("ex_bench_press", "ex_lateral_raise"))
+        bridge.commitSelection("owner_a", vm.editorSessionId, null, listOf("ex_bench_press", "ex_lateral_raise"))
         vm.uiState.awaitValue { it.draft.exercises.size == 2 }
 
         // Storage failure retains draft
@@ -244,11 +244,12 @@ class P6WorkoutPlanningUnitTest {
         val authRepo = InMemoryAuthRepo(AuthState.Authenticated(user("owner_a")))
         val exerciseRepo = InMemoryExerciseRepo()
         val bridge = WorkoutPlanSelectionBridge()
-        bridge.preparePicker("owner_a", null, listOf("ex_bench_press"))
+        bridge.preparePicker("owner_a", "session_picker_test", null, listOf("ex_bench_press"))
 
         val vm = ExercisePickerViewModel(
             savedStateHandle = SavedStateHandle(),
             routePlanId = null,
+            routeEditorSessionId = "session_picker_test",
             authRepository = authRepo,
             exerciseRepository = exerciseRepo,
             selectionBridge = bridge,
@@ -471,7 +472,8 @@ class P6WorkoutPlanningUnitTest {
         bridge.commitSelection("owner_a", originalSessionId, null, listOf("ex_bench_press"))
         createVm1.uiState.awaitValue { it.draft.exercises.size == 1 }
 
-        val createVm2 = WorkoutPlanEditorViewModel(createSavedState, null, authRepo, planRepo, exerciseRepo, prefsRepo, bridge)
+        val createSavedStateSnapshot = createSavedState.keys().associateWith { createSavedState.get<Any?>(it) }
+        val createVm2 = WorkoutPlanEditorViewModel(SavedStateHandle(createSavedStateSnapshot), null, authRepo, planRepo, exerciseRepo, prefsRepo, bridge)
         val restoredCreate = createVm2.uiState.awaitValue { !it.isLoading && it.ownerId != null }
         assertEquals(originalSessionId, createVm2.editorSessionId)
         assertEquals("Draft Push", restoredCreate.draft.name)
@@ -479,7 +481,7 @@ class P6WorkoutPlanningUnitTest {
         assertEquals(listOf("ex_bench_press"), restoredCreate.draft.exercises.map { it.exerciseId })
         assertTrue(restoredCreate.hasUnsavedChanges)
 
-        // 2. Edit mode: mutate sets/reps/load, simulate process death -> unsaved edits restored
+        // 2. Edit mode: mutate sets/reps/load, simulate snapshot recreation -> unsaved edits restored
         planRepo.seedPlan("owner_a", "plan_edit", "Base Plan", listOf("ex_bench_press"))
         val editSavedState = SavedStateHandle()
         val editVm1 = WorkoutPlanEditorViewModel(editSavedState, "plan_edit", authRepo, planRepo, exerciseRepo, prefsRepo, bridge)
@@ -488,19 +490,80 @@ class P6WorkoutPlanningUnitTest {
         editVm1.adjustSets(occKey, 1)
         editVm1.updateSingleSet(occKey, 1, targetReps = 12, targetRestSeconds = 105, targetLoad = WeightLoad.fromKilograms(72.5), updateLoad = true)
 
-        val editVm2 = WorkoutPlanEditorViewModel(editSavedState, "plan_edit", authRepo, planRepo, exerciseRepo, prefsRepo, bridge)
+        val editSavedStateSnapshot = editSavedState.keys().associateWith { editSavedState.get<Any?>(it) }
+        val editVm2 = WorkoutPlanEditorViewModel(SavedStateHandle(editSavedStateSnapshot), "plan_edit", authRepo, planRepo, exerciseRepo, prefsRepo, bridge)
         val restoredEdit = editVm2.uiState.awaitValue { !it.isLoading && it.draft.exercises.size == 1 }
         assertEquals(2, restoredEdit.draft.exercises.first().sets.size)
         assertEquals(12, restoredEdit.draft.exercises.first().sets.first().targetReps)
         assertEquals(72_500L, restoredEdit.draft.exercises.first().sets.first().targetLoad?.grams)
+        assertEquals(105, restoredEdit.draft.exercises.first().sets.first().targetRestSeconds)
+        assertEquals(10, restoredEdit.draft.exercises.first().sets[1].targetReps)
         assertTrue(restoredEdit.hasUnsavedChanges)
 
-        // 3. Cross-owner isolation: if owner_b opens with owner_a's SavedStateHandle, owner_a's draft is discarded
+        // 3. Cross-owner isolation: if owner_b opens with owner_a's recreated SavedStateHandle, owner_a's draft is discarded
         val ownerBAuth = InMemoryAuthRepo(AuthState.Authenticated(user("owner_b")))
-        val crossOwnerVm = WorkoutPlanEditorViewModel(createSavedState, null, ownerBAuth, planRepo, exerciseRepo, prefsRepo, bridge)
+        val crossOwnerVm = WorkoutPlanEditorViewModel(SavedStateHandle(createSavedStateSnapshot), null, ownerBAuth, planRepo, exerciseRepo, prefsRepo, bridge)
         val crossLoaded = crossOwnerVm.uiState.awaitValue { !it.isLoading && it.ownerId == "owner_b" }
         assertEquals("", crossLoaded.draft.name)
         assertTrue(crossLoaded.draft.exercises.isEmpty())
+    }
+
+    @Test
+    fun editorDraft_corruptedAndOversizedSavedStateRecoverSafelyWithoutSilentDrops() = runBlocking {
+        val authRepo = InMemoryAuthRepo(AuthState.Authenticated(user("owner_a")))
+        val planRepo = InMemoryWorkoutPlanRepo()
+        val exerciseRepo = InMemoryExerciseRepo()
+        val prefsRepo = InMemoryPrefsRepo()
+        val bridge = WorkoutPlanSelectionBridge()
+        planRepo.seedPlan("owner_a", "plan_safe", "Persisted Plan", listOf("ex_bench_press"))
+
+        // 1. Malformed Base64 notes -> does not crash or silently drop exercise; recovers to baseline with explicit error
+        val badBase64State = SavedStateHandle(
+            mapOf(
+                "editor_draft_has_draft" to true,
+                "editor_draft_owner_id" to "owner_a",
+                "editor_draft_name" to "Tampered",
+                "editor_draft_description" to "Desc",
+                "editor_draft_exercises" to arrayListOf("occ1|ex_bench_press|!!!not-base64!!!|1:10:-1:90"),
+            ),
+        )
+        val badBase64Vm = WorkoutPlanEditorViewModel(badBase64State, "plan_safe", authRepo, planRepo, exerciseRepo, prefsRepo, bridge)
+        val badBase64Ui = badBase64Vm.uiState.awaitValue { !it.isLoading && it.ownerId == "owner_a" }
+        assertEquals("Persisted Plan", badBase64Ui.draft.name)
+        assertEquals(1, badBase64Ui.draft.exercises.size)
+        assertFalse(badBase64Ui.hasUnsavedChanges)
+        assertNotNull(badBase64Ui.actionError)
+
+        // 2. Malformed set record inside an exercise -> does not silently drop the set; recovers to baseline with explicit error
+        val badSetState = SavedStateHandle(
+            mapOf(
+                "editor_draft_has_draft" to true,
+                "editor_draft_owner_id" to "owner_a",
+                "editor_draft_name" to "Tampered",
+                "editor_draft_description" to "Desc",
+                "editor_draft_exercises" to arrayListOf("occ1|ex_bench_press||1:10:-1:90,2:bad:0:90"),
+            ),
+        )
+        val badSetVm = WorkoutPlanEditorViewModel(badSetState, "plan_safe", authRepo, planRepo, exerciseRepo, prefsRepo, bridge)
+        val badSetUi = badSetVm.uiState.awaitValue { !it.isLoading && it.ownerId == "owner_a" }
+        assertEquals("Persisted Plan", badSetUi.draft.name)
+        assertFalse(badSetUi.hasUnsavedChanges)
+        assertNotNull(badSetUi.actionError)
+
+        // 3. Oversized draft (>64KB) -> avoids stuffing oversized payload into SavedStateHandle and recovers safely with warning
+        val oversizedState = SavedStateHandle()
+        val oversizedVm1 = WorkoutPlanEditorViewModel(oversizedState, "plan_safe", authRepo, planRepo, exerciseRepo, prefsRepo, bridge)
+        oversizedVm1.uiState.awaitValue { !it.isLoading && it.draft.exercises.size == 1 }
+        oversizedVm1.onDescriptionChanged("A".repeat(70_000))
+        assertEquals(true, oversizedState.get<Boolean>("editor_draft_oversized"))
+        assertNull(oversizedState.get<ArrayList<String>>("editor_draft_exercises"))
+
+        val oversizedSnapshot = oversizedState.keys().associateWith { oversizedState.get<Any?>(it) }
+        val oversizedVm2 = WorkoutPlanEditorViewModel(SavedStateHandle(oversizedSnapshot), "plan_safe", authRepo, planRepo, exerciseRepo, prefsRepo, bridge)
+        val oversizedUi = oversizedVm2.uiState.awaitValue { !it.isLoading && it.ownerId == "owner_a" }
+        assertEquals("Persisted Plan", oversizedUi.draft.name)
+        assertFalse(oversizedUi.hasUnsavedChanges)
+        assertNotNull(oversizedUi.actionError)
     }
 }
 

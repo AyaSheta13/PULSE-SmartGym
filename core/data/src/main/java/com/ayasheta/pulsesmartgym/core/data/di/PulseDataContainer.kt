@@ -2,8 +2,14 @@ package com.ayasheta.pulsesmartgym.core.data.di
 
 import android.content.Context
 import android.content.pm.ApplicationInfo
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
 import com.ayasheta.pulsesmartgym.core.data.local.database.PulseDatabase
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import java.io.File
 import com.ayasheta.pulsesmartgym.core.data.local.database.PulseTransactionRunner
 import com.ayasheta.pulsesmartgym.core.data.local.database.RoomTransactionRunner
 import com.ayasheta.pulsesmartgym.core.data.local.preferences.PulsePreferencesDataSource
@@ -25,12 +31,14 @@ import com.ayasheta.pulsesmartgym.core.model.repository.WorkoutSessionRepository
 
 open class PulseDataContainer(
     context: Context,
+    private val customDatabase: PulseDatabase? = null,
+    private val customPreferencesDataSource: PulsePreferencesDataSource? = null,
 ) {
     private val appContext = context.applicationContext
     private val isDebuggable = (appContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
     val database: PulseDatabase by lazy {
-        Room.databaseBuilder(
+        customDatabase ?: Room.databaseBuilder(
             appContext,
             PulseDatabase::class.java,
             "pulse_smart_gym.db",
@@ -43,7 +51,7 @@ open class PulseDataContainer(
     }
 
     private val preferencesDataSource: PulsePreferencesDataSource by lazy {
-        PulsePreferencesDataSource(appContext.pulsePreferencesDataStore)
+        customPreferencesDataSource ?: PulsePreferencesDataSource(appContext.pulsePreferencesDataStore)
     }
 
     val exerciseRepository: ExerciseRepository by lazy {
@@ -89,5 +97,41 @@ open class PulseDataContainer(
             transactionRunner = transactionRunner,
             allowDemoSignIn = isDebuggable,
         )
+    }
+
+    class IsolatedTestContainer(
+        val container: PulseDataContainer,
+        private val closeAction: () -> Unit,
+    ) : AutoCloseable {
+        override fun close() {
+            closeAction()
+        }
+    }
+
+    companion object {
+        fun createIsolatedForTesting(context: Context): IsolatedTestContainer {
+            val appContext = context.applicationContext
+            val tempDir = File(appContext.cacheDir, "pulse_isolated_test_${System.nanoTime()}").apply {
+                mkdirs()
+            }
+            val isolatedDb = Room.inMemoryDatabaseBuilder(appContext, PulseDatabase::class.java)
+                .allowMainThreadQueries()
+                .build()
+            val dataStoreScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            val isolatedDataStore = PreferenceDataStoreFactory.create(
+                scope = dataStoreScope,
+                produceFile = { File(tempDir, "isolated_prefs.preferences_pb") },
+            )
+            val container = PulseDataContainer(
+                context = appContext,
+                customDatabase = isolatedDb,
+                customPreferencesDataSource = PulsePreferencesDataSource(isolatedDataStore),
+            )
+            return IsolatedTestContainer(container) {
+                isolatedDb.close()
+                dataStoreScope.cancel()
+                tempDir.deleteRecursively()
+            }
+        }
     }
 }

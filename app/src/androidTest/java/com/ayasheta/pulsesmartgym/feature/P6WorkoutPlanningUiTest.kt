@@ -3,6 +3,7 @@ package com.ayasheta.pulsesmartgym.feature
 import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -11,6 +12,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.ayasheta.pulsesmartgym.app.PulseApp
@@ -236,6 +238,97 @@ class P6EditorRecreationUiTest {
                 activityRule.onNodeWithText("Barbell Bench Press").assertExists()
                 true
             }.getOrDefault(false)
+        }
+    }
+
+    @Test
+    fun editPlanDraft_withMixedPerSetConfigSurvivesActivityRecreation() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val container = com.ayasheta.pulsesmartgym.PulseApplication::class.java
+            .getDeclaredMethod("getDataContainer")
+            .invoke(context.applicationContext) as PulseDataContainer
+        val (ownerId, planId) = runBlocking {
+            container.userPreferencesRepository.setOnboardingCompleted(true)
+            val guest = (container.authRepository.continueAsGuest() as DomainResult.Success).data
+            container.userProfileRepository.saveCompletedProfile(
+                ownerId = guest.id,
+                personalInfo = PersonalInfoDraft("Alex", GenderIdentity.MALE, 26, 178, 76.0),
+                goals = FitnessGoalsDraft(FitnessGoal.HYPERTROPHY, ExperienceLevel.INTERMEDIATE, 4),
+            )
+            container.exerciseRepository.observeAll().first()
+            val created = (container.workoutPlanRepository.createPlan(
+                guest.id,
+                com.ayasheta.pulsesmartgym.core.model.workout.WorkoutPlanDraft(
+                    name = "Mixed Set Plan",
+                    description = "Original",
+                    exercises = listOf(
+                        com.ayasheta.pulsesmartgym.core.model.workout.PlanExerciseDraft(
+                            exerciseId = "ex_bench_press",
+                            orderIndex = 0,
+                            plannedSets = listOf(
+                                com.ayasheta.pulsesmartgym.core.model.workout.PlannedSetDraft(1, 12, com.ayasheta.pulsesmartgym.core.model.common.WeightLoad.fromKilograms(60.0), 90),
+                                com.ayasheta.pulsesmartgym.core.model.workout.PlannedSetDraft(2, 8, com.ayasheta.pulsesmartgym.core.model.common.WeightLoad.fromKilograms(75.0), 120),
+                            ),
+                        ),
+                    ),
+                ),
+            ) as DomainResult.Success).data
+            guest.id to created.id
+        }
+
+        try {
+            activityRule.activityRule.scenario.recreate()
+            activityRule.waitUntil(5_000) {
+                runCatching {
+                    activityRule.onNodeWithText(PulseTab.WORKOUTS.label).assertExists()
+                    true
+                }.getOrDefault(false)
+            }
+
+            activityRule.onNodeWithText(PulseTab.WORKOUTS.label).performClick()
+            activityRule.waitUntil(5_000) {
+                runCatching {
+                    activityRule.onNodeWithTag("workout_plan_card_$planId").assertExists()
+                    true
+                }.getOrDefault(false)
+            }
+            activityRule.onNodeWithTag("workout_plan_card_$planId").performClick()
+
+            activityRule.waitUntil(5_000) {
+                runCatching {
+                    activityRule.onNodeWithTag("details_edit_plan_button").assertExists()
+                    true
+                }.getOrDefault(false)
+            }
+            activityRule.onNodeWithTag("details_edit_plan_button").performClick()
+
+            activityRule.waitUntil(5_000) {
+                runCatching {
+                    activityRule.onNodeWithText("Edit Workout Plan").assertExists()
+                    true
+                }.getOrDefault(false)
+            }
+            activityRule.onNodeWithTag("editor_name_input").performTextReplacement("Mixed Set Plan Edited")
+
+            // Recreate Activity -> unsaved Edit name & mixed per-set configuration survive
+            activityRule.activityRule.scenario.recreate()
+            activityRule.waitForIdle()
+
+            activityRule.waitUntil(5_000) {
+                runCatching {
+                    activityRule.onNodeWithText("Edit Workout Plan").assertExists()
+                    activityRule.onNodeWithText("Mixed Set Plan Edited").assertExists()
+                    true
+                }.getOrDefault(false)
+            }
+            activityRule.onNodeWithTag("editor_scroll_list")
+                .performScrollToNode(hasText("Per-set targets (custom)"))
+            activityRule.onNodeWithText("Barbell Bench Press").assertExists()
+            activityRule.onNodeWithText("Per-set targets (custom)").assertExists()
+        } finally {
+            runBlocking {
+                container.workoutPlanRepository.deletePlan(ownerId, planId)
+            }
         }
     }
 }

@@ -135,9 +135,11 @@ class WorkoutPlanEditorViewModel(
                         }
 
                         if (loadedForOwnerId != ownerId) {
-                            val hasSavedDraft = savedStateHandle.get<Boolean>(KEY_DRAFT_HAS_DRAFT) == true &&
-                                savedStateHandle.get<String>(KEY_DRAFT_OWNER_ID) == ownerId
-                            if (hasSavedDraft) {
+                            val hasSavedDraft =
+                                savedStateHandle.get<Boolean>(KEY_DRAFT_HAS_DRAFT) == true ||
+                                    savedStateHandle.get<Boolean>(KEY_DRAFT_OVERSIZED) == true
+                            val ownerMatches = savedStateHandle.get<String>(KEY_DRAFT_OWNER_ID) == ownerId
+                            if (hasSavedDraft && ownerMatches) {
                                 restoreSavedDraft(ownerId)
                             } else if (planId != null) {
                                 loadExistingPlan(ownerId, planId)
@@ -218,10 +220,27 @@ class WorkoutPlanEditorViewModel(
             WorkoutPlanDraftState(preferredWeightUnit = _uiState.value.preferredWeightUnit)
         }
 
-        val restoredDraft = readDraftFromSavedState(
+        val savedReadResult = readDraftFromSavedState(
             catalogById = catalog,
             preferredWeightUnit = _uiState.value.preferredWeightUnit,
-        ) ?: baseline
+        )
+        val restoredDraft: WorkoutPlanDraftState
+        val restoreWarning: String?
+        when (savedReadResult) {
+            SavedDraftReadResult.None -> {
+                restoredDraft = baseline
+                restoreWarning = null
+            }
+            is SavedDraftReadResult.Restored -> {
+                restoredDraft = savedReadResult.draft
+                restoreWarning = null
+            }
+            is SavedDraftReadResult.CorruptedOrOversized -> {
+                clearSavedDraftState()
+                restoredDraft = baseline
+                restoreWarning = savedReadResult.reason
+            }
+        }
 
         loadedForOwnerId = ownerId
         initialSnapshot = baseline
@@ -231,9 +250,9 @@ class WorkoutPlanEditorViewModel(
                 isLoading = false,
                 isPlanMissing = false,
                 draft = restoredDraft,
-                hasUnsavedChanges = baseline != restoredDraft,
+                hasUnsavedChanges = restoreWarning == null && baseline != restoredDraft,
                 validationError = null,
-                actionError = null,
+                actionError = restoreWarning,
             )
         }
     }
@@ -559,21 +578,43 @@ class WorkoutPlanEditorViewModel(
         }
     }
 
+    private sealed interface SavedDraftReadResult {
+        data object None : SavedDraftReadResult
+        data class Restored(val draft: WorkoutPlanDraftState) : SavedDraftReadResult
+        data class CorruptedOrOversized(val reason: String) : SavedDraftReadResult
+    }
+
     private fun persistDraftToSavedState(
         ownerId: String,
         draft: WorkoutPlanDraftState,
     ) {
+        val encodedExercises = ArrayList(
+            draft.exercises.map { item -> encodeExerciseDraft(item) },
+        )
+        val estimatedChars = ownerId.length +
+            draft.name.length +
+            draft.description.length +
+            encodedExercises.sumOf { it.length }
+        if (estimatedChars > MAX_SAVED_STATE_CHARS) {
+            savedStateHandle.remove<Boolean>(KEY_DRAFT_HAS_DRAFT)
+            savedStateHandle.remove<String>(KEY_DRAFT_NAME)
+            savedStateHandle.remove<String>(KEY_DRAFT_DESCRIPTION)
+            savedStateHandle.remove<ArrayList<String>>(KEY_DRAFT_EXERCISES)
+            savedStateHandle[KEY_DRAFT_OWNER_ID] = ownerId
+            savedStateHandle[KEY_DRAFT_OVERSIZED] = true
+            return
+        }
+        savedStateHandle.remove<Boolean>(KEY_DRAFT_OVERSIZED)
         savedStateHandle[KEY_DRAFT_HAS_DRAFT] = true
         savedStateHandle[KEY_DRAFT_OWNER_ID] = ownerId
         savedStateHandle[KEY_DRAFT_NAME] = draft.name
         savedStateHandle[KEY_DRAFT_DESCRIPTION] = draft.description
-        savedStateHandle[KEY_DRAFT_EXERCISES] = ArrayList(
-            draft.exercises.map { item -> encodeExerciseDraft(item) },
-        )
+        savedStateHandle[KEY_DRAFT_EXERCISES] = encodedExercises
     }
 
     private fun clearSavedDraftState() {
         savedStateHandle.remove<Boolean>(KEY_DRAFT_HAS_DRAFT)
+        savedStateHandle.remove<Boolean>(KEY_DRAFT_OVERSIZED)
         savedStateHandle.remove<String>(KEY_DRAFT_OWNER_ID)
         savedStateHandle.remove<String>(KEY_DRAFT_NAME)
         savedStateHandle.remove<String>(KEY_DRAFT_DESCRIPTION)
@@ -583,19 +624,42 @@ class WorkoutPlanEditorViewModel(
     private fun readDraftFromSavedState(
         catalogById: Map<String, ExerciseDefinition>,
         preferredWeightUnit: WeightUnit,
-    ): WorkoutPlanDraftState? {
-        if (savedStateHandle.get<Boolean>(KEY_DRAFT_HAS_DRAFT) != true) return null
-        val name = savedStateHandle.get<String>(KEY_DRAFT_NAME) ?: ""
-        val description = savedStateHandle.get<String>(KEY_DRAFT_DESCRIPTION) ?: ""
-        val encodedExercises = savedStateHandle.get<ArrayList<String>>(KEY_DRAFT_EXERCISES) ?: arrayListOf()
-        val exercises = encodedExercises.mapNotNull { encoded ->
-            decodeExerciseDraft(encoded, catalogById)
+    ): SavedDraftReadResult {
+        if (savedStateHandle.get<Boolean>(KEY_DRAFT_OVERSIZED) == true) {
+            return SavedDraftReadResult.CorruptedOrOversized(
+                "Unsaved draft exceeded saved-state size limit and could not be restored.",
+            )
         }
-        return WorkoutPlanDraftState(
-            name = name,
-            description = description,
-            exercises = exercises,
-            preferredWeightUnit = preferredWeightUnit,
+        if (savedStateHandle.get<Boolean>(KEY_DRAFT_HAS_DRAFT) != true) {
+            return SavedDraftReadResult.None
+        }
+        val name = savedStateHandle.get<String>(KEY_DRAFT_NAME)
+            ?: return SavedDraftReadResult.CorruptedOrOversized(
+                "Saved draft metadata was incomplete and could not be restored.",
+            )
+        val description = savedStateHandle.get<String>(KEY_DRAFT_DESCRIPTION)
+            ?: return SavedDraftReadResult.CorruptedOrOversized(
+                "Saved draft metadata was incomplete and could not be restored.",
+            )
+        val encodedExercises = savedStateHandle.get<ArrayList<String>>(KEY_DRAFT_EXERCISES)
+            ?: return SavedDraftReadResult.CorruptedOrOversized(
+                "Saved draft exercises were missing and could not be restored.",
+            )
+        val exercises = mutableListOf<EditorExerciseDraftItem>()
+        for (encoded in encodedExercises) {
+            val decoded = decodeExerciseDraft(encoded, catalogById)
+                ?: return SavedDraftReadResult.CorruptedOrOversized(
+                    "Saved draft contained malformed exercise data and could not be safely restored.",
+                )
+            exercises.add(decoded)
+        }
+        return SavedDraftReadResult.Restored(
+            WorkoutPlanDraftState(
+                name = name,
+                description = description,
+                exercises = exercises,
+                preferredWeightUnit = preferredWeightUnit,
+            ),
         )
     }
 
@@ -613,27 +677,34 @@ class WorkoutPlanEditorViewModel(
         catalogById: Map<String, ExerciseDefinition>,
     ): EditorExerciseDraftItem? {
         val parts = encoded.split("|", limit = 4)
-        if (parts.size < 4) return null
+        if (parts.size != 4) return null
         val occurrenceKey = parts[0]
         val exerciseId = parts[1]
-        val notesRaw = String(Base64.getUrlDecoder().decode(parts[2]), StandardCharsets.UTF_8)
-        val sets = if (parts[3].isBlank()) {
-            emptyList()
-        } else {
-            parts[3].split(",").mapNotNull { token ->
-                val fields = token.split(":")
-                if (fields.size != 4) return@mapNotNull null
-                val setIndex = fields[0].toIntOrNull() ?: return@mapNotNull null
-                val targetReps = fields[1].toIntOrNull() ?: return@mapNotNull null
-                val loadGrams = fields[2].toLongOrNull() ?: -1L
-                val restSec = fields[3].toIntOrNull() ?: -1
+        if (occurrenceKey.isBlank() || exerciseId.isBlank()) return null
+
+        val notesRaw = runCatching {
+            String(Base64.getUrlDecoder().decode(parts[2]), StandardCharsets.UTF_8)
+        }.getOrNull() ?: return null
+
+        if (parts[3].isBlank()) return null
+        val setTokens = parts[3].split(",")
+        val sets = mutableListOf<PlannedSetDraft>()
+        for (token in setTokens) {
+            val fields = token.split(":")
+            if (fields.size != 4) return null
+            val setIndex = fields[0].toIntOrNull() ?: return null
+            val targetReps = fields[1].toIntOrNull() ?: return null
+            val loadGrams = fields[2].toLongOrNull() ?: return null
+            val restSec = fields[3].toIntOrNull() ?: return null
+            if (setIndex < 1 || targetReps < 1 || loadGrams < -1L || restSec < -1) return null
+            sets.add(
                 PlannedSetDraft(
                     setIndex = setIndex,
                     targetReps = targetReps,
                     targetLoad = if (loadGrams >= 0L) WeightLoad.fromGrams(loadGrams) else null,
                     targetRestSeconds = if (restSec >= 0) restSec else null,
-                )
-            }
+                ),
+            )
         }
         return EditorExerciseDraftItem(
             occurrenceKey = occurrenceKey,
@@ -672,9 +743,11 @@ class WorkoutPlanEditorViewModel(
     private companion object {
         const val KEY_EDITOR_SESSION_ID = "editor_session_id"
         const val KEY_DRAFT_HAS_DRAFT = "editor_draft_has_draft"
+        const val KEY_DRAFT_OVERSIZED = "editor_draft_oversized"
         const val KEY_DRAFT_OWNER_ID = "editor_draft_owner_id"
         const val KEY_DRAFT_NAME = "editor_draft_name"
         const val KEY_DRAFT_DESCRIPTION = "editor_draft_description"
         const val KEY_DRAFT_EXERCISES = "editor_draft_exercises"
+        const val MAX_SAVED_STATE_CHARS = 64_000
     }
 }

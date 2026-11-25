@@ -4,9 +4,12 @@ import android.content.Context
 import android.graphics.Bitmap
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -27,7 +30,6 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
 import com.ayasheta.pulsesmartgym.R
 import com.ayasheta.pulsesmartgym.app.PulseApp
 import com.ayasheta.pulsesmartgym.core.data.di.PulseDataContainer
@@ -40,6 +42,7 @@ import com.ayasheta.pulsesmartgym.core.model.exercise.EquipmentCategory
 import com.ayasheta.pulsesmartgym.core.model.exercise.ExerciseDefinition
 import com.ayasheta.pulsesmartgym.core.model.exercise.MuscleGroup
 import com.ayasheta.pulsesmartgym.core.model.exercise.TrackingCategory
+import com.ayasheta.pulsesmartgym.core.model.profile.AuthState
 import com.ayasheta.pulsesmartgym.core.model.profile.ExperienceLevel
 import com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoal
 import com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoalsDraft
@@ -48,6 +51,7 @@ import com.ayasheta.pulsesmartgym.core.model.profile.PersonalInfoDraft
 import com.ayasheta.pulsesmartgym.core.model.workout.PlanExerciseDraft
 import com.ayasheta.pulsesmartgym.core.model.workout.PlannedSetDraft
 import com.ayasheta.pulsesmartgym.core.model.workout.WorkoutPlanDraft
+import com.ayasheta.pulsesmartgym.feature.workout.editor.LocalRenderModalsInWindow
 import com.ayasheta.pulsesmartgym.navigation.AppEntryFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -159,7 +163,11 @@ class P6ScreenshotCaptureTest {
         composeRule.setContent {
             PulseTheme {
                 CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = 1f)) {
-                    Box(modifier = Modifier.size(width = 390.dp, height = 884.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 390.dp, height = 884.dp)
+                            .consumeWindowInsets(WindowInsets.systemBars),
+                    ) {
                         currentScreen()
                     }
                 }
@@ -302,83 +310,161 @@ class P6ScreenshotCaptureTest {
     @Test
     fun captureRealDeleteModalOverEditPlan() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val container = PulseDataContainer(context)
-        val createdPlanId = runBlocking {
-            container.userPreferencesRepository.setOnboardingCompleted(true)
-            val guest = (container.authRepository.continueAsGuest() as DomainResult.Success).data
-            container.userProfileRepository.saveCompletedProfile(
-                ownerId = guest.id,
-                personalInfo = PersonalInfoDraft("Alex", GenderIdentity.MALE, 26, 178, 76.0),
-                goals = FitnessGoalsDraft(FitnessGoal.HYPERTROPHY, ExperienceLevel.INTERMEDIATE, 4),
-            )
-            container.exerciseRepository.observeAll().first()
-            container.workoutPlanRepository.observePlans(guest.id).first().forEach {
-                container.workoutPlanRepository.deletePlan(guest.id, it.id)
+        withIsolatedScreenshotContainer(context) { container ->
+            val createdPlanId = seedIsolatedDeleteModalFixture(container)
+
+            composeRule.setContent {
+                CompositionLocalProvider(
+                    LocalDensity provides Density(density = 1f, fontScale = 1f),
+                    LocalRenderModalsInWindow provides true,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 390.dp, height = 884.dp)
+                            .consumeWindowInsets(WindowInsets.systemBars),
+                    ) {
+                        PulseApp(
+                            isDebugEntryEnabled = true,
+                            initialFlow = AppEntryFlow.MAIN,
+                            initialTab = PulseTab.WORKOUTS,
+                            dataContainer = container,
+                        )
+                    }
+                }
             }
-            val created = container.workoutPlanRepository.createPlan(
-                guest.id,
+
+            composeRule.waitUntil(5_000) {
+                runCatching {
+                    composeRule.onNodeWithTag("workout_plan_card_$createdPlanId").assertExists()
+                    true
+                }.getOrDefault(false)
+            }
+            composeRule.onNodeWithTag("workout_plan_card_$createdPlanId").performClick()
+
+            composeRule.waitUntil(5_000) {
+                runCatching {
+                    composeRule.onNodeWithTag("details_edit_plan_button").assertExists()
+                    true
+                }.getOrDefault(false)
+            }
+            composeRule.onNodeWithTag("details_edit_plan_button").performClick()
+
+            composeRule.waitUntil(5_000) {
+                runCatching {
+                    composeRule.onNodeWithText("Edit Workout Plan").assertExists()
+                    true
+                }.getOrDefault(false)
+            }
+            composeRule.onNodeWithContentDescription("Delete").performClick()
+            composeRule.onNodeWithTag("modal_delete_plan").assertIsDisplayed()
+            composeRule.waitForIdle()
+
+            val bitmap = composeRule.onRoot().captureToImage().asAndroidBitmap()
+            saveBitmap(bitmap, "14_delete_plan_confirmation.png")
+        }
+    }
+
+    @Test
+    fun screenshotSetupAndTeardown_preservesExistingTargetAppData() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val targetContainer = PulseDataContainer(context)
+        val uniqueEmail = "qa_preserve_${System.currentTimeMillis()}@pulse.local"
+
+        val (targetOwnerId, baselinePlanId, baselineAuth) = runBlocking {
+            targetContainer.userPreferencesRepository.setOnboardingCompleted(true)
+            val account = (targetContainer.authRepository.registerLocalAccount(
+                fullName = "Target User",
+                email = uniqueEmail,
+                password = "Password123!",
+            ) as DomainResult.Success).data
+            targetContainer.userProfileRepository.saveCompletedProfile(
+                ownerId = account.id,
+                personalInfo = PersonalInfoDraft("Target User", GenderIdentity.FEMALE, 29, 168, 62.0),
+                goals = FitnessGoalsDraft(FitnessGoal.HYPERTROPHY, ExperienceLevel.BEGINNER, 3),
+            )
+            targetContainer.exerciseRepository.observeAll().first()
+            val plan = (targetContainer.workoutPlanRepository.createPlan(
+                account.id,
                 WorkoutPlanDraft(
-                    name = "Upper Body Power",
-                    description = "Chest, back, and arms strength routine",
+                    name = "Target Existing Plan",
+                    description = "Must remain untouched",
                     exercises = listOf(
                         PlanExerciseDraft(
                             exerciseId = "ex_bench_press",
                             orderIndex = 0,
-                            plannedSets = (1..4).map { PlannedSetDraft(it, 10, null, 90) },
+                            plannedSets = (1..3).map { PlannedSetDraft(it, 8, null, 90) },
                         ),
                     ),
                 ),
-            ) as DomainResult.Success
-            created.data.id
+            ) as DomainResult.Success).data
+            Triple(account.id, plan.id, targetContainer.authRepository.restoreSession())
         }
 
-        composeRule.setContent {
-            PulseApp(
-                isDebugEntryEnabled = true,
-                initialFlow = AppEntryFlow.MAIN,
-                initialTab = PulseTab.WORKOUTS,
-                dataContainer = container,
-            )
-        }
-
-        composeRule.waitUntil(5_000) {
-            runCatching {
-                composeRule.onNodeWithTag("workout_plan_card_$createdPlanId").assertExists()
-                true
-            }.getOrDefault(false)
-        }
-        composeRule.onNodeWithTag("workout_plan_card_$createdPlanId").performClick()
-
-        composeRule.waitUntil(5_000) {
-            runCatching {
-                composeRule.onNodeWithTag("details_edit_plan_button").assertExists()
-                true
-            }.getOrDefault(false)
-        }
-        composeRule.onNodeWithTag("details_edit_plan_button").performClick()
-
-        composeRule.waitUntil(5_000) {
-            runCatching {
-                composeRule.onNodeWithText("Edit Workout Plan").assertExists()
-                true
-            }.getOrDefault(false)
-        }
-        composeRule.onNodeWithContentDescription("Delete").performClick()
-        composeRule.onNodeWithTag("modal_delete_plan").assertIsDisplayed()
-        composeRule.waitForIdle()
-        Thread.sleep(250)
-
-        val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
-        val bitmap = requireNotNull(uiAutomation.takeScreenshot()) {
-            "uiAutomation.takeScreenshot() returned null for 14_delete_plan_confirmation.png"
-        }
-        saveBitmap(bitmap, "14_delete_plan_confirmation.png")
-
-        runBlocking {
-            val auth = container.authRepository.restoreSession()
-            if (auth is com.ayasheta.pulsesmartgym.core.model.profile.AuthState.Authenticated) {
-                container.workoutPlanRepository.deletePlan(auth.user.id, createdPlanId)
+        try {
+            withIsolatedScreenshotContainer(context) { isolated ->
+                seedIsolatedDeleteModalFixture(isolated)
+                runBlocking {
+                    isolated.workoutPlanRepository.observePlans(
+                        (isolated.authRepository.restoreSession() as AuthState.Authenticated).user.id,
+                    ).first().forEach {
+                        isolated.workoutPlanRepository.deletePlan(
+                            (isolated.authRepository.restoreSession() as AuthState.Authenticated).user.id,
+                            it.id,
+                        )
+                    }
+                }
             }
+
+            runBlocking {
+                val afterAuth = targetContainer.authRepository.restoreSession()
+                val afterProfile = targetContainer.userProfileRepository.observeProfile(targetOwnerId).first()
+                val afterPlans = targetContainer.workoutPlanRepository.observePlans(targetOwnerId).first()
+
+                org.junit.Assert.assertEquals(baselineAuth, afterAuth)
+                org.junit.Assert.assertEquals("Target User", afterProfile?.fullName)
+                org.junit.Assert.assertEquals(listOf(baselinePlanId), afterPlans.map { it.id })
+                org.junit.Assert.assertEquals("Target Existing Plan", afterPlans.single().name)
+            }
+        } finally {
+            runBlocking {
+                targetContainer.workoutPlanRepository.deletePlan(targetOwnerId, baselinePlanId)
+                targetContainer.authRepository.signOut()
+            }
+        }
+    }
+
+    private fun seedIsolatedDeleteModalFixture(container: PulseDataContainer): String = runBlocking {
+        container.userPreferencesRepository.setOnboardingCompleted(true)
+        val guest = (container.authRepository.continueAsGuest() as DomainResult.Success).data
+        container.userProfileRepository.saveCompletedProfile(
+            ownerId = guest.id,
+            personalInfo = PersonalInfoDraft("Alex", GenderIdentity.MALE, 26, 178, 76.0),
+            goals = FitnessGoalsDraft(FitnessGoal.HYPERTROPHY, ExperienceLevel.INTERMEDIATE, 4),
+        )
+        container.exerciseRepository.observeAll().first()
+        val created = container.workoutPlanRepository.createPlan(
+            guest.id,
+            WorkoutPlanDraft(
+                name = "Upper Body Power",
+                description = "Chest, back, and arms strength routine",
+                exercises = listOf(
+                    PlanExerciseDraft(
+                        exerciseId = "ex_bench_press",
+                        orderIndex = 0,
+                        plannedSets = (1..4).map { PlannedSetDraft(it, 10, null, 90) },
+                    ),
+                ),
+            ),
+        ) as DomainResult.Success
+        created.data.id
+    }
+
+    private inline fun withIsolatedScreenshotContainer(
+        context: Context,
+        block: (PulseDataContainer) -> Unit,
+    ) {
+        PulseDataContainer.createIsolatedForTesting(context).use { isolated ->
+            block(isolated.container)
         }
     }
 
