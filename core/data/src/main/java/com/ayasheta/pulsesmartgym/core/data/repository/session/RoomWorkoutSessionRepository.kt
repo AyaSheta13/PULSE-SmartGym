@@ -48,6 +48,21 @@ class RoomWorkoutSessionRepository(
             return DomainResult.Failure(DataError.ValidationError(it))
         }
         return transactionRunner.runInTransaction {
+            val existingActive = sessionDao.getActiveSession(ownerId)
+            if (existingActive != null) {
+                return@runInTransaction if (existingActive.session.sourcePlanId == planId) {
+                    DomainResult.Success(existingActive.toDomain())
+                } else {
+                    DomainResult.Failure(
+                        DataError.ActiveSessionConflict(
+                            activeSessionId = existingActive.session.id,
+                            activePlanId = existingActive.session.sourcePlanId,
+                            activePlanName = existingActive.session.planNameSnapshot,
+                        ),
+                    )
+                }
+            }
+
             val planWithExercises = planDao.getPlan(ownerId, planId)
                 ?: return@runInTransaction DomainResult.Failure(DataError.NotFound("Workout plan '$planId' not found"))
 

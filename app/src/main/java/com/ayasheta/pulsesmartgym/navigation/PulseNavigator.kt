@@ -136,4 +136,13 @@ class PulseNavigator(
             stack.add(summaryRoute)
         }
     }
+
+    fun exitWorkoutSummaryToHome() {
+        val stack = state.activeBackStack
+        while (stack.size > 1 && NavigationPolicy.isFullScreenWorkoutRoute(stack.lastOrNull())) {
+            stack.removeAt(stack.lastIndex)
+        }
+        state.selectedTab = PulseTab.HOME
+        state.activeFlow = AppEntryFlow.MAIN
+    }
 }

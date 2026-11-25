@@ -75,6 +75,7 @@ fun HomeScreen(
     onDeviceStatusClick: () -> Unit,
     onSeeAllPlansClick: () -> Unit,
     onPlanClick: (String) -> Unit,
+    onStartPlanClick: (String) -> Unit = {},
     onProgressClick: () -> Unit,
     onLastSessionClick: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -86,6 +87,7 @@ fun HomeScreen(
         onDeviceStatusClick = onDeviceStatusClick,
         onSeeAllPlansClick = onSeeAllPlansClick,
         onPlanClick = onPlanClick,
+        onStartPlanClick = onStartPlanClick,
         onProgressClick = onProgressClick,
         onLastSessionClick = onLastSessionClick,
         modifier = modifier,
@@ -99,11 +101,11 @@ fun HomeScreenContent(
     onDeviceStatusClick: () -> Unit,
     onSeeAllPlansClick: () -> Unit,
     onPlanClick: (String) -> Unit,
+    onStartPlanClick: (String) -> Unit = {},
     onProgressClick: () -> Unit,
     onLastSessionClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var pendingStartPlan by remember { mutableStateOf<HomePlanItemUiModel?>(null) }
 
     Column(
         modifier = modifier
@@ -178,7 +180,7 @@ fun HomeScreenContent(
                             PopulatedFeaturedWorkoutCard(
                                 plan = uiState.featuredPlan,
                                 hasActiveSession = uiState.activeSession != null,
-                                onStartClick = { pendingStartPlan = uiState.featuredPlan },
+                                onStartClick = { onStartPlanClick(uiState.featuredPlan.id) },
                             )
                         } else {
                             FirstWorkoutHeroCard(
@@ -186,7 +188,7 @@ fun HomeScreenContent(
                                 onStartClick = {
                                     val plan = uiState.featuredPlan
                                     if (plan != null) {
-                                        pendingStartPlan = plan
+                                        onStartPlanClick(plan.id)
                                     } else {
                                         onSeeAllPlansClick()
                                     }
@@ -266,22 +268,6 @@ fun HomeScreenContent(
                 }
             }
         }
-    }
-
-    pendingStartPlan?.let { plan ->
-        PulseBottomSheet(
-            visible = true,
-            onDismissRequest = { pendingStartPlan = null },
-            title = "Workout Session Unavailable",
-            description = "Live workout execution for \"${plan.name}\" is planned for a future release. You can inspect this plan's exercises and sets in Workout Details.",
-            primaryActionLabel = "View Plan Details",
-            onPrimaryAction = {
-                pendingStartPlan = null
-                onPlanClick(plan.id)
-            },
-            secondaryActionLabel = "Close",
-            onSecondaryAction = { pendingStartPlan = null },
-        )
     }
 }
 

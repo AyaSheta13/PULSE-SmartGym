@@ -39,6 +39,11 @@ sealed interface DataError {
     data class NotFound(val message: String) : DataError
     data class DuplicateSet(val sessionId: String, val sessionExerciseId: String, val setIndex: Int) : DataError
     data class InvalidSessionState(val message: String) : DataError
+    data class ActiveSessionConflict(
+        val activeSessionId: String,
+        val activePlanId: String?,
+        val activePlanName: String,
+    ) : DataError
     data class StorageError(val message: String) : DataError
     data class Unauthorized(val message: String) : DataError
 
@@ -47,6 +52,7 @@ sealed interface DataError {
         is NotFound -> message
         is DuplicateSet -> "Set $setIndex has already been recorded."
         is InvalidSessionState -> message
+        is ActiveSessionConflict -> "Workout \"$activePlanName\" is already in progress."
         is StorageError -> message
         is Unauthorized -> message
     }

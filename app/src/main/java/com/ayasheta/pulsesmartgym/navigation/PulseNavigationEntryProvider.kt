@@ -1,6 +1,7 @@
 package com.ayasheta.pulsesmartgym.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -32,6 +33,12 @@ import com.ayasheta.pulsesmartgym.feature.profile.ProfileScreen
 import com.ayasheta.pulsesmartgym.feature.profile.ProfileViewModel
 import com.ayasheta.pulsesmartgym.feature.profile.edit.EditProfileScreen
 import com.ayasheta.pulsesmartgym.feature.profile.edit.EditProfileViewModel
+import com.ayasheta.pulsesmartgym.feature.session.WorkoutSessionLaunchCoordinator
+import com.ayasheta.pulsesmartgym.feature.session.WorkoutSessionLaunchOverlays
+import com.ayasheta.pulsesmartgym.feature.session.dashboard.WorkoutSessionScreen
+import com.ayasheta.pulsesmartgym.feature.session.dashboard.WorkoutSessionViewModel
+import com.ayasheta.pulsesmartgym.feature.session.summary.WorkoutResultScreen
+import com.ayasheta.pulsesmartgym.feature.session.summary.WorkoutResultViewModel
 import com.ayasheta.pulsesmartgym.feature.profilesetup.ProfileSetupDraftHolder
 import com.ayasheta.pulsesmartgym.feature.profilesetup.goals.FitnessGoalsScreen
 import com.ayasheta.pulsesmartgym.feature.profilesetup.goals.FitnessGoalsViewModel
@@ -105,6 +112,17 @@ fun rememberPulseEntryProvider(
         WorkoutPlanSelectionBridge()
     }
     val coroutineScope = rememberCoroutineScope()
+    val sessionLaunchCoordinator = remember(navigator, dataContainer, coroutineScope) {
+        WorkoutSessionLaunchCoordinator(
+            scope = coroutineScope,
+            authRepository = dataContainer.authRepository,
+            workoutSessionRepository = dataContainer.workoutSessionRepository,
+            onNavigateToSession = { planId, sessionId ->
+                navigator.startWorkoutSession(planId = planId, sessionId = sessionId)
+            },
+        )
+    }
+    WorkoutSessionLaunchOverlays(coordinator = sessionLaunchCoordinator)
 
     return entryProvider {
         // --- Auth & Onboarding (P4) ---
@@ -253,6 +271,7 @@ fun rememberPulseEntryProvider(
             onDeviceStatusClick = { navigator.navigate(MyDevice) },
             onSeeAllPlansClick = { navigator.selectTab(PulseTab.WORKOUTS) },
             onPlanClick = { planId -> navigator.openWorkoutDetails(planId = planId) },
+            onStartPlanClick = { planId -> sessionLaunchCoordinator.startOrResumePlan(planId) },
             onProgressClick = { navigator.selectTab(PulseTab.PROGRESS) },
             onLastSessionClick = { sessionId -> navigator.navigate(SessionDetails(sessionId = sessionId)) },
         )
@@ -270,6 +289,7 @@ fun rememberPulseEntryProvider(
             viewModel = viewModel,
             onNewPlanClick = { navigator.navigate(CreateWorkoutPlan) },
             onPlanClick = { planId -> navigator.openWorkoutDetails(planId = planId) },
+            onStartPlanClick = { planId -> sessionLaunchCoordinator.startOrResumePlan(planId) },
         )
     }
 
@@ -288,11 +308,6 @@ fun rememberPulseEntryProvider(
             topBarStyle = PulseTopAppBarStyle.TitleWithBadge(
                 title = "Workout History",
                 badgeLabel = "Local Storage",
-            ),
-            actions = listOf(
-                NavigationDemoAction("Open Session Details", isPrimary = true) {
-                    navigator.navigate(SessionDetails(sessionId = "session_sample_1"))
-                },
             ),
         )
     }
@@ -329,6 +344,7 @@ fun rememberPulseEntryProvider(
             viewModel = viewModel,
             onBackClick = { navigator.navigateBack() },
             onEditPlanClick = { planId -> navigator.navigate(EditWorkoutPlan(planId)) },
+            onStartWorkoutClick = { planId -> sessionLaunchCoordinator.startOrResumePlan(planId) },
         )
     }
 
@@ -398,33 +414,25 @@ fun rememberPulseEntryProvider(
         )
     }
 
-    // --- Workout Execution & Summaries ---
+    // --- Workout Execution & Summaries (P7) ---
     entry<WorkoutSession> { key ->
-        val sessionId = key.sessionId ?: "session_sample_1"
-        NavigationPlaceholderScreen(
-            title = "Workout Session",
-            routeLabel = "WorkoutSession",
-            topBarStyle = PulseTopAppBarStyle.LiveWorkoutHeader(
-                exerciseTitle = "Workout Session",
-                sessionSubtitle = "Plan: ${key.planId}",
-                bluetoothStatus = PulseBluetoothChipStatus.DISCONNECTED,
-                onBackClick = { navigator.navigateBack() },
-                onBluetoothClick = { navigator.navigate(MyDevice) },
-            ),
-            routeArguments = listOf("planId" to key.planId, "sessionId" to sessionId),
-            actions = listOf(
-                NavigationDemoAction("Ready / Start Set", isPrimary = true) {
-                    navigator.navigate(ReadyStartSet(sessionId = sessionId, exerciseId = "ex_1", setIndex = 1))
-                },
-                NavigationDemoAction("Complete Workout -> Summary") {
-                    navigator.completeWorkoutFlow(WorkoutComplete(sessionId = sessionId))
-                },
-                NavigationDemoAction("End Early -> Partial Summary") {
-                    navigator.completeWorkoutFlow(PartialWorkoutSummary(sessionId = sessionId))
-                },
-            ),
+        val viewModel: WorkoutSessionViewModel = viewModel {
+            WorkoutSessionViewModel(
+                sessionId = key.sessionId,
+                authRepository = dataContainer.authRepository,
+                workoutSessionRepository = dataContainer.workoutSessionRepository,
+                userPreferencesRepository = dataContainer.userPreferencesRepository,
+            )
+        }
+        WorkoutSessionScreen(
+            viewModel = viewModel,
             onBackClick = { navigator.navigateBack() },
-            supportsSheetDemo = true,
+            onSessionCompleted = { completedSessionId ->
+                navigator.completeWorkoutFlow(WorkoutComplete(sessionId = completedSessionId))
+            },
+            onSessionEndedEarly = { endedSessionId ->
+                navigator.completeWorkoutFlow(PartialWorkoutSummary(sessionId = endedSessionId))
+            },
         )
     }
 
@@ -496,35 +504,32 @@ fun rememberPulseEntryProvider(
     }
 
     entry<WorkoutComplete> { key ->
-        NavigationPlaceholderScreen(
-            title = "Workout Complete",
-            routeLabel = "WorkoutComplete",
-            topBarStyle = PulseTopAppBarStyle.WorkoutSummaryHeader(
-                title = "Workout Summary",
-                onDismissClick = { navigator.navigateBack() },
-                onShareClick = {},
-            ),
-            routeArguments = listOf("sessionId" to key.sessionId),
-            actions = listOf(
-                NavigationDemoAction("View Session Details", isPrimary = true) {
-                    navigator.navigate(SessionDetails(key.sessionId))
-                },
-            ),
-            onBackClick = { navigator.navigateBack() },
+        val viewModel: WorkoutResultViewModel = viewModel {
+            WorkoutResultViewModel(
+                sessionId = key.sessionId,
+                authRepository = dataContainer.authRepository,
+                workoutSessionRepository = dataContainer.workoutSessionRepository,
+                userPreferencesRepository = dataContainer.userPreferencesRepository,
+            )
+        }
+        WorkoutResultScreen(
+            viewModel = viewModel,
+            onBackToHome = { navigator.exitWorkoutSummaryToHome() },
         )
     }
 
     entry<PartialWorkoutSummary> { key ->
-        NavigationPlaceholderScreen(
-            title = "Partial Workout Summary",
-            routeLabel = "PartialWorkoutSummary",
-            topBarStyle = PulseTopAppBarStyle.WorkoutSummaryHeader(
-                title = "Partial Summary",
-                onDismissClick = { navigator.navigateBack() },
-                onShareClick = {},
-            ),
-            routeArguments = listOf("sessionId" to key.sessionId),
-            onBackClick = { navigator.navigateBack() },
+        val viewModel: WorkoutResultViewModel = viewModel {
+            WorkoutResultViewModel(
+                sessionId = key.sessionId,
+                authRepository = dataContainer.authRepository,
+                workoutSessionRepository = dataContainer.workoutSessionRepository,
+                userPreferencesRepository = dataContainer.userPreferencesRepository,
+            )
+        }
+        WorkoutResultScreen(
+            viewModel = viewModel,
+            onBackToHome = { navigator.exitWorkoutSummaryToHome() },
         )
     }
 

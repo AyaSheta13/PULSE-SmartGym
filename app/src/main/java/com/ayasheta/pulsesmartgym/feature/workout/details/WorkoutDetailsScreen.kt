@@ -53,6 +53,7 @@ fun WorkoutDetailsScreen(
     viewModel: WorkoutDetailsViewModel,
     onBackClick: () -> Unit,
     onEditPlanClick: (String) -> Unit,
+    onStartWorkoutClick: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -61,6 +62,7 @@ fun WorkoutDetailsScreen(
         onBackClick = onBackClick,
         onToggleExercise = viewModel::toggleExercise,
         onEditPlanClick = onEditPlanClick,
+        onStartWorkoutClick = onStartWorkoutClick,
         modifier = modifier,
     )
 }
@@ -71,9 +73,9 @@ fun WorkoutDetailsScreenContent(
     onBackClick: () -> Unit,
     onToggleExercise: (String) -> Unit,
     onEditPlanClick: (String) -> Unit,
+    onStartWorkoutClick: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    var showStartDeferredDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -277,7 +279,7 @@ fun WorkoutDetailsScreenContent(
                             .height(52.dp)
                             .clip(RoundedCornerShape(16.dp))
                             .background(WorkoutPalette.PrimaryCoral)
-                            .clickable { showStartDeferredDialog = true }
+                            .clickable { onStartWorkoutClick(uiState.planId) }
                             .testTag("details_start_workout_button"),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -313,13 +315,6 @@ fun WorkoutDetailsScreenContent(
                             ),
                         )
                     }
-                }
-
-                if (showStartDeferredDialog) {
-                    StartWorkoutDeferredDialog(
-                        planName = uiState.planName,
-                        onDismiss = { showStartDeferredDialog = false },
-                    )
                 }
             }
         }

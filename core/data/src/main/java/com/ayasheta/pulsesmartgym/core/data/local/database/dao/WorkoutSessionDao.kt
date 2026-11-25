@@ -30,6 +30,17 @@ interface WorkoutSessionDao {
     fun observeActiveSession(ownerId: String): Flow<WorkoutSessionWithExercises?>
 
     @Transaction
+    @Query(
+        """
+        SELECT * FROM workout_sessions
+        WHERE ownerProfileId = :ownerId AND status = 'ACTIVE'
+        ORDER BY startedAtEpochMs DESC
+        LIMIT 1
+        """,
+    )
+    suspend fun getActiveSession(ownerId: String): WorkoutSessionWithExercises?
+
+    @Transaction
     @Query("SELECT * FROM workout_sessions WHERE id = :sessionId AND ownerProfileId = :ownerId")
     fun observeSession(ownerId: String, sessionId: String): Flow<WorkoutSessionWithExercises?>
 

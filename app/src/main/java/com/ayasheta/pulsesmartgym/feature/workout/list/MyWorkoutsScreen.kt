@@ -57,6 +57,7 @@ fun MyWorkoutsScreen(
     viewModel: MyWorkoutsViewModel,
     onNewPlanClick: () -> Unit,
     onPlanClick: (String) -> Unit,
+    onStartPlanClick: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -64,6 +65,7 @@ fun MyWorkoutsScreen(
         uiState = uiState,
         onNewPlanClick = onNewPlanClick,
         onPlanClick = onPlanClick,
+        onStartPlanClick = onStartPlanClick,
         modifier = modifier,
     )
 }
@@ -73,9 +75,9 @@ fun MyWorkoutsScreenContent(
     uiState: MyWorkoutsUiState,
     onNewPlanClick: () -> Unit,
     onPlanClick: (String) -> Unit,
+    onStartPlanClick: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    var pendingStartPlanName by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = modifier
@@ -168,7 +170,7 @@ fun MyWorkoutsScreenContent(
                             WorkoutPlanListCard(
                                 plan = plan,
                                 onCardClick = { onPlanClick(plan.id) },
-                                onStartClick = { pendingStartPlanName = plan.name },
+                                onStartClick = { onStartPlanClick(plan.id) },
                             )
                         }
                         item(key = "create_new_inline") {
@@ -178,13 +180,6 @@ fun MyWorkoutsScreenContent(
                 }
             }
         }
-    }
-
-    pendingStartPlanName?.let { planName ->
-        StartWorkoutDeferredDialog(
-            planName = planName,
-            onDismiss = { pendingStartPlanName = null },
-        )
     }
 }
 

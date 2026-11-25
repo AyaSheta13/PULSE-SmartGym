@@ -96,7 +96,7 @@ class PulseNavigationUiTest {
         // Switch to HistoryTab while ProgressTab keeps SessionDetails on its stack
         composeRule.runOnIdle { navigator.selectTab(PulseTab.HISTORY) }
         composeRule.onNodeWithText("Route: HistoryTab").assertIsDisplayed()
-        composeRule.onNodeWithText("Open Session Details").performClick()
+        composeRule.runOnIdle { navigator.navigate(SessionDetails("session_sample_1")) }
         composeRule.onNodeWithText("Route: SessionDetails").assertIsDisplayed()
         composeRule.onNodeWithText("Saved State Counter: 0").assertIsDisplayed()
         composeRule.onNodeWithText("Increment Local State").performClick()

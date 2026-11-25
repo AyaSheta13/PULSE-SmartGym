@@ -120,7 +120,7 @@ class P6WorkoutPlanningUiTest {
             .performScrollToNode(hasTestTag("editor_save_button"))
         composeRule.onNodeWithTag("editor_save_button").performClick()
 
-        // 5. Navigated to Workout Details -> verify Start Workout deferred notice & accordion
+        // 5. Navigated to Workout Details -> verify plan name and Start Workout CTA
         composeRule.waitUntil(5_000) {
             runCatching {
                 composeRule.onNodeWithTag("details_plan_name").assertExists()
@@ -128,10 +128,7 @@ class P6WorkoutPlanningUiTest {
             }.getOrDefault(false)
         }
         composeRule.onNodeWithText("Push Strength").assertIsDisplayed()
-        composeRule.onNodeWithTag("details_start_workout_button").performClick()
-        composeRule.onNodeWithTag("dialog_start_workout_deferred").assertIsDisplayed()
-        composeRule.onNodeWithTag("button_dismiss_p7_notice").performClick()
-        composeRule.onNodeWithTag("dialog_start_workout_deferred").assertDoesNotExist()
+        composeRule.onNodeWithTag("details_start_workout_button").assertIsDisplayed()
 
         // 6. Open Edit Plan -> Delete Plan confirmation -> Keep Plan -> Delete Plan
         composeRule.onNodeWithTag("details_edit_plan_button").performClick()
