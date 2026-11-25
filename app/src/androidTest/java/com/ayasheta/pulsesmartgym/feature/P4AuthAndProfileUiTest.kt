@@ -27,12 +27,41 @@ import com.ayasheta.pulsesmartgym.core.model.profile.PersonalInfoDraft
 import com.ayasheta.pulsesmartgym.navigation.AppEntryFlow
 import com.ayasheta.pulsesmartgym.navigation.PulseNavDisplay
 import com.ayasheta.pulsesmartgym.navigation.PulseNavigator
+import com.ayasheta.pulsesmartgym.navigation.PerStackViewModelStoreHolder
 import com.ayasheta.pulsesmartgym.navigation.rememberPulseNavigationState
 import com.ayasheta.pulsesmartgym.navigation.route.WorkoutDetails
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
+import androidx.navigation3.runtime.NavEntry
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberDecoratedNavEntries
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
+import androidx.navigation3.ui.NavDisplay
+import com.ayasheta.pulsesmartgym.core.model.profile.UserProfile
+import com.ayasheta.pulsesmartgym.core.model.repository.UserProfileRepository
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -337,5 +366,170 @@ class P4AuthAndProfileUiTest {
         composeRule.runOnIdle { navigator.selectTab(PulseTab.HOME) }
         composeRule.onNodeWithText("Route: WorkoutDetails").assertIsDisplayed()
         composeRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
+    }
+
+    @Test
+    fun delayedIncompleteProfileGate_neverComposesMainEvenDuringPendingQuery() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val delayedContainer = object : PulseDataContainer(context) {
+            override val userProfileRepository: UserProfileRepository = object : UserProfileRepository {
+                override fun observeProfile(ownerId: String): Flow<UserProfile?> = MutableStateFlow(null)
+                override suspend fun getProfile(ownerId: String): UserProfile? = null
+                override suspend fun saveCompletedProfile(
+                    ownerId: String,
+                    personalInfo: PersonalInfoDraft,
+                    goals: FitnessGoalsDraft,
+                ): DomainResult<UserProfile> = error("unused")
+                override suspend fun isProfileSetupCompleted(ownerId: String): Boolean {
+                    delay(350)
+                    return false
+                }
+            }
+        }
+
+        runBlocking {
+            delayedContainer.userPreferencesRepository.setOnboardingCompleted(true)
+            delayedContainer.authRepository.signOut()
+            delayedContainer.authRepository.registerLocalAccount(
+                "Delayed User",
+                "delayed_${System.nanoTime()}@pulse.fit",
+                "Pulse@2026!",
+            )
+        }
+
+        var homeEverDisplayed = false
+        composeRule.setContent {
+            PulseApp(
+                isDebugEntryEnabled = true,
+                initialFlow = AppEntryFlow.MAIN,
+                dataContainer = delayedContainer,
+                enforceAuthGuard = true,
+            )
+        }
+
+        // Poll during the 350ms pending query: HomeTab must NEVER be composed
+        for (i in 0 until 6) {
+            composeRule.waitForIdle()
+            if (runCatching { composeRule.onNodeWithText("Route: HomeTab").assertExists(); true }.getOrDefault(false)) {
+                homeEverDisplayed = true
+            }
+            Thread.sleep(50)
+        }
+        assertFalse("HomeTab flashed while profile completion query was pending", homeEverDisplayed)
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithText("About You").assertExists()
+                true
+            }.getOrDefault(false)
+        }
+        assertFalse(homeEverDisplayed)
+    }
+
+    class ProbeViewModel(
+        val instanceTag: String,
+        private val onClearedCallback: (String) -> Unit,
+    ) : ViewModel() {
+        var count by mutableIntStateOf(0)
+        override fun onCleared() {
+            onClearedCallback(instanceTag)
+        }
+    }
+
+    @Test
+    fun nav3RealViewModel_clearedOnPopAndOnLogoutAccountSwitch_neverReusedAcrossOwners() {
+        val clearedTags = mutableListOf<String>()
+        val createdInstances = mutableListOf<ProbeViewModel>()
+        val ownerFlow = MutableStateFlow("user_A")
+        lateinit var navigator: PulseNavigator
+
+        composeRule.setContent {
+            val activeOwner by ownerFlow.collectAsState()
+            val stackHolder: PerStackViewModelStoreHolder = viewModel()
+            LaunchedEffect(activeOwner) {
+                stackHolder.syncOwner(activeOwner)
+            }
+            val navState = rememberPulseNavigationState(
+                initialFlow = AppEntryFlow.MAIN,
+                initialTab = PulseTab.HOME,
+            )
+            navigator = remember(navState) { PulseNavigator(navState) }
+
+            val tabEntries = key(activeOwner) {
+                PulseTab.entries.associateWith { tab ->
+                    val storeOwner = remember(tab, stackHolder) {
+                        object : ViewModelStoreOwner {
+                            override val viewModelStore: ViewModelStore = stackHolder.storeFor("TAB_${tab.name}")
+                        }
+                    }
+                    rememberDecoratedNavEntries(
+                        backStack = navState.tabBackStacks.getValue(tab),
+                        entryDecorators = listOf(
+                            rememberSaveableStateHolderNavEntryDecorator(),
+                            rememberViewModelStoreNavEntryDecorator(viewModelStoreOwner = storeOwner),
+                        ),
+                        entryProvider = entryProvider {
+                            entry<com.ayasheta.pulsesmartgym.navigation.route.HomeTab> { Text("Tab Home") }
+                            entry<com.ayasheta.pulsesmartgym.navigation.route.WorkoutsTab> { Text("Tab Workouts") }
+                            entry<com.ayasheta.pulsesmartgym.navigation.route.ProgressTab> { Text("Tab Progress") }
+                            entry<com.ayasheta.pulsesmartgym.navigation.route.HistoryTab> { Text("Tab History") }
+                            entry<com.ayasheta.pulsesmartgym.navigation.route.ProfileTab> { Text("Tab Profile") }
+                            entry<WorkoutDetails> { key ->
+                                val tag = "${activeOwner}_${tab.name}_${key.planId}"
+                                val vm: ProbeViewModel = viewModel {
+                                    ProbeViewModel(tag) { clearedTags.add(it) }.also { createdInstances.add(it) }
+                                }
+                                Column {
+                                    Text("VM Tag: ${vm.instanceTag}")
+                                    Text("VM Count: ${vm.count}")
+                                    Button(onClick = { vm.count++ }) { Text("Inc VM") }
+                                }
+                            }
+                        },
+                    )
+                }
+            }
+
+            NavDisplay(
+                entries = tabEntries.getValue(navState.selectedTab),
+                onBack = { navigator.navigateBack() },
+            )
+        }
+
+        // 1. Open WorkoutDetails("p1") in HOME for user_A and increment VM count
+        composeRule.runOnIdle { navigator.navigate(WorkoutDetails("p1")) }
+        composeRule.onNodeWithText("VM Tag: user_A_HOME_p1").assertIsDisplayed()
+        composeRule.onNodeWithText("Inc VM").performClick()
+        composeRule.onNodeWithText("VM Count: 1").assertIsDisplayed()
+
+        // 2. Switch to WORKOUTS and open same WorkoutDetails("p1") -> independent VM
+        composeRule.runOnIdle { navigator.selectTab(PulseTab.WORKOUTS) }
+        composeRule.runOnIdle { navigator.navigate(WorkoutDetails("p1")) }
+        composeRule.onNodeWithText("VM Tag: user_A_WORKOUTS_p1").assertIsDisplayed()
+        composeRule.onNodeWithText("VM Count: 0").assertIsDisplayed()
+
+        // 3. Pop WORKOUTS's WorkoutDetails -> only WORKOUTS VM is cleared, HOME VM survives
+        composeRule.runOnIdle { navigator.navigateBack() }
+        composeRule.waitForIdle()
+        assertTrue(clearedTags.contains("user_A_WORKOUTS_p1"))
+        assertFalse(clearedTags.contains("user_A_HOME_p1"))
+
+        composeRule.runOnIdle { navigator.selectTab(PulseTab.HOME) }
+        composeRule.onNodeWithText("VM Count: 1").assertIsDisplayed()
+
+        // 4. Logout / switch account from nested WorkoutDetails in HOME -> clears HOME VM
+        composeRule.runOnIdle {
+            ownerFlow.value = "user_B"
+            navigator.resetToAuth()
+            navigator.completeAuthAndEnterMain()
+            navigator.navigate(WorkoutDetails("p1"))
+        }
+        composeRule.waitForIdle()
+        assertTrue(clearedTags.contains("user_A_HOME_p1"))
+        composeRule.onNodeWithText("VM Tag: user_B_HOME_p1").assertIsDisplayed()
+        composeRule.onNodeWithText("VM Count: 0").assertIsDisplayed()
+        val homeA = createdInstances.first { it.instanceTag == "user_A_HOME_p1" }
+        val homeB = createdInstances.first { it.instanceTag == "user_B_HOME_p1" }
+        assertNotSame(homeA, homeB)
     }
 }

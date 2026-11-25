@@ -6,7 +6,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.ayasheta.pulsesmartgym.PulseApplication
 import com.ayasheta.pulsesmartgym.core.data.di.PulseDataContainer
@@ -47,6 +49,8 @@ fun PulseApp(
             val authState by resolvedDataContainer.authRepository.observeAuthState()
                 .collectAsState(initial = AuthState.Initializing)
 
+            var authorizedOwnerId by remember { mutableStateOf<String?>(null) }
+
             LaunchedEffect(enforceAuthGuard, resolvedDataContainer) {
                 if (enforceAuthGuard) {
                     resolvedDataContainer.authRepository.restoreSession()
@@ -56,8 +60,11 @@ fun PulseApp(
             LaunchedEffect(enforceAuthGuard, navigationState.activeFlow, authState) {
                 if (!enforceAuthGuard) return@LaunchedEffect
                 when (val currentAuth = authState) {
-                    AuthState.Initializing -> Unit
+                    AuthState.Initializing -> {
+                        authorizedOwnerId = null
+                    }
                     AuthState.Unauthenticated -> {
+                        authorizedOwnerId = null
                         if (navigationState.activeFlow == AppEntryFlow.MAIN) {
                             navigator.resetToAuth(AuthEntry)
                         }
@@ -66,19 +73,25 @@ fun PulseApp(
                         if (navigationState.activeFlow == AppEntryFlow.MAIN) {
                             val setupDone = resolvedDataContainer.userProfileRepository
                                 .isProfileSetupCompleted(currentAuth.user.id)
-                            if (!setupDone) {
+                            if (setupDone) {
+                                authorizedOwnerId = currentAuth.user.id
+                            } else {
+                                authorizedOwnerId = null
                                 navigator.resetToAuth(ProfileSetupPersonalInfo)
                             }
+                        } else {
+                            authorizedOwnerId = null
                         }
                     }
                 }
             }
 
-            val hideUnauthorizedMainDuringRestore = enforceAuthGuard &&
+            val currentOwnerId = (authState as? AuthState.Authenticated)?.user?.id
+            val hideUnauthorizedMainDuringGate = enforceAuthGuard &&
                 navigationState.activeFlow == AppEntryFlow.MAIN &&
-                authState !is AuthState.Authenticated
+                (currentOwnerId == null || authorizedOwnerId != currentOwnerId)
 
-            if (hideUnauthorizedMainDuringRestore) {
+            if (hideUnauthorizedMainDuringGate) {
                 SplashContent()
             } else {
                 PulseAppShell(

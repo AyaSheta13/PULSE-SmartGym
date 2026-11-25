@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -180,7 +181,7 @@ fun AuthEntryContent(
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
         // Value Proposition Section (Figma 607:357)
         BasicText(
@@ -188,29 +189,32 @@ fun AuthEntryContent(
             style = TextStyle(
                 fontFamily = PulseTheme.typography.numericMetric.fontFamily,
                 fontSize = 26.sp,
+                lineHeight = 31.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = (-0.5).sp,
                 color = Color(0xFF141414),
                 textAlign = TextAlign.Center,
+                platformStyle = PlatformTextStyle(includeFontPadding = false),
             ),
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
         BasicText(
             text = "Smart workout tracking built for focused strength. Log every set with precision, track progressive overload, and keep all data private.",
             style = TextStyle(
                 fontFamily = PulseTheme.typography.contentSecondary.fontFamily,
                 fontSize = 13.5.sp,
-                lineHeight = 20.sp,
+                lineHeight = 19.sp,
                 fontWeight = FontWeight.Medium,
                 color = PulseAuthColors.EntryMutedText,
                 textAlign = TextAlign.Center,
+                platformStyle = PlatformTextStyle(includeFontPadding = false),
             ),
-            modifier = Modifier.padding(horizontal = 14.dp),
+            modifier = Modifier.padding(horizontal = 12.dp),
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         // Feature Pills Row (Figma 607:360)
         FlowRow(

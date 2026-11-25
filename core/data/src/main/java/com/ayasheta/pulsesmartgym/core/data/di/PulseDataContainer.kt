@@ -23,7 +23,7 @@ import com.ayasheta.pulsesmartgym.core.model.repository.WorkoutHistoryRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.WorkoutPlanRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.WorkoutSessionRepository
 
-class PulseDataContainer(
+open class PulseDataContainer(
     context: Context,
 ) {
     private val appContext = context.applicationContext
@@ -75,14 +75,14 @@ class PulseDataContainer(
         DataStoreUserPreferencesRepository(preferencesDataSource)
     }
 
-    val userProfileRepository: UserProfileRepository by lazy {
+    open val userProfileRepository: UserProfileRepository by lazy {
         RoomUserProfileRepository(
             userProfileDao = database.userProfileDao(),
             transactionRunner = transactionRunner,
         )
     }
 
-    val authRepository: AuthRepository by lazy {
+    open val authRepository: AuthRepository by lazy {
         LocalAuthRepository(
             accountDao = database.localAccountDao(),
             preferencesDataSource = preferencesDataSource,
