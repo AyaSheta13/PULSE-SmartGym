@@ -11,10 +11,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -46,6 +48,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -94,6 +97,7 @@ fun ExercisePickerScreenContent(
     onBackClick: () -> Unit,
     onConfirmClick: () -> Unit,
     modifier: Modifier = Modifier,
+    bottomInsetOverride: Dp? = null,
 ) {
     val filterOptions: List<MuscleGroup?> = listOf(
         null,
@@ -132,8 +136,7 @@ fun ExercisePickerScreenContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(WorkoutPalette.Background.copy(alpha = 0.96f))
-                    .padding(top = 8.dp, bottom = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                    .padding(top = 8.dp, bottom = 16.dp),
             ) {
                 BasicText(
                     text = "Choose exercises to add to your workout plan.",
@@ -145,6 +148,8 @@ fun ExercisePickerScreenContent(
                     ),
                     modifier = Modifier.padding(horizontal = 16.dp),
                 )
+
+                Spacer(modifier = Modifier.height(18.dp))
 
                 Row(
                     modifier = Modifier
@@ -218,6 +223,8 @@ fun ExercisePickerScreenContent(
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(12.dp))
 
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
@@ -312,7 +319,7 @@ fun ExercisePickerScreenContent(
                         contentPadding = PaddingValues(
                             start = 16.dp,
                             end = 16.dp,
-                            top = 4.dp,
+                            top = 0.dp,
                             bottom = 112.dp,
                         ),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -332,6 +339,9 @@ fun ExercisePickerScreenContent(
         }
 
         // Fixed Bottom Elevation Action Drawer
+        val navBarBottom = bottomInsetOverride
+            ?: WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        val drawerBottomPadding = (navBarBottom + 8.dp).coerceAtLeast(24.dp)
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -345,8 +355,7 @@ fun ExercisePickerScreenContent(
                         ),
                     ),
                 )
-                .navigationBarsPadding()
-                .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = drawerBottomPadding),
         ) {
             Box(
                 modifier = Modifier
@@ -397,6 +406,7 @@ private fun ExercisePickerRowCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .height(82.dp)
             .shadow(
                 elevation = 2.dp,
                 shape = RoundedCornerShape(16.dp),
@@ -407,7 +417,7 @@ private fun ExercisePickerRowCard(
             .background(Color.White)
             .border(BorderStroke(1.dp, WorkoutPalette.CardBorder), RoundedCornerShape(16.dp))
             .clickable(onClick = onToggle)
-            .padding(horizontal = 14.dp, vertical = 9.dp)
+            .padding(horizontal = 14.dp)
             .testTag("picker_exercise_${item.id}"),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,

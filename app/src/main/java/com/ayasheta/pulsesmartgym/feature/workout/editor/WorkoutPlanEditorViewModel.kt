@@ -26,6 +26,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.nio.charset.StandardCharsets
+import java.util.Base64
 
 sealed interface WorkoutPlanEditorEvent {
     data class Created(val planId: String) : WorkoutPlanEditorEvent
@@ -93,6 +95,7 @@ class WorkoutPlanEditorViewModel(
                         activeOwnerId = null
                         loadedForOwnerId = null
                         initialSnapshot = null
+                        clearSavedDraftState()
                         selectionBridge.syncOwner(null)
                         _uiState.update {
                             WorkoutPlanEditorUiState(
@@ -110,6 +113,11 @@ class WorkoutPlanEditorViewModel(
                         activeOwnerId = ownerId
                         selectionBridge.syncOwner(ownerId)
 
+                        val savedOwner = savedStateHandle.get<String>(KEY_DRAFT_OWNER_ID)
+                        if (savedOwner != null && savedOwner != ownerId) {
+                            clearSavedDraftState()
+                        }
+
                         if (ownerChanged) {
                             loadedForOwnerId = null
                             initialSnapshot = null
@@ -118,7 +126,7 @@ class WorkoutPlanEditorViewModel(
                                     mode = mode,
                                     planId = planId,
                                     ownerId = ownerId,
-                                    isLoading = planId != null,
+                                    isLoading = true,
                                     preferredWeightUnit = it.preferredWeightUnit,
                                 )
                             }
@@ -126,13 +134,20 @@ class WorkoutPlanEditorViewModel(
                             _uiState.update { it.copy(ownerId = ownerId, isSignedOut = false) }
                         }
 
-                        if (planId != null && loadedForOwnerId != ownerId) {
-                            loadExistingPlan(ownerId, planId)
-                        } else if (planId == null) {
-                            if (initialSnapshot == null) {
-                                initialSnapshot = _uiState.value.draft
+                        if (loadedForOwnerId != ownerId) {
+                            val hasSavedDraft = savedStateHandle.get<Boolean>(KEY_DRAFT_HAS_DRAFT) == true &&
+                                savedStateHandle.get<String>(KEY_DRAFT_OWNER_ID) == ownerId
+                            if (hasSavedDraft) {
+                                restoreSavedDraft(ownerId)
+                            } else if (planId != null) {
+                                loadExistingPlan(ownerId, planId)
+                            } else {
+                                loadedForOwnerId = ownerId
+                                if (initialSnapshot == null) {
+                                    initialSnapshot = _uiState.value.draft
+                                }
+                                _uiState.update { it.copy(isLoading = false) }
                             }
-                            _uiState.update { it.copy(isLoading = false) }
                         }
                     }
                 }
@@ -172,6 +187,51 @@ class WorkoutPlanEditorViewModel(
                 isPlanMissing = false,
                 draft = loadedDraft,
                 hasUnsavedChanges = false,
+                validationError = null,
+                actionError = null,
+            )
+        }
+    }
+
+    private suspend fun restoreSavedDraft(ownerId: String) {
+        _uiState.update { it.copy(isLoading = true, isPlanMissing = false, actionError = null) }
+        val catalog = exerciseRepository.observeAll().first().associateBy { it.id }
+        if (activeOwnerId != ownerId) return
+
+        val baseline = if (planId != null) {
+            val plan = workoutPlanRepository.getPlan(ownerId, planId)
+            if (activeOwnerId != ownerId) return
+            if (plan == null) {
+                loadedForOwnerId = ownerId
+                clearSavedDraftState()
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        isPlanMissing = true,
+                        actionError = "Workout plan not found or no longer available.",
+                    )
+                }
+                return
+            }
+            plan.toEditorDraftState(catalog, _uiState.value.preferredWeightUnit)
+        } else {
+            WorkoutPlanDraftState(preferredWeightUnit = _uiState.value.preferredWeightUnit)
+        }
+
+        val restoredDraft = readDraftFromSavedState(
+            catalogById = catalog,
+            preferredWeightUnit = _uiState.value.preferredWeightUnit,
+        ) ?: baseline
+
+        loadedForOwnerId = ownerId
+        initialSnapshot = baseline
+        _uiState.update {
+            it.copy(
+                ownerId = ownerId,
+                isLoading = false,
+                isPlanMissing = false,
+                draft = restoredDraft,
+                hasUnsavedChanges = baseline != restoredDraft,
                 validationError = null,
                 actionError = null,
             )
@@ -380,6 +440,7 @@ class WorkoutPlanEditorViewModel(
             when (result) {
                 is DomainResult.Success -> {
                     initialSnapshot = current.draft
+                    clearSavedDraftState()
                     _uiState.update { it.copy(isSaving = false, hasUnsavedChanges = false) }
                     if (planId == null) {
                         _events.emit(WorkoutPlanEditorEvent.Created(result.data.id))
@@ -424,6 +485,7 @@ class WorkoutPlanEditorViewModel(
             }
             when (result) {
                 is DomainResult.Success -> {
+                    clearSavedDraftState()
                     _uiState.update {
                         it.copy(
                             isDeleting = false,
@@ -461,6 +523,7 @@ class WorkoutPlanEditorViewModel(
     }
 
     fun confirmDiscardChanges() {
+        clearSavedDraftState()
         _uiState.update { it.copy(showDiscardConfirmation = false, hasUnsavedChanges = false) }
         viewModelScope.launch { _events.emit(WorkoutPlanEditorEvent.Discarded) }
     }
@@ -483,13 +546,102 @@ class WorkoutPlanEditorViewModel(
     private inline fun updateDraft(transform: (WorkoutPlanDraftState) -> WorkoutPlanDraftState) {
         _uiState.update { state ->
             val updatedDraft = transform(state.draft)
+            val dirty = initialSnapshot != updatedDraft
+            activeOwnerId?.let { ownerId ->
+                persistDraftToSavedState(ownerId = ownerId, draft = updatedDraft)
+            }
             state.copy(
                 draft = updatedDraft,
-                hasUnsavedChanges = initialSnapshot != updatedDraft,
+                hasUnsavedChanges = dirty,
                 validationError = null,
                 actionError = null,
             )
         }
+    }
+
+    private fun persistDraftToSavedState(
+        ownerId: String,
+        draft: WorkoutPlanDraftState,
+    ) {
+        savedStateHandle[KEY_DRAFT_HAS_DRAFT] = true
+        savedStateHandle[KEY_DRAFT_OWNER_ID] = ownerId
+        savedStateHandle[KEY_DRAFT_NAME] = draft.name
+        savedStateHandle[KEY_DRAFT_DESCRIPTION] = draft.description
+        savedStateHandle[KEY_DRAFT_EXERCISES] = ArrayList(
+            draft.exercises.map { item -> encodeExerciseDraft(item) },
+        )
+    }
+
+    private fun clearSavedDraftState() {
+        savedStateHandle.remove<Boolean>(KEY_DRAFT_HAS_DRAFT)
+        savedStateHandle.remove<String>(KEY_DRAFT_OWNER_ID)
+        savedStateHandle.remove<String>(KEY_DRAFT_NAME)
+        savedStateHandle.remove<String>(KEY_DRAFT_DESCRIPTION)
+        savedStateHandle.remove<ArrayList<String>>(KEY_DRAFT_EXERCISES)
+    }
+
+    private fun readDraftFromSavedState(
+        catalogById: Map<String, ExerciseDefinition>,
+        preferredWeightUnit: WeightUnit,
+    ): WorkoutPlanDraftState? {
+        if (savedStateHandle.get<Boolean>(KEY_DRAFT_HAS_DRAFT) != true) return null
+        val name = savedStateHandle.get<String>(KEY_DRAFT_NAME) ?: ""
+        val description = savedStateHandle.get<String>(KEY_DRAFT_DESCRIPTION) ?: ""
+        val encodedExercises = savedStateHandle.get<ArrayList<String>>(KEY_DRAFT_EXERCISES) ?: arrayListOf()
+        val exercises = encodedExercises.mapNotNull { encoded ->
+            decodeExerciseDraft(encoded, catalogById)
+        }
+        return WorkoutPlanDraftState(
+            name = name,
+            description = description,
+            exercises = exercises,
+            preferredWeightUnit = preferredWeightUnit,
+        )
+    }
+
+    private fun encodeExerciseDraft(item: EditorExerciseDraftItem): String {
+        val notesEncoded = Base64.getUrlEncoder().withoutPadding()
+            .encodeToString((item.notes ?: "").toByteArray(StandardCharsets.UTF_8))
+        val setsEncoded = item.sets.joinToString(",") { set ->
+            "${set.setIndex}:${set.targetReps}:${set.targetLoad?.grams ?: -1L}:${set.targetRestSeconds ?: -1}"
+        }
+        return "${item.occurrenceKey}|${item.exerciseId}|$notesEncoded|$setsEncoded"
+    }
+
+    private fun decodeExerciseDraft(
+        encoded: String,
+        catalogById: Map<String, ExerciseDefinition>,
+    ): EditorExerciseDraftItem? {
+        val parts = encoded.split("|", limit = 4)
+        if (parts.size < 4) return null
+        val occurrenceKey = parts[0]
+        val exerciseId = parts[1]
+        val notesRaw = String(Base64.getUrlDecoder().decode(parts[2]), StandardCharsets.UTF_8)
+        val sets = if (parts[3].isBlank()) {
+            emptyList()
+        } else {
+            parts[3].split(",").mapNotNull { token ->
+                val fields = token.split(":")
+                if (fields.size != 4) return@mapNotNull null
+                val setIndex = fields[0].toIntOrNull() ?: return@mapNotNull null
+                val targetReps = fields[1].toIntOrNull() ?: return@mapNotNull null
+                val loadGrams = fields[2].toLongOrNull() ?: -1L
+                val restSec = fields[3].toIntOrNull() ?: -1
+                PlannedSetDraft(
+                    setIndex = setIndex,
+                    targetReps = targetReps,
+                    targetLoad = if (loadGrams >= 0L) WeightLoad.fromGrams(loadGrams) else null,
+                    targetRestSeconds = if (restSec >= 0) restSec else null,
+                )
+            }
+        }
+        return EditorExerciseDraftItem(
+            occurrenceKey = occurrenceKey,
+            exerciseId = exerciseId,
+            exercise = catalogById[exerciseId],
+            notes = notesRaw.takeIf { it.isNotEmpty() },
+            sets = sets,
+        )
     }
 
     private fun WorkoutPlan.toEditorDraftState(
@@ -519,5 +671,10 @@ class WorkoutPlanEditorViewModel(
 
     private companion object {
         const val KEY_EDITOR_SESSION_ID = "editor_session_id"
+        const val KEY_DRAFT_HAS_DRAFT = "editor_draft_has_draft"
+        const val KEY_DRAFT_OWNER_ID = "editor_draft_owner_id"
+        const val KEY_DRAFT_NAME = "editor_draft_name"
+        const val KEY_DRAFT_DESCRIPTION = "editor_draft_description"
+        const val KEY_DRAFT_EXERCISES = "editor_draft_exercises"
     }
 }

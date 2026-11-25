@@ -12,10 +12,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -1263,6 +1266,8 @@ fun DeletePlanConfirmationModal(
                 .testTag("modal_delete_plan_scrim"),
             contentAlignment = Alignment.BottomCenter,
         ) {
+            val navBarBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            val sheetBottomPadding = (navBarBottom + 8.dp).coerceAtLeast(32.dp)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1270,8 +1275,7 @@ fun DeletePlanConfirmationModal(
                     .background(Color.White)
                     .border(BorderStroke(1.dp, WorkoutPalette.InputBackground), RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
                     .clickable(enabled = false, onClick = {})
-                    .navigationBarsPadding()
-                    .padding(start = 16.dp, end = 16.dp, top = 25.dp, bottom = 32.dp)
+                    .padding(start = 16.dp, end = 16.dp, top = 25.dp, bottom = sheetBottomPadding)
                     .testTag("modal_delete_plan"),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {

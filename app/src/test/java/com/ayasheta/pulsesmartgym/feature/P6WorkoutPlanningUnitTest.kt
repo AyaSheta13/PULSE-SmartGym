@@ -450,6 +450,58 @@ class P6WorkoutPlanningUnitTest {
         assertEquals(1, edit2.uiState.value.draft.exercises.size)
         picker1Collect.cancel()
     }
+
+    @Test
+    fun editorDraft_restoresUnsavedCreateAndEditStateAcrossProcessDeathAndBlocksCrossOwner() = runBlocking {
+        val authRepo = InMemoryAuthRepo(AuthState.Authenticated(user("owner_a")))
+        val planRepo = InMemoryWorkoutPlanRepo()
+        val exerciseRepo = InMemoryExerciseRepo()
+        val prefsRepo = InMemoryPrefsRepo()
+        val bridge = WorkoutPlanSelectionBridge()
+
+        // 1. Create mode: mutate name, description, and add exercise, then simulate process death (new ViewModel with same SavedStateHandle)
+        val createSavedState = SavedStateHandle()
+        val createVm1 = WorkoutPlanEditorViewModel(createSavedState, null, authRepo, planRepo, exerciseRepo, prefsRepo, bridge)
+        createVm1.uiState.awaitValue { !it.isLoading && it.ownerId != null }
+        val originalSessionId = createVm1.editorSessionId
+
+        createVm1.onNameChanged("Draft Push")
+        createVm1.onDescriptionChanged("Unsaved notes")
+        assertTrue(createVm1.prepareOpenExercisePicker())
+        bridge.commitSelection("owner_a", originalSessionId, null, listOf("ex_bench_press"))
+        createVm1.uiState.awaitValue { it.draft.exercises.size == 1 }
+
+        val createVm2 = WorkoutPlanEditorViewModel(createSavedState, null, authRepo, planRepo, exerciseRepo, prefsRepo, bridge)
+        val restoredCreate = createVm2.uiState.awaitValue { !it.isLoading && it.ownerId != null }
+        assertEquals(originalSessionId, createVm2.editorSessionId)
+        assertEquals("Draft Push", restoredCreate.draft.name)
+        assertEquals("Unsaved notes", restoredCreate.draft.description)
+        assertEquals(listOf("ex_bench_press"), restoredCreate.draft.exercises.map { it.exerciseId })
+        assertTrue(restoredCreate.hasUnsavedChanges)
+
+        // 2. Edit mode: mutate sets/reps/load, simulate process death -> unsaved edits restored
+        planRepo.seedPlan("owner_a", "plan_edit", "Base Plan", listOf("ex_bench_press"))
+        val editSavedState = SavedStateHandle()
+        val editVm1 = WorkoutPlanEditorViewModel(editSavedState, "plan_edit", authRepo, planRepo, exerciseRepo, prefsRepo, bridge)
+        val editLoaded = editVm1.uiState.awaitValue { !it.isLoading && it.draft.exercises.size == 1 }
+        val occKey = editLoaded.draft.exercises.first().occurrenceKey
+        editVm1.adjustSets(occKey, 1)
+        editVm1.updateSingleSet(occKey, 1, targetReps = 12, targetRestSeconds = 105, targetLoad = WeightLoad.fromKilograms(72.5), updateLoad = true)
+
+        val editVm2 = WorkoutPlanEditorViewModel(editSavedState, "plan_edit", authRepo, planRepo, exerciseRepo, prefsRepo, bridge)
+        val restoredEdit = editVm2.uiState.awaitValue { !it.isLoading && it.draft.exercises.size == 1 }
+        assertEquals(2, restoredEdit.draft.exercises.first().sets.size)
+        assertEquals(12, restoredEdit.draft.exercises.first().sets.first().targetReps)
+        assertEquals(72_500L, restoredEdit.draft.exercises.first().sets.first().targetLoad?.grams)
+        assertTrue(restoredEdit.hasUnsavedChanges)
+
+        // 3. Cross-owner isolation: if owner_b opens with owner_a's SavedStateHandle, owner_a's draft is discarded
+        val ownerBAuth = InMemoryAuthRepo(AuthState.Authenticated(user("owner_b")))
+        val crossOwnerVm = WorkoutPlanEditorViewModel(createSavedState, null, ownerBAuth, planRepo, exerciseRepo, prefsRepo, bridge)
+        val crossLoaded = crossOwnerVm.uiState.awaitValue { !it.isLoading && it.ownerId == "owner_b" }
+        assertEquals("", crossLoaded.draft.name)
+        assertTrue(crossLoaded.draft.exercises.isEmpty())
+    }
 }
 
 private class InMemoryAuthRepo(initial: AuthState) : AuthRepository {

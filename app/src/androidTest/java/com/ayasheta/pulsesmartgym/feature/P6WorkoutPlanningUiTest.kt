@@ -2,12 +2,14 @@ package com.ayasheta.pulsesmartgym.feature
 
 import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -115,7 +117,9 @@ class P6WorkoutPlanningUiTest {
                 true
             }.getOrDefault(false)
         }
-        composeRule.onNodeWithTag("editor_save_button").performScrollTo().performClick()
+        composeRule.onNodeWithTag("editor_scroll_list")
+            .performScrollToNode(hasTestTag("editor_save_button"))
+        composeRule.onNodeWithTag("editor_save_button").performClick()
 
         // 5. Navigated to Workout Details -> verify Start Workout deferred notice & accordion
         composeRule.waitUntil(5_000) {
@@ -156,5 +160,82 @@ class P6WorkoutPlanningUiTest {
         val remaining = runBlocking { container.workoutPlanRepository.observePlans(ownerId).first() }
         assertTrue(remaining.isEmpty())
         assertEquals(0, remaining.size)
+    }
+}
+
+@RunWith(AndroidJUnit4::class)
+class P6EditorRecreationUiTest {
+
+    @get:Rule
+    val activityRule = androidx.compose.ui.test.junit4.createAndroidComposeRule<com.ayasheta.pulsesmartgym.MainActivity>()
+
+    @Test
+    fun createPlanDraft_survivesActivityRecreationAfterReturningFromPicker() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val container = com.ayasheta.pulsesmartgym.PulseApplication::class.java
+            .getDeclaredMethod("getDataContainer")
+            .invoke(context.applicationContext) as PulseDataContainer
+        runBlocking {
+            container.userPreferencesRepository.setOnboardingCompleted(true)
+            val guest = (container.authRepository.continueAsGuest() as DomainResult.Success).data
+            container.userProfileRepository.saveCompletedProfile(
+                ownerId = guest.id,
+                personalInfo = PersonalInfoDraft("Alex", GenderIdentity.MALE, 26, 178, 76.0),
+                goals = FitnessGoalsDraft(FitnessGoal.HYPERTROPHY, ExperienceLevel.INTERMEDIATE, 4),
+            )
+            container.workoutPlanRepository.observePlans(guest.id).first().forEach {
+                container.workoutPlanRepository.deletePlan(guest.id, it.id)
+            }
+        }
+
+        activityRule.activityRule.scenario.recreate()
+        activityRule.waitUntil(5_000) {
+            runCatching {
+                activityRule.onNodeWithText(PulseTab.WORKOUTS.label).assertExists()
+                true
+            }.getOrDefault(false)
+        }
+
+        activityRule.onNodeWithText(PulseTab.WORKOUTS.label).performClick()
+        activityRule.waitUntil(5_000) {
+            runCatching {
+                activityRule.onNodeWithTag("workouts_empty_state").assertExists()
+                true
+            }.getOrDefault(false)
+        }
+
+        activityRule.onNodeWithTag("button_empty_create_plan").performClick()
+        activityRule.onNodeWithTag("editor_name_input").performTextInput("Restored Split")
+        activityRule.onNodeWithTag("editor_description_input").performTextInput("Survived recreation")
+        activityRule.onNodeWithTag("editor_add_exercise_button").performClick()
+
+        activityRule.waitUntil(5_000) {
+            runCatching {
+                activityRule.onNodeWithTag("picker_toggle_ex_bench_press").assertExists()
+                true
+            }.getOrDefault(false)
+        }
+        activityRule.onNodeWithTag("picker_toggle_ex_bench_press").performClick()
+        activityRule.onNodeWithTag("picker_confirm_button").performClick()
+
+        activityRule.waitUntil(5_000) {
+            runCatching {
+                activityRule.onNodeWithText("Barbell Bench Press").assertExists()
+                true
+            }.getOrDefault(false)
+        }
+
+        // Trigger Activity recreation
+        activityRule.activityRule.scenario.recreate()
+        activityRule.waitForIdle()
+
+        activityRule.waitUntil(5_000) {
+            runCatching {
+                activityRule.onNodeWithText("Restored Split").assertExists()
+                activityRule.onNodeWithText("Survived recreation").assertExists()
+                activityRule.onNodeWithText("Barbell Bench Press").assertExists()
+                true
+            }.getOrDefault(false)
+        }
     }
 }

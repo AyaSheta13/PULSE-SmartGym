@@ -15,23 +15,42 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.ayasheta.pulsesmartgym.R
+import com.ayasheta.pulsesmartgym.app.PulseApp
+import com.ayasheta.pulsesmartgym.core.data.di.PulseDataContainer
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseBottomNavigationBar
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTab
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
+import com.ayasheta.pulsesmartgym.core.model.common.DomainResult
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
 import com.ayasheta.pulsesmartgym.core.model.exercise.EquipmentCategory
 import com.ayasheta.pulsesmartgym.core.model.exercise.ExerciseDefinition
 import com.ayasheta.pulsesmartgym.core.model.exercise.MuscleGroup
 import com.ayasheta.pulsesmartgym.core.model.exercise.TrackingCategory
+import com.ayasheta.pulsesmartgym.core.model.profile.ExperienceLevel
+import com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoal
+import com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoalsDraft
+import com.ayasheta.pulsesmartgym.core.model.profile.GenderIdentity
+import com.ayasheta.pulsesmartgym.core.model.profile.PersonalInfoDraft
+import com.ayasheta.pulsesmartgym.core.model.workout.PlanExerciseDraft
 import com.ayasheta.pulsesmartgym.core.model.workout.PlannedSetDraft
+import com.ayasheta.pulsesmartgym.core.model.workout.WorkoutPlanDraft
+import com.ayasheta.pulsesmartgym.navigation.AppEntryFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import com.ayasheta.pulsesmartgym.feature.workout.details.WorkoutDetailExerciseUiModel
 import com.ayasheta.pulsesmartgym.feature.workout.details.WorkoutDetailsScreenContent
 import com.ayasheta.pulsesmartgym.feature.workout.details.WorkoutDetailsUiState
@@ -219,6 +238,7 @@ class P6ScreenshotCaptureTest {
             ExercisePickerScreenContent(
                 uiState = ExercisePickerUiState(exercises = pickerItems, selectedIds = emptyList(), isLoading = false),
                 onQueryChanged = {}, onFilterSelected = {}, onToggleExercise = {}, onBackClick = {}, onConfirmClick = {},
+                bottomInsetOverride = 0.dp,
             )
         }
 
@@ -231,6 +251,7 @@ class P6ScreenshotCaptureTest {
                     isLoading = false,
                 ),
                 onQueryChanged = {}, onFilterSelected = {}, onToggleExercise = {}, onBackClick = {}, onConfirmClick = {},
+                bottomInsetOverride = 0.dp,
             )
         }
 
@@ -276,22 +297,88 @@ class P6ScreenshotCaptureTest {
         capture("13_workout_details_ex4_expanded.png") {
             WorkoutDetailsScreenContent(detailsState("d4"), onBackClick = {}, onToggleExercise = {}, onEditPlanClick = {})
         }
+    }
 
-        capture("14_delete_plan_confirmation.png") {
-            WorkoutPlanEditorScreenContent(
-                uiState = WorkoutPlanEditorUiState(
-                    mode = WorkoutPlanEditorMode.EDIT,
-                    planId = "p1",
-                    draft = WorkoutPlanDraftState("Upper Body Power", "Chest, back, and arms strength routine", editorExercises),
-                    showDeleteConfirmation = true,
-                ),
-                onBackClick = {}, onDeleteClick = {}, onNameChanged = {}, onDescriptionChanged = {},
-                onAddExerciseClick = {}, onRemoveExercise = {}, onAdjustSets = { _, _ -> },
-                onAdjustReps = { _, _ -> }, onAdjustRest = { _, _ -> }, onToggleSetDetails = {},
-                onUpdateSingleSet = { _, _, _, _, _, _ -> }, onSaveClick = {}, onCancelClick = {},
-                onDismissDelete = {}, onConfirmDelete = {}, onDismissDiscard = {}, onConfirmDiscard = {},
-                inWindowModal = true,
+    @Test
+    fun captureRealDeleteModalOverEditPlan() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val container = PulseDataContainer(context)
+        val createdPlanId = runBlocking {
+            container.userPreferencesRepository.setOnboardingCompleted(true)
+            val guest = (container.authRepository.continueAsGuest() as DomainResult.Success).data
+            container.userProfileRepository.saveCompletedProfile(
+                ownerId = guest.id,
+                personalInfo = PersonalInfoDraft("Alex", GenderIdentity.MALE, 26, 178, 76.0),
+                goals = FitnessGoalsDraft(FitnessGoal.HYPERTROPHY, ExperienceLevel.INTERMEDIATE, 4),
             )
+            container.exerciseRepository.observeAll().first()
+            container.workoutPlanRepository.observePlans(guest.id).first().forEach {
+                container.workoutPlanRepository.deletePlan(guest.id, it.id)
+            }
+            val created = container.workoutPlanRepository.createPlan(
+                guest.id,
+                WorkoutPlanDraft(
+                    name = "Upper Body Power",
+                    description = "Chest, back, and arms strength routine",
+                    exercises = listOf(
+                        PlanExerciseDraft(
+                            exerciseId = "ex_bench_press",
+                            orderIndex = 0,
+                            plannedSets = (1..4).map { PlannedSetDraft(it, 10, null, 90) },
+                        ),
+                    ),
+                ),
+            ) as DomainResult.Success
+            created.data.id
+        }
+
+        composeRule.setContent {
+            PulseApp(
+                isDebugEntryEnabled = true,
+                initialFlow = AppEntryFlow.MAIN,
+                initialTab = PulseTab.WORKOUTS,
+                dataContainer = container,
+            )
+        }
+
+        composeRule.waitUntil(5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("workout_plan_card_$createdPlanId").assertExists()
+                true
+            }.getOrDefault(false)
+        }
+        composeRule.onNodeWithTag("workout_plan_card_$createdPlanId").performClick()
+
+        composeRule.waitUntil(5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("details_edit_plan_button").assertExists()
+                true
+            }.getOrDefault(false)
+        }
+        composeRule.onNodeWithTag("details_edit_plan_button").performClick()
+
+        composeRule.waitUntil(5_000) {
+            runCatching {
+                composeRule.onNodeWithText("Edit Workout Plan").assertExists()
+                true
+            }.getOrDefault(false)
+        }
+        composeRule.onNodeWithContentDescription("Delete").performClick()
+        composeRule.onNodeWithTag("modal_delete_plan").assertIsDisplayed()
+        composeRule.waitForIdle()
+        Thread.sleep(250)
+
+        val uiAutomation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val bitmap = requireNotNull(uiAutomation.takeScreenshot()) {
+            "uiAutomation.takeScreenshot() returned null for 14_delete_plan_confirmation.png"
+        }
+        saveBitmap(bitmap, "14_delete_plan_confirmation.png")
+
+        runBlocking {
+            val auth = container.authRepository.restoreSession()
+            if (auth is com.ayasheta.pulsesmartgym.core.model.profile.AuthState.Authenticated) {
+                container.workoutPlanRepository.deletePlan(auth.user.id, createdPlanId)
+            }
         }
     }
 
