@@ -367,71 +367,75 @@ class P6ScreenshotCaptureTest {
     @Test
     fun screenshotSetupAndTeardown_preservesExistingTargetAppData() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val targetContainer = PulseDataContainer(context)
-        val uniqueEmail = "qa_preserve_${System.currentTimeMillis()}@pulse.local"
-
-        val (targetOwnerId, baselinePlanId, baselineAuth) = runBlocking {
-            targetContainer.userPreferencesRepository.setOnboardingCompleted(true)
-            val account = (targetContainer.authRepository.registerLocalAccount(
-                fullName = "Target User",
-                email = uniqueEmail,
-                password = "Password123!",
-            ) as DomainResult.Success).data
-            targetContainer.userProfileRepository.saveCompletedProfile(
-                ownerId = account.id,
-                personalInfo = PersonalInfoDraft("Target User", GenderIdentity.FEMALE, 29, 168, 62.0),
-                goals = FitnessGoalsDraft(FitnessGoal.HYPERTROPHY, ExperienceLevel.BEGINNER, 3),
-            )
-            targetContainer.exerciseRepository.observeAll().first()
-            val plan = (targetContainer.workoutPlanRepository.createPlan(
-                account.id,
-                WorkoutPlanDraft(
-                    name = "Target Existing Plan",
-                    description = "Must remain untouched",
-                    exercises = listOf(
-                        PlanExerciseDraft(
-                            exerciseId = "ex_bench_press",
-                            orderIndex = 0,
-                            plannedSets = (1..3).map { PlannedSetDraft(it, 8, null, 90) },
+        PulseDataContainer.createIsolatedForTesting(context).use { baseline ->
+            val baselineContainer = baseline.container
+            val (baselineOwnerId, baselineAuth, baselinePrefs, baselineProfile, baselinePlans) = runBlocking {
+                baselineContainer.userPreferencesRepository.setOnboardingCompleted(false)
+                val account = (baselineContainer.authRepository.registerLocalAccount(
+                    fullName = "Baseline User",
+                    email = "baseline@pulse.local",
+                    password = "Password123!",
+                ) as DomainResult.Success).data
+                baselineContainer.userProfileRepository.saveCompletedProfile(
+                    ownerId = account.id,
+                    personalInfo = PersonalInfoDraft("Baseline User", GenderIdentity.FEMALE, 29, 168, 62.0),
+                    goals = FitnessGoalsDraft(FitnessGoal.HYPERTROPHY, ExperienceLevel.BEGINNER, 3),
+                )
+                baselineContainer.exerciseRepository.observeAll().first()
+                baselineContainer.workoutPlanRepository.createPlan(
+                    account.id,
+                    WorkoutPlanDraft(
+                        name = "Baseline Existing Plan",
+                        description = "Must remain untouched",
+                        exercises = listOf(
+                            PlanExerciseDraft(
+                                exerciseId = "ex_bench_press",
+                                orderIndex = 0,
+                                plannedSets = (1..3).map { PlannedSetDraft(it, 8, null, 90) },
+                            ),
                         ),
                     ),
-                ),
-            ) as DomainResult.Success).data
-            Triple(account.id, plan.id, targetContainer.authRepository.restoreSession())
-        }
+                ) as DomainResult.Success
 
-        try {
-            withIsolatedScreenshotContainer(context) { isolated ->
-                seedIsolatedDeleteModalFixture(isolated)
+                val auth = baselineContainer.authRepository.restoreSession()
+                val prefs = baselineContainer.userPreferencesRepository.observePreferences().first()
+                val profile = baselineContainer.userProfileRepository.observeProfile(account.id).first()
+                val plans = baselineContainer.workoutPlanRepository.observePlans(account.id).first()
+                BaselineSnapshot(account.id, auth, prefs, profile, plans)
+            }
+
+            withIsolatedScreenshotContainer(context) { fixtureContainer ->
+                seedIsolatedDeleteModalFixture(fixtureContainer)
                 runBlocking {
-                    isolated.workoutPlanRepository.observePlans(
-                        (isolated.authRepository.restoreSession() as AuthState.Authenticated).user.id,
-                    ).first().forEach {
-                        isolated.workoutPlanRepository.deletePlan(
-                            (isolated.authRepository.restoreSession() as AuthState.Authenticated).user.id,
-                            it.id,
-                        )
+                    val fixtureOwner = (fixtureContainer.authRepository.restoreSession() as AuthState.Authenticated).user.id
+                    fixtureContainer.workoutPlanRepository.observePlans(fixtureOwner).first().forEach {
+                        fixtureContainer.workoutPlanRepository.deletePlan(fixtureOwner, it.id)
                     }
+                    fixtureContainer.authRepository.signOut()
                 }
             }
 
             runBlocking {
-                val afterAuth = targetContainer.authRepository.restoreSession()
-                val afterProfile = targetContainer.userProfileRepository.observeProfile(targetOwnerId).first()
-                val afterPlans = targetContainer.workoutPlanRepository.observePlans(targetOwnerId).first()
+                val afterAuth = baselineContainer.authRepository.restoreSession()
+                val afterPrefs = baselineContainer.userPreferencesRepository.observePreferences().first()
+                val afterProfile = baselineContainer.userProfileRepository.observeProfile(baselineOwnerId).first()
+                val afterPlans = baselineContainer.workoutPlanRepository.observePlans(baselineOwnerId).first()
 
                 org.junit.Assert.assertEquals(baselineAuth, afterAuth)
-                org.junit.Assert.assertEquals("Target User", afterProfile?.fullName)
-                org.junit.Assert.assertEquals(listOf(baselinePlanId), afterPlans.map { it.id })
-                org.junit.Assert.assertEquals("Target Existing Plan", afterPlans.single().name)
-            }
-        } finally {
-            runBlocking {
-                targetContainer.workoutPlanRepository.deletePlan(targetOwnerId, baselinePlanId)
-                targetContainer.authRepository.signOut()
+                org.junit.Assert.assertEquals(baselinePrefs, afterPrefs)
+                org.junit.Assert.assertEquals(baselineProfile, afterProfile)
+                org.junit.Assert.assertEquals(baselinePlans, afterPlans)
             }
         }
     }
+
+    private data class BaselineSnapshot(
+        val ownerId: String,
+        val auth: AuthState,
+        val prefs: com.ayasheta.pulsesmartgym.core.model.profile.UserPreferences,
+        val profile: com.ayasheta.pulsesmartgym.core.model.profile.UserProfile?,
+        val plans: List<com.ayasheta.pulsesmartgym.core.model.workout.WorkoutPlan>,
+    )
 
     private fun seedIsolatedDeleteModalFixture(container: PulseDataContainer): String = runBlocking {
         container.userPreferencesRepository.setOnboardingCompleted(true)

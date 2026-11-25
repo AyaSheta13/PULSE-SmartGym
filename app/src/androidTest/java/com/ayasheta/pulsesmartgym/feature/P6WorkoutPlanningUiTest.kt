@@ -53,21 +53,18 @@ class P6WorkoutPlanningUiTest {
     @Test
     fun fullWorkoutPlanningFlow_createPickDetailsEditDeleteAndStartDeferredNotice() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val container = PulseDataContainer(context)
-        val ownerId = setupSignedInUser(container)
-        runBlocking {
-            val existing = container.workoutPlanRepository.observePlans(ownerId).first()
-            existing.forEach { container.workoutPlanRepository.deletePlan(ownerId, it.id) }
-        }
+        PulseDataContainer.createIsolatedForTesting(context).use { isolated ->
+            val container = isolated.container
+            val ownerId = setupSignedInUser(container)
 
-        composeRule.setContent {
-            PulseApp(
-                isDebugEntryEnabled = true,
-                initialFlow = AppEntryFlow.MAIN,
-                initialTab = PulseTab.WORKOUTS,
-                dataContainer = container,
-            )
-        }
+            composeRule.setContent {
+                PulseApp(
+                    isDebugEntryEnabled = true,
+                    initialFlow = AppEntryFlow.MAIN,
+                    initialTab = PulseTab.WORKOUTS,
+                    dataContainer = container,
+                )
+            }
 
         // 1. My Workouts empty state
         composeRule.waitUntil(5_000) {
@@ -162,21 +159,54 @@ class P6WorkoutPlanningUiTest {
         val remaining = runBlocking { container.workoutPlanRepository.observePlans(ownerId).first() }
         assertTrue(remaining.isEmpty())
         assertEquals(0, remaining.size)
+        }
     }
 }
 
 @RunWith(AndroidJUnit4::class)
 class P6EditorRecreationUiTest {
 
+    private class IsolatedPulseDataContainerRule : org.junit.rules.TestWatcher() {
+        private var isolated: PulseDataContainer.IsolatedTestContainer? = null
+
+        val container: PulseDataContainer
+            get() = requireNotNull(isolated) { "Isolated container not initialized" }.container
+
+        override fun starting(description: org.junit.runner.Description) {
+            val app = ApplicationProvider.getApplicationContext<com.ayasheta.pulsesmartgym.PulseApplication>()
+            val created = PulseDataContainer.createIsolatedForTesting(app)
+            isolated = created
+            app.setTestDataContainerOverride(created.container)
+            runBlocking {
+                created.container.userPreferencesRepository.setOnboardingCompleted(true)
+                val guest = (created.container.authRepository.continueAsGuest() as DomainResult.Success).data
+                created.container.userProfileRepository.saveCompletedProfile(
+                    ownerId = guest.id,
+                    personalInfo = PersonalInfoDraft("Alex", GenderIdentity.MALE, 26, 178, 76.0),
+                    goals = FitnessGoalsDraft(FitnessGoal.HYPERTROPHY, ExperienceLevel.INTERMEDIATE, 4),
+                )
+            }
+        }
+
+        override fun finished(description: org.junit.runner.Description) {
+            val app = ApplicationProvider.getApplicationContext<com.ayasheta.pulsesmartgym.PulseApplication>()
+            app.setTestDataContainerOverride(null)
+            isolated?.close()
+            isolated = null
+        }
+    }
+
+    private val isolatedRule = IsolatedPulseDataContainerRule()
+    private val activityRule = androidx.compose.ui.test.junit4.createAndroidComposeRule<com.ayasheta.pulsesmartgym.MainActivity>()
+
     @get:Rule
-    val activityRule = androidx.compose.ui.test.junit4.createAndroidComposeRule<com.ayasheta.pulsesmartgym.MainActivity>()
+    val ruleChain: org.junit.rules.RuleChain = org.junit.rules.RuleChain
+        .outerRule(isolatedRule)
+        .around(activityRule)
 
     @Test
     fun createPlanDraft_survivesActivityRecreationAfterReturningFromPicker() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val container = com.ayasheta.pulsesmartgym.PulseApplication::class.java
-            .getDeclaredMethod("getDataContainer")
-            .invoke(context.applicationContext) as PulseDataContainer
+        val container = isolatedRule.container
         runBlocking {
             container.userPreferencesRepository.setOnboardingCompleted(true)
             val guest = (container.authRepository.continueAsGuest() as DomainResult.Success).data
@@ -185,9 +215,6 @@ class P6EditorRecreationUiTest {
                 personalInfo = PersonalInfoDraft("Alex", GenderIdentity.MALE, 26, 178, 76.0),
                 goals = FitnessGoalsDraft(FitnessGoal.HYPERTROPHY, ExperienceLevel.INTERMEDIATE, 4),
             )
-            container.workoutPlanRepository.observePlans(guest.id).first().forEach {
-                container.workoutPlanRepository.deletePlan(guest.id, it.id)
-            }
         }
 
         activityRule.activityRule.scenario.recreate()
@@ -243,11 +270,8 @@ class P6EditorRecreationUiTest {
 
     @Test
     fun editPlanDraft_withMixedPerSetConfigSurvivesActivityRecreation() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val container = com.ayasheta.pulsesmartgym.PulseApplication::class.java
-            .getDeclaredMethod("getDataContainer")
-            .invoke(context.applicationContext) as PulseDataContainer
-        val (ownerId, planId) = runBlocking {
+        val container = isolatedRule.container
+        val planId = runBlocking {
             container.userPreferencesRepository.setOnboardingCompleted(true)
             val guest = (container.authRepository.continueAsGuest() as DomainResult.Success).data
             container.userProfileRepository.saveCompletedProfile(
@@ -273,11 +297,10 @@ class P6EditorRecreationUiTest {
                     ),
                 ),
             ) as DomainResult.Success).data
-            guest.id to created.id
+            created.id
         }
 
-        try {
-            activityRule.activityRule.scenario.recreate()
+        activityRule.activityRule.scenario.recreate()
             activityRule.waitUntil(5_000) {
                 runCatching {
                     activityRule.onNodeWithText(PulseTab.WORKOUTS.label).assertExists()
@@ -325,10 +348,5 @@ class P6EditorRecreationUiTest {
                 .performScrollToNode(hasText("Per-set targets (custom)"))
             activityRule.onNodeWithText("Barbell Bench Press").assertExists()
             activityRule.onNodeWithText("Per-set targets (custom)").assertExists()
-        } finally {
-            runBlocking {
-                container.workoutPlanRepository.deletePlan(ownerId, planId)
-            }
-        }
     }
 }
