@@ -186,6 +186,23 @@ class PulseNavigatorTest {
     }
 
     @Test
+    fun debugAuthBypass_isBlockedWhenDebugDisabledAndAllowedWhenEnabled() {
+        val releaseState = PulseNavigationState.createForTesting(initialFlow = AppEntryFlow.AUTH)
+        val releaseNavigator = PulseNavigator(releaseState)
+
+        assertFalse(releaseNavigator.completeDebugAuthBypass(isDebugEntryEnabled = false))
+        assertEquals(AppEntryFlow.AUTH, releaseState.activeFlow)
+        assertEquals(Splash, releaseState.currentDestination)
+
+        val debugState = PulseNavigationState.createForTesting(initialFlow = AppEntryFlow.AUTH)
+        val debugNavigator = PulseNavigator(debugState)
+
+        assertTrue(debugNavigator.completeDebugAuthBypass(isDebugEntryEnabled = true))
+        assertEquals(AppEntryFlow.MAIN, debugState.activeFlow)
+        assertEquals(HomeTab, debugState.currentDestination)
+    }
+
+    @Test
     fun bottomBarPolicy_onlyVisibleOnFiveRootTabs() {
         assertTrue(NavigationPolicy.shouldShowBottomBar(HomeTab))
         assertTrue(NavigationPolicy.shouldShowBottomBar(WorkoutsTab))

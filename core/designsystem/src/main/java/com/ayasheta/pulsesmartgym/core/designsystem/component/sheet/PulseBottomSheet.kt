@@ -23,7 +23,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +44,7 @@ import com.ayasheta.pulsesmartgym.core.designsystem.component.button.CompactButt
 import com.ayasheta.pulsesmartgym.core.designsystem.component.button.NegativeButton
 import com.ayasheta.pulsesmartgym.core.designsystem.component.button.OutlineButton
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @Composable
@@ -59,7 +63,23 @@ fun PulseBottomSheet(
     dismissOnBackPress: Boolean = true,
     dismissOnClickOutside: Boolean = true,
 ) {
-    if (!visible) return
+    var showDialog by remember { mutableStateOf(visible) }
+    val slideOffsetY = remember { Animatable(600f) }
+    val scrimAlpha = remember { Animatable(0f) }
+
+    LaunchedEffect(visible) {
+        if (visible) {
+            showDialog = true
+            launch { scrimAlpha.animateTo(0.5f, animationSpec = tween(durationMillis = 220)) }
+            slideOffsetY.animateTo(0f, animationSpec = tween(durationMillis = 220))
+        } else if (showDialog) {
+            launch { scrimAlpha.animateTo(0f, animationSpec = tween(durationMillis = 180)) }
+            slideOffsetY.animateTo(600f, animationSpec = tween(durationMillis = 180))
+            showDialog = false
+        }
+    }
+
+    if (!showDialog) return
 
     Dialog(
         onDismissRequest = onDismissRequest,
@@ -70,18 +90,10 @@ fun PulseBottomSheet(
             dismissOnClickOutside = dismissOnClickOutside,
         ),
     ) {
-        val slideOffsetY = remember { Animatable(320f) }
-        LaunchedEffect(Unit) {
-            slideOffsetY.animateTo(
-                targetValue = 0f,
-                animationSpec = tween(durationMillis = 220),
-            )
-        }
-
         Box(
             modifier = modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.5f))
+                .background(Color.Black.copy(alpha = scrimAlpha.value))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,

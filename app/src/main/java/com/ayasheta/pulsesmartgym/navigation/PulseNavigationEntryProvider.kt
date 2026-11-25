@@ -56,7 +56,7 @@ fun rememberPulseEntryProvider(
                 },
             ),
             onDebugSkipToMain = if (isDebugEntryEnabled) {
-                { navigator.completeAuthAndEnterMain() }
+                { navigator.completeDebugAuthBypass(isDebugEntryEnabled = true) }
             } else {
                 null
             },
@@ -91,7 +91,7 @@ fun rememberPulseEntryProvider(
             ),
             onBackClick = { navigator.navigateBack() },
             onDebugSkipToMain = if (isDebugEntryEnabled) {
-                { navigator.completeAuthAndEnterMain() }
+                { navigator.completeDebugAuthBypass(isDebugEntryEnabled = true) }
             } else {
                 null
             },
@@ -103,14 +103,20 @@ fun rememberPulseEntryProvider(
             title = "Log In",
             routeLabel = "Login",
             topBarStyle = PulseTopAppBarStyle.BackWithTitle("Log In", onBackClick = { navigator.navigateBack() }),
-            actions = listOf(
-                NavigationDemoAction("Complete Login -> Home", isPrimary = true) {
-                    navigator.completeAuthAndEnterMain()
-                },
-                NavigationDemoAction("Forgot Password") {
-                    navigator.navigate(ForgotPassword)
-                },
-            ),
+            actions = buildList {
+                if (isDebugEntryEnabled) {
+                    add(
+                        NavigationDemoAction("Debug: Simulate Login -> Home", isPrimary = true) {
+                            navigator.completeDebugAuthBypass(isDebugEntryEnabled = true)
+                        },
+                    )
+                }
+                add(
+                    NavigationDemoAction("Forgot Password") {
+                        navigator.navigate(ForgotPassword)
+                    },
+                )
+            },
             onBackClick = { navigator.navigateBack() },
         )
     }
@@ -157,11 +163,15 @@ fun rememberPulseEntryProvider(
             title = "Fitness Goals Setup",
             routeLabel = "ProfileSetupFitnessGoals",
             topBarStyle = PulseTopAppBarStyle.BackWithTitle("Fitness Goals", onBackClick = { navigator.navigateBack() }),
-            actions = listOf(
-                NavigationDemoAction("Finish Setup -> Home", isPrimary = true) {
-                    navigator.completeAuthAndEnterMain()
-                },
-            ),
+            actions = buildList {
+                if (isDebugEntryEnabled) {
+                    add(
+                        NavigationDemoAction("Debug: Finish Setup -> Home", isPrimary = true) {
+                            navigator.completeDebugAuthBypass(isDebugEntryEnabled = true)
+                        },
+                    )
+                }
+            },
             onBackClick = { navigator.navigateBack() },
         )
     }

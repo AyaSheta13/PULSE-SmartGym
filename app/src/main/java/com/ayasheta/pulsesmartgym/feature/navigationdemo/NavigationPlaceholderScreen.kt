@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -53,6 +54,7 @@ fun NavigationPlaceholderScreen(
 ) {
     var showSheet by rememberSaveable { mutableStateOf(false) }
     var showDialog by rememberSaveable { mutableStateOf(false) }
+    var localStateCounter by rememberSaveable { mutableIntStateOf(0) }
 
     Column(
         modifier = modifier
@@ -79,6 +81,13 @@ fun NavigationPlaceholderScreen(
                     routeArguments.forEach { (key, value) ->
                         TextSupportContent(text = "$key = $value")
                     }
+                    TextSupportContent(text = "Saved State Counter: $localStateCounter")
+                    OutlineButton(
+                        caption = "Increment Local State",
+                        isCompact = true,
+                        onClick = { localStateCounter++ },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
             }
 

@@ -65,10 +65,12 @@ All routes represent logical destinations; UI states (e.g., Workout Session stat
 
 ## 4. Multiple Back Stacks, Tab Switching & System Back Policy
 
-- **Multiple Back Stacks (`PulseNavigationState.kt`):**
+- **Multiple Back Stacks (`PulseNavigationState.kt` & `PulseNavDisplay.kt`):**
   - `authBackStack` (`rememberNavBackStack(Splash)`) for pre-auth/onboarding.
   - Five independent `tabBackStacks` (`rememberNavBackStack(tab.toRootRoute())`) for `WORKOUTS`, `PROGRESS`, `HOME`, `HISTORY`, and `PROFILE`.
-  - `activeFlow` (`AUTH` / `MAIN`) and `selectedTab` (`PulseTab`) are persisted with `rememberSaveable`.
+  - `activeFlow` (`AUTH` / `MAIN`) and `selectedTab` (`PulseTab`) are persisted directly via `rememberSaveable` `MutableState`s (no composition side effects).
+  - Each stack is independently decorated via `rememberDecoratedNavEntries(backStack = ..., entryDecorators = listOf(rememberSaveableStateHolderNavEntryDecorator()), entryProvider = ...)` so each tab owns an isolated `SaveableStateHolder`.
+  - `NavDisplay(entries = activeEntries, ...)` is wrapped in `key(navigationState.activeFlow, navigationState.selectedTab)` so identical destination keys (e.g., `WorkoutDetails("plan_sample_1")`) under different tabs never collide in `NavDisplay`.
 - **Tab Selection (`PulseNavigator.selectTab`):**
   - Switching to another tab preserves the previous tab's nested stack and restores the target tab's top destination.
   - Re-selecting the already active tab while on a nested route pops back to that tab's root; re-selecting at root is a no-op (never duplicates roots).
@@ -90,7 +92,7 @@ All routes represent logical destinations; UI states (e.g., Workout Session stat
   - When the bottom bar is hidden, `PulseAppShell` applies `WindowInsets.navigationBars` + `imePadding()` to the content container.
   - `ScreenSkeleton` exposes `applyStatusBarPadding: Boolean = true` so it never duplicates status-bar padding when nested inside `PulseAppShell`.
 - **Top App Bar Height (`TopBar.kt`):** Refactored root container from `Column` (64dp + 1dp = 65dp) to `Box(height = 64.dp)` with the `1.dp` divider aligned at `Alignment.BottomCenter`, matching Figma `470:57` (64dp total).
-- **Modal Overlays (`PulseBottomSheet.kt`, `PulseConfirmationDialog.kt`):** Wrapped in `androidx.compose.ui.window.Dialog` (`usePlatformDefaultWidth = false`, `decorFitsSystemWindows = false`) with `semantics { dialog() }`, scrim tap handling, System Back interception, and `navigationBars` + `imePadding()`.
+- **Modal Overlays (`PulseBottomSheet.kt`, `PulseConfirmationDialog.kt`):** Wrapped in `androidx.compose.ui.window.Dialog` (`usePlatformDefaultWidth = false`, `decorFitsSystemWindows = false`) with `semantics { dialog() }`, scrim tap handling, System Back interception, `navigationBars` + `imePadding()`, and animated slide-down/scrim-fade exit transition on `PulseBottomSheet`.
 - **Material 3 Bridge (`PulseApp.kt`):** `PulseMaterialThemeBridge` maps `PulseTheme.color` and `PulseTheme.typography` to `MaterialTheme` so Material 3 components inherit PULSE tokens without introducing a second token system.
 
 ---
@@ -104,19 +106,26 @@ All routes represent logical destinations; UI states (e.g., Workout Session stat
 
 ## 7. Verification Results
 
-- **Gradle Build & Tests:**
+- **Gradle Build, Unit & Instrumentation Tests (`Medium_Phone_API_36.0(AVD) - 16`):**
   ```powershell
-  .\gradlew.bat :core:designsystem:assembleDebug :core:designsystem:testDebugUnitTest :app:assembleDebug :app:testDebugUnitTest :app:compileDebugAndroidTestKotlin --no-daemon
+  .\gradlew.bat :core:designsystem:assembleDebug :core:designsystem:testDebugUnitTest :app:assembleDebug :app:testDebugUnitTest :app:connectedDebugAndroidTest --no-daemon
   ```
-  - Result: **BUILD SUCCESSFUL in 40s**
+  - Result: **BUILD SUCCESSFUL in 1m 3s**
   - `:core:designsystem:testDebugUnitTest` (`PulseDesignSystemContractTest`): **PASSED**
-  - `:app:testDebugUnitTest` (`ExampleUnitTest`, `PulseNavigatorTest` — 9 navigation regression tests): **PASSED**
-  - `:app:compileDebugAndroidTestKotlin` (`PulseNavigationUiTest`): **COMPILED**
-- **Instrumentation Execution (`PulseNavigationUiTest`):** **NOT TESTED** in this environment (`adb devices` showed no attached device or running emulator).
+  - `:app:testDebugUnitTest` (`ExampleUnitTest`, `PulseNavigatorTest` — 10 tests including `debugAuthBypass_isBlockedWhenDebugDisabledAndAllowedWhenEnabled`): **PASSED**
+  - `:app:connectedDebugAndroidTest` on `Medium_Phone_API_36.0(AVD) - 16` (6/6 tests): **PASSED**
+    - `PulseNavigationUiTest.tabSwitching_preservesSaveableStateAcrossRootTabs` — **PASSED**
+    - `PulseNavigationUiTest.sameDestinationUnderDifferentTabs_preservesIndependentSaveableState` — **PASSED**
+    - `PulseNavigationUiTest.releaseMode_hidesDebugAuthBypassAcrossAuthFlow` — **PASSED**
+    - `PulseNavigationUiTest.modalSheet_dismissesWithSystemBackWithoutPoppingUnderlyingRoute` — **PASSED**
+    - `PulseActivityRecreationUiTest.activityRecreation_preservesSelectedTabAndSaveableState` — **PASSED**
+    - `ExampleInstrumentedTest.useAppContext` — **PASSED**
+  - Process-death (`am kill` restore): **NOT TESTED** (activity recreation via `ActivityScenario.recreate()` was tested and passed).
 
 ---
 
 ## 8. Debug Launch Policy & Deferred Work
 
-- `MainActivity` passes `isDebugEntryEnabled = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0` so `Splash` and `AuthEntry` placeholders show a temporary `Debug: Enter Main App Shell` button in debug builds only.
+- `MainActivity` passes `isDebugEntryEnabled = (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0`.
+- All temporary auth-to-main bypass actions (`Splash`, `AuthEntry`, `Login`, `ProfileSetupFitnessGoals`) are guarded by `isDebugEntryEnabled` both in UI visibility and inside `PulseNavigator.completeDebugAuthBypass(isDebugEntryEnabled)` (hard no-op when `false`).
 - Room, DataStore, `FakeAuthRepository`, BLE, and real feature screens remain deferred to P3+.

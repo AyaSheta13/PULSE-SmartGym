@@ -1,13 +1,14 @@
 package com.ayasheta.pulsesmartgym.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberNavBackStack
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTab
@@ -21,13 +22,22 @@ enum class AppEntryFlow {
 
 @Stable
 class PulseNavigationState(
-    initialFlow: AppEntryFlow,
-    initialTab: PulseTab,
+    private val activeFlowState: MutableState<AppEntryFlow>,
+    private val selectedTabState: MutableState<PulseTab>,
     val authBackStack: MutableList<NavKey>,
     val tabBackStacks: Map<PulseTab, MutableList<NavKey>>,
 ) {
-    var activeFlow by mutableStateOf(initialFlow)
-    var selectedTab by mutableStateOf(initialTab)
+    var activeFlow: AppEntryFlow
+        get() = activeFlowState.value
+        set(value) {
+            activeFlowState.value = value
+        }
+
+    var selectedTab: PulseTab
+        get() = selectedTabState.value
+        set(value) {
+            selectedTabState.value = value
+        }
 
     val activeBackStack: MutableList<NavKey>
         get() = when (activeFlow) {
@@ -53,8 +63,8 @@ class PulseNavigationState(
                 mutableStateListOf<NavKey>(tab.toRootRoute())
             }
             return PulseNavigationState(
-                initialFlow = initialFlow,
-                initialTab = initialTab,
+                activeFlowState = mutableStateOf(initialFlow),
+                selectedTabState = mutableStateOf(initialTab),
                 authBackStack = authStack,
                 tabBackStacks = tabs,
             )
@@ -68,8 +78,8 @@ fun rememberPulseNavigationState(
     initialTab: PulseTab = PulseTab.HOME,
     initialAuthRoute: NavKey = Splash,
 ): PulseNavigationState {
-    var savedFlow by rememberSaveable { mutableStateOf(initialFlow) }
-    var savedTab by rememberSaveable { mutableStateOf(initialTab) }
+    val activeFlowState = rememberSaveable { mutableStateOf(initialFlow) }
+    val selectedTabState = rememberSaveable { mutableStateOf(initialTab) }
 
     val authBackStack = rememberNavBackStack(initialAuthRoute)
     val workoutsStack = rememberNavBackStack(PulseTab.WORKOUTS.toRootRoute())
@@ -78,7 +88,9 @@ fun rememberPulseNavigationState(
     val historyStack = rememberNavBackStack(PulseTab.HISTORY.toRootRoute())
     val profileStack = rememberNavBackStack(PulseTab.PROFILE.toRootRoute())
 
-    return androidx.compose.runtime.remember(
+    return remember(
+        activeFlowState,
+        selectedTabState,
         authBackStack,
         workoutsStack,
         progressStack,
@@ -87,8 +99,8 @@ fun rememberPulseNavigationState(
         profileStack,
     ) {
         PulseNavigationState(
-            initialFlow = savedFlow,
-            initialTab = savedTab,
+            activeFlowState = activeFlowState,
+            selectedTabState = selectedTabState,
             authBackStack = authBackStack,
             tabBackStacks = mapOf(
                 PulseTab.WORKOUTS to workoutsStack,
@@ -98,8 +110,5 @@ fun rememberPulseNavigationState(
                 PulseTab.PROFILE to profileStack,
             ),
         )
-    }.also { state ->
-        savedFlow = state.activeFlow
-        savedTab = state.selectedTab
     }
 }

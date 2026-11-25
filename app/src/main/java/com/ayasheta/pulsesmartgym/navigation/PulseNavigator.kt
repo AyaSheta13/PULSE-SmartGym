@@ -57,6 +57,15 @@ class PulseNavigator(
         }
     }
 
+    fun completeDebugAuthBypass(
+        isDebugEntryEnabled: Boolean,
+        initialTab: PulseTab = PulseTab.HOME,
+    ): Boolean {
+        if (!isDebugEntryEnabled) return false
+        completeAuthAndEnterMain(initialTab = initialTab)
+        return true
+    }
+
     fun completeAuthAndEnterMain(initialTab: PulseTab = PulseTab.HOME) {
         state.selectedTab = initialTab
         state.activeFlow = AppEntryFlow.MAIN
