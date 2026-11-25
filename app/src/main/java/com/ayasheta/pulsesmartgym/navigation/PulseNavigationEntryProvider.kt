@@ -1,8 +1,9 @@
 package com.ayasheta.pulsesmartgym.navigation
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
@@ -59,19 +60,30 @@ import com.ayasheta.pulsesmartgym.navigation.route.WorkoutDetails
 import com.ayasheta.pulsesmartgym.navigation.route.WorkoutSession
 import com.ayasheta.pulsesmartgym.navigation.route.WorkoutsTab
 
+class ProfileSetupDraftFlowViewModel(
+    savedStateHandle: SavedStateHandle,
+) : ViewModel() {
+    val draftHolder = ProfileSetupDraftHolder(savedStateHandle)
+}
+
 @Composable
 fun rememberPulseEntryProvider(
     navigator: PulseNavigator,
     isDebugEntryEnabled: Boolean,
     dataContainer: PulseDataContainer,
 ): (NavKey) -> NavEntry<NavKey> {
-    val profileDraftHolder = remember(dataContainer) { ProfileSetupDraftHolder() }
+    val profileDraftViewModel: ProfileSetupDraftFlowViewModel = pulseNavViewModel(
+        key = "profile_setup_draft_flow",
+    ) { handle ->
+        ProfileSetupDraftFlowViewModel(handle)
+    }
+    val profileDraftHolder = profileDraftViewModel.draftHolder
     val coroutineScope = rememberCoroutineScope()
 
     return entryProvider {
         // --- Auth & Onboarding (P4) ---
         entry<Splash> {
-            val viewModel = remember(dataContainer) {
+            val viewModel: SplashViewModel = pulseNavViewModel {
                 SplashViewModel(
                     preferencesRepository = dataContainer.userPreferencesRepository,
                     authRepository = dataContainer.authRepository,
@@ -92,8 +104,9 @@ fun rememberPulseEntryProvider(
         }
 
         entry<Onboarding> {
-            val viewModel = remember(dataContainer) {
+            val viewModel: OnboardingViewModel = pulseNavViewModel { handle ->
                 OnboardingViewModel(
+                    savedStateHandle = handle,
                     preferencesRepository = dataContainer.userPreferencesRepository,
                 )
             }
@@ -105,7 +118,7 @@ fun rememberPulseEntryProvider(
         }
 
         entry<AuthEntry> {
-            val viewModel = remember(dataContainer) {
+            val viewModel: AuthEntryViewModel = pulseNavViewModel {
                 AuthEntryViewModel(
                     authRepository = dataContainer.authRepository,
                     userProfileRepository = dataContainer.userProfileRepository,
@@ -121,8 +134,9 @@ fun rememberPulseEntryProvider(
         }
 
         entry<Login> {
-            val viewModel = remember(dataContainer) {
+            val viewModel: LoginViewModel = pulseNavViewModel { handle ->
                 LoginViewModel(
+                    savedStateHandle = handle,
                     authRepository = dataContainer.authRepository,
                     userProfileRepository = dataContainer.userProfileRepository,
                 )
@@ -139,8 +153,9 @@ fun rememberPulseEntryProvider(
         }
 
         entry<SignUp> {
-            val viewModel = remember(dataContainer) {
+            val viewModel: SignUpViewModel = pulseNavViewModel { handle ->
                 SignUpViewModel(
+                    savedStateHandle = handle,
                     authRepository = dataContainer.authRepository,
                 )
             }
@@ -154,7 +169,7 @@ fun rememberPulseEntryProvider(
         }
 
         entry<ForgotPassword> {
-            val viewModel = remember(dataContainer) {
+            val viewModel: ForgotPasswordViewModel = pulseNavViewModel {
                 ForgotPasswordViewModel(
                     authRepository = dataContainer.authRepository,
                 )
@@ -166,7 +181,7 @@ fun rememberPulseEntryProvider(
         }
 
         entry<ProfileSetupPersonalInfo> {
-            val viewModel = remember(dataContainer, profileDraftHolder) {
+            val viewModel: PersonalInfoViewModel = pulseNavViewModel {
                 PersonalInfoViewModel(
                     draftHolder = profileDraftHolder,
                     authRepository = dataContainer.authRepository,
@@ -181,7 +196,7 @@ fun rememberPulseEntryProvider(
         }
 
         entry<ProfileSetupFitnessGoals> {
-            val viewModel = remember(dataContainer, profileDraftHolder) {
+            val viewModel: FitnessGoalsViewModel = pulseNavViewModel {
                 FitnessGoalsViewModel(
                     draftHolder = profileDraftHolder,
                     authRepository = dataContainer.authRepository,

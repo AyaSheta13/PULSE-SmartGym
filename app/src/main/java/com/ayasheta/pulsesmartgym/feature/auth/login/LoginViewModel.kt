@@ -1,5 +1,6 @@
 package com.ayasheta.pulsesmartgym.feature.auth.login
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ayasheta.pulsesmartgym.core.model.common.DomainResult
@@ -31,17 +32,27 @@ data class LoginUiState(
 ) {
     val hasErrors: Boolean
         get() = bannerTitle != null || emailError != null || passwordError != null
+
+    val isValidationErrorState: Boolean
+        get() = emailError != null || passwordError != null
 }
 
 class LoginViewModel(
+    private val savedStateHandle: SavedStateHandle,
     private val authRepository: AuthRepository,
     private val userProfileRepository: UserProfileRepository,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(LoginUiState())
+    private val _uiState = MutableStateFlow(
+        LoginUiState(
+            email = savedStateHandle.get<String>(KEY_EMAIL).orEmpty(),
+            rememberMe = savedStateHandle.get<Boolean>(KEY_REMEMBER_ME) ?: true,
+        ),
+    )
     val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
 
     fun onEmailChange(value: String) {
+        savedStateHandle[KEY_EMAIL] = value
         _uiState.update {
             it.copy(
                 email = value,
@@ -68,7 +79,19 @@ class LoginViewModel(
     }
 
     fun toggleRememberMe() {
-        _uiState.update { it.copy(rememberMe = !it.rememberMe) }
+        val next = !_uiState.value.rememberMe
+        savedStateHandle[KEY_REMEMBER_ME] = next
+        _uiState.update { it.copy(rememberMe = next) }
+    }
+
+    fun onExternalProviderClick(providerName: String) {
+        if (_uiState.value.isLoading) return
+        _uiState.update {
+            it.copy(
+                bannerTitle = "$providerName Sign-In Unavailable",
+                bannerMessage = "$providerName OAuth sign-in is not yet supported in this offline build. Please use local email login or Continue as Guest.",
+            )
+        }
     }
 
     fun submitLogin() {
@@ -172,5 +195,10 @@ class LoginViewModel(
 
     fun consumeNavigation() {
         _uiState.update { it.copy(navigationTarget = null) }
+    }
+
+    private companion object {
+        const val KEY_EMAIL = "login_email"
+        const val KEY_REMEMBER_ME = "login_remember_me"
     }
 }

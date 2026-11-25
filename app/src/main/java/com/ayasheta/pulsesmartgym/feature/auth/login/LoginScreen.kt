@@ -83,6 +83,7 @@ fun LoginScreen(
         onToggleRememberMe = viewModel::toggleRememberMe,
         onForgotPasswordClick = onForgotPasswordClick,
         onSubmitClick = viewModel::submitLogin,
+        onExternalProviderClick = viewModel::onExternalProviderClick,
         onTestErrorsClick = { viewModel.triggerValidationErrorSample(isDebugEntryEnabled) },
         onFillValidDemoClick = { viewModel.clearErrorsAndFillDebugCredentials(isDebugEntryEnabled) },
         onSignUpClick = onSignUpClick,
@@ -101,6 +102,7 @@ fun LoginContent(
     onToggleRememberMe: () -> Unit,
     onForgotPasswordClick: () -> Unit,
     onSubmitClick: () -> Unit,
+    onExternalProviderClick: (String) -> Unit,
     onTestErrorsClick: () -> Unit,
     onFillValidDemoClick: () -> Unit,
     onSignUpClick: () -> Unit,
@@ -194,7 +196,7 @@ fun LoginContent(
                 ),
             )
 
-            if (!uiState.hasErrors) {
+            if (!uiState.isValidationErrorState) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -241,7 +243,7 @@ fun LoginContent(
                 }
             }
 
-            if (uiState.hasErrors && isDebugEntryEnabled) {
+            if (uiState.isValidationErrorState && isDebugEntryEnabled) {
                 PulsePrimaryCta(
                     text = "Try Valid Demo Credentials",
                     onClick = onFillValidDemoClick,
@@ -271,6 +273,54 @@ fun LoginContent(
                     onClick = onSubmitClick,
                     isLoading = uiState.isLoading,
                 )
+
+                // OR CONTINUE WITH separator (Figma 281:52)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(20.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(1.dp)
+                            .background(PulseAuthColors.CardBorderLight),
+                    )
+                    BasicText(
+                        text = "OR CONTINUE WITH",
+                        style = TextStyle(
+                            fontFamily = PulseTheme.typography.label.fontFamily,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = PulseAuthColors.Placeholder,
+                        ),
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(1.dp)
+                            .background(PulseAuthColors.CardBorderLight),
+                    )
+                }
+
+                // Google & Apple buttons (Figma 281:56)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    ExternalProviderButton(
+                        label = "Google",
+                        onClick = { onExternalProviderClick("Google") },
+                        modifier = Modifier.weight(1f),
+                    )
+                    ExternalProviderButton(
+                        label = "Apple",
+                        onClick = { onExternalProviderClick("Apple") },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
 
                 if (isDebugEntryEnabled) {
                     Box(
@@ -334,6 +384,34 @@ fun LoginContent(
     }
 }
 
+@Composable
+private fun ExternalProviderButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(14.dp)
+    Box(
+        modifier = modifier
+            .height(48.dp)
+            .clip(shape)
+            .background(PulseTheme.color.container)
+            .border(width = 1.dp, color = PulseAuthColors.CardBorderLight, shape = shape)
+            .clickable(role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        BasicText(
+            text = label,
+            style = TextStyle(
+                fontFamily = PulseTheme.typography.ctaPrimary.fontFamily,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = PulseTheme.color.shadePrimary,
+            ),
+        )
+    }
+}
+
 @Preview(showBackground = true, widthDp = 390, heightDp = 884)
 @Composable
 private fun LoginPreview() {
@@ -348,6 +426,7 @@ private fun LoginPreview() {
             onToggleRememberMe = {},
             onForgotPasswordClick = {},
             onSubmitClick = {},
+            onExternalProviderClick = {},
             onTestErrorsClick = {},
             onFillValidDemoClick = {},
             onSignUpClick = {},

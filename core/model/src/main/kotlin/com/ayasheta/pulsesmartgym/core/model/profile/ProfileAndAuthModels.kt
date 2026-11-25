@@ -17,6 +17,7 @@ data class AuthUser(
 )
 
 sealed interface AuthState {
+    data object Initializing : AuthState
     data object Unauthenticated : AuthState
     data class Authenticated(val user: AuthUser) : AuthState
 }

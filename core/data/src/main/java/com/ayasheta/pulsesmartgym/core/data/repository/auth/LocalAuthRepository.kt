@@ -15,6 +15,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import java.util.UUID
@@ -32,11 +34,16 @@ class LocalAuthRepository(
     private val allowDemoSignIn: Boolean,
 ) : AuthRepository {
 
-    private val authState = MutableStateFlow<AuthState>(AuthState.Unauthenticated)
+    private val restoreMutex = Mutex()
+    private val authState = MutableStateFlow<AuthState>(AuthState.Initializing)
 
     override fun observeAuthState(): Flow<AuthState> = authState.asStateFlow()
 
-    override suspend fun restoreSession(): AuthState {
+    override suspend fun restoreSession(): AuthState = restoreMutex.withLock {
+        val current = authState.value
+        if (current !is AuthState.Initializing) {
+            return@withLock current
+        }
         val persisted = preferencesDataSource.readPersistedSession()
         val resolved = when (persisted.kind) {
             PersistedSessionKind.NONE -> AuthState.Unauthenticated
@@ -78,7 +85,7 @@ class LocalAuthRepository(
             }
         }
         authState.value = resolved
-        return resolved
+        return@withLock resolved
     }
 
     override suspend fun continueAsGuest(): DomainResult<AuthUser> {

@@ -13,10 +13,12 @@ import com.ayasheta.pulsesmartgym.core.data.di.PulseDataContainer
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTab
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
 import com.ayasheta.pulsesmartgym.core.model.profile.AuthState
+import com.ayasheta.pulsesmartgym.feature.splash.SplashContent
 import com.ayasheta.pulsesmartgym.navigation.AppEntryFlow
 import com.ayasheta.pulsesmartgym.navigation.PulseNavigator
 import com.ayasheta.pulsesmartgym.navigation.rememberPulseNavigationState
 import com.ayasheta.pulsesmartgym.navigation.route.AuthEntry
+import com.ayasheta.pulsesmartgym.navigation.route.ProfileSetupPersonalInfo
 
 @Composable
 fun PulseApp(
@@ -43,23 +45,49 @@ fun PulseApp(
                 PulseNavigator(navigationState)
             }
             val authState by resolvedDataContainer.authRepository.observeAuthState()
-                .collectAsState(initial = AuthState.Unauthenticated)
+                .collectAsState(initial = AuthState.Initializing)
 
-            LaunchedEffect(enforceAuthGuard, navigationState.activeFlow, authState) {
-                if (enforceAuthGuard &&
-                    navigationState.activeFlow == AppEntryFlow.MAIN &&
-                    authState is AuthState.Unauthenticated
-                ) {
-                    navigator.resetToAuth(AuthEntry)
+            LaunchedEffect(enforceAuthGuard, resolvedDataContainer) {
+                if (enforceAuthGuard) {
+                    resolvedDataContainer.authRepository.restoreSession()
                 }
             }
 
-            PulseAppShell(
-                navigationState = navigationState,
-                navigator = navigator,
-                isDebugEntryEnabled = isDebugEntryEnabled,
-                dataContainer = resolvedDataContainer,
-            )
+            LaunchedEffect(enforceAuthGuard, navigationState.activeFlow, authState) {
+                if (!enforceAuthGuard) return@LaunchedEffect
+                when (val currentAuth = authState) {
+                    AuthState.Initializing -> Unit
+                    AuthState.Unauthenticated -> {
+                        if (navigationState.activeFlow == AppEntryFlow.MAIN) {
+                            navigator.resetToAuth(AuthEntry)
+                        }
+                    }
+                    is AuthState.Authenticated -> {
+                        if (navigationState.activeFlow == AppEntryFlow.MAIN) {
+                            val setupDone = resolvedDataContainer.userProfileRepository
+                                .isProfileSetupCompleted(currentAuth.user.id)
+                            if (!setupDone) {
+                                navigator.resetToAuth(ProfileSetupPersonalInfo)
+                            }
+                        }
+                    }
+                }
+            }
+
+            val hideUnauthorizedMainDuringRestore = enforceAuthGuard &&
+                navigationState.activeFlow == AppEntryFlow.MAIN &&
+                authState !is AuthState.Authenticated
+
+            if (hideUnauthorizedMainDuringRestore) {
+                SplashContent()
+            } else {
+                PulseAppShell(
+                    navigationState = navigationState,
+                    navigator = navigator,
+                    isDebugEntryEnabled = isDebugEntryEnabled,
+                    dataContainer = resolvedDataContainer,
+                )
+            }
         }
     }
 }

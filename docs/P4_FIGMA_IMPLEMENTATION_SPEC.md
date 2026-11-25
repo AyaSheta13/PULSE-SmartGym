@@ -76,6 +76,8 @@
   - `PASSWORD` (`11sp` SemiBold `#7A7570`, `0.6sp` tracking) + `48dp` input with eye visibility toggle.
   - Options Row: `Remember me` (`18dp` `#FF623E` checkbox, `13sp` Medium `#1C1B1B`) + `Forgot password?` (`13sp` SemiBold `#FF623E`).
   - Primary CTA: `Log In` (`52dp`, `14dp` radius, `#FF623E`, `15sp` Bold white).
+  - Alternate Provider Separator (`281:52`): `1dp` `#F1EEEA` horizontal lines + `OR CONTINUE WITH` (`11sp` SemiBold `#A6A19C`, `12dp` gap).
+  - External Provider Buttons (`281:56`): Two equal-width `48dp` height buttons (`#FFFFFF`, `1dp` `#F1EEEA` border, `14dp` radius, `12dp` gap) for `Google` and `Apple` (`15sp` Bold `#1C1B1B`).
   - Debug-only helper (`isDebugEntryEnabled` only): `⚠ Test Invalid Login & Error Feedback` (`44dp`, `#FFF0EB`, `1dp` `#FF623E`, `10dp` radius, `12sp` SemiBold `#D9331A`).
   - Footer: `Don't have an account?` (`13sp` Regular `#7A7570`) + `Sign Up` (`13sp` Bold `#FF623E`).
 - **Validation Error State (`533:328`):**

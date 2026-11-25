@@ -39,6 +39,15 @@ All 12 Figma reference frames (designed at `390 × 884`) were inspected individu
   - Unauthenticated password reset is explicitly blocked (`DataError.Unauthorized`) with honest UI feedback (`Password Reset Unavailable`) so an unauthenticated user cannot overwrite an existing local account.
 - **Debug Helpers:**
   - Debug validation-error preview buttons (`⚠ Test Invalid Login & Error Feedback`, `⚠ Test Sign Up Validation Errors (4 Scenarios)`) are strictly gated behind `isDebugEntryEnabled`.
+- **Authentication Initialization & Process-Death Restoration:**
+  - `AuthState.Initializing` prevents `PulseApp` from treating a not-yet-restored session as signed-out while `AppEntryFlow.MAIN` is restored after process death.
+  - `PulseApp` runs `restoreSession()` immediately and suppresses unauthorized `MAIN` UI until restoration resolves; incomplete profiles redirect to `ProfileSetupPersonalInfo`, and invalid/logged-out sessions redirect to `AuthEntry`.
+- **Navigation 3 ViewModel Lifecycle & Owner-Isolated Drafts:**
+  - `PulseViewModelStoreDecorator.kt` (`rememberPulseViewModelStoreNavEntryDecorator` + `pulseNavViewModel`) scopes a `ViewModelStore` + `SavedStateHandle` to each Navigation 3 `NavEntry`, retains across Activity recreation, and calls `ViewModelStore.clear()` on `onPop`.
+  - Non-sensitive form fields (`OnboardingViewModel.currentPage`, `LoginViewModel.email`/`rememberMe`, `SignUpViewModel.fullName`/`email`, `ProfileSetupDraftHolder`) use `SavedStateHandle`; passwords are never persisted in `SavedStateHandle`, DataStore, or Room.
+  - `ProfileSetupDraftHolder` keys drafts strictly by `ownerId` and resets immediately on owner/account switch.
+- **Restored Login Figma Elements (`281:52`, `281:56`):**
+  - Added `OR CONTINUE WITH` separator and `Google` / `Apple` buttons on `LoginScreen`, producing honest unavailable feedback until OAuth is integrated.
 - **Deferred Backend Work:**
   - Remote email recovery, OAuth providers (Google / Apple), and cloud account sync remain deferred to future backend integration.
 
@@ -73,7 +82,7 @@ All 12 Figma reference frames (designed at `390 × 884`) were inspected individu
   - `:core:model:build` — **PASSED**
   - `:core:data:testDebugUnitTest` (`FakeAuthRepositoryTest`, `P4ValidatorsUnitTest`) — **PASSED**
   - `:core:designsystem:testDebugUnitTest` (`PulseDesignSystemContractTest`) — **PASSED**
-  - `:app:testDebugUnitTest` (`ExampleUnitTest`, `PulseNavigatorTest`) — **PASSED**
+  - `:app:testDebugUnitTest` (`ExampleUnitTest`, `PulseNavigatorTest`, `P4LifecycleAndDraftUnitTest` — 14 tests) — **PASSED**
   - `:core:data:connectedDebugAndroidTest` (`PulseRoomIntegrationTest` + `Migration1To2Test`, 14/14 tests on `Medium_Phone_API_36.0`) — **PASSED**
-  - `:app:connectedDebugAndroidTest` (`PulseNavigationUiTest`, `PulseActivityRecreationUiTest`, `P4AuthAndProfileUiTest`, `P4ScreenshotCaptureTest`, `ExampleInstrumentedTest`, 9/9 tests on `Medium_Phone_API_36.0`) — **PASSED**
-- **Visual QA:** All 12 screens were captured on `Medium_Phone_API_36.0` at `390 × 884` dp and compared against Figma references; see [P4_VISUAL_QA_REPORT.md](file:///e:/Android/AndroidStudioProjects/PULSE/docs/P4_VISUAL_QA_REPORT.md).
+  - `:app:connectedDebugAndroidTest` (`PulseNavigationUiTest`, `PulseActivityRecreationUiTest`, `P4AuthAndProfileUiTest`, `P4ScreenshotCaptureTest`, `ExampleInstrumentedTest`, 10/10 tests on `Medium_Phone_API_36.0`) — **PASSED**
+- **Visual QA:** All 12 screens were captured on `Medium_Phone_API_36.0` at `390 × 884` dp and compared against Figma references with normalized side-by-side + diff images saved in `docs/visual-qa/p4/`; see [P4_VISUAL_QA_REPORT.md](file:///e:/Android/AndroidStudioProjects/PULSE/docs/P4_VISUAL_QA_REPORT.md).

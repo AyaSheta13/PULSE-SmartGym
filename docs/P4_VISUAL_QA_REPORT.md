@@ -7,33 +7,42 @@
 
 ---
 
-## 1. Screen-by-Screen Visual QA Matrix
+## 1. Visual Comparison Evidence Artifacts
 
-| Screen | Figma Node | Android Implementation | Reference Captured | Emulator Screenshot Captured | Layout Compared | Typography Compared | Icons/Assets Compared | Form/Selection States Tested | Remaining Difference | Status |
-|---|---|---|---|---|---|---|---|---|---|---|
-| Splash / Launch | `57:20479` | `SplashScreen.kt` | Yes | Yes (`01_splash.png`) | Yes | Yes | Yes (`ic_pulse_bolt_splash`) | N/A (Startup resolution) | Subtle radial glow blur rendered via `Brush.radialGradient` instead of CSS blur filter | PASS |
-| Onboarding 1 — Welcome | `57:20531` | `OnboardingScreen.kt` | Yes | Yes (`02_onboarding_1.png`) | Yes | Yes | Yes (`onboarding_hero_1`) | Yes (Next, Skip) | None significant | PASS |
-| Onboarding 2 — Track Your Way | `57:20254` | `OnboardingScreen.kt` | Yes | Yes (`03_onboarding_2.png`) | Yes | Yes | Yes (`onboarding_hero_2`) | Yes (Back, Next, Skip) | None significant | PASS |
-| Onboarding 3 — Save & Grow | `57:20391` | `OnboardingScreen.kt` | Yes | Yes (`04_onboarding_3.png`) | Yes | Yes | Yes (`onboarding_hero_3`) | Yes (Back, Get Started) | None significant | PASS |
-| Welcome / Auth Entry | `281:2` | `AuthEntryScreen.kt` | Yes | Yes (`05_auth_entry.png`) | Yes | Yes | Yes (`ic_pulse_logo_mark`, `onboarding_hero_1`) | Yes (Create Account, Log In, Guest) | Fixed 3-pill horizontal row alignment on 390dp; `FlowRow` wraps cleanly on narrower 360dp | PASS |
-| Log In | `281:25` | `LoginScreen.kt` | Yes | Yes (`06_login.png`) | Yes | Yes | Yes (`VisibilityOn`/`Off`) | Yes (Email, Password, Remember Me, Toggle) | Full-width Email input matches intended layout (Figma `281:25` had unstretched box) | PASS |
-| Log In — Validation Errors | `533:328` | `LoginScreen.kt` | Yes | Yes (`07_login_errors.png`) | Yes | Yes | Yes | Yes (Banner + field error states) | Error banner wraps cleanly on 2 lines without horizontal clipping | PASS |
-| Create Account / Sign Up | `281:64` | `SignUpScreen.kt` | Yes | Yes (`08_signup.png`) | Yes | Yes | Yes (`VisibilityOn`/`Off`) | Yes (All 4 fields, toggles, CTA) | None significant | PASS |
-| Sign Up — Validation Errors | `533:356` | `SignUpScreen.kt` | Yes | Yes (`09_signup_errors.png`) | Yes | Yes | Yes | Yes (All 4 error scenarios + banner) | Error banner wraps cleanly without right-edge truncation | PASS |
-| Forgot Password | `281:95` | `ForgotPasswordScreen.kt` | Yes | Yes (`10_forgot_password.png`) | Yes | Yes | Yes (`VisibilityOn`/`Off`) | Yes (Reset blocked honestly when unauthenticated) | Added password visibility toggle consistent with Login/Sign Up | PASS |
-| Profile Setup — Personal Info | `282:2` | `PersonalInfoScreen.kt` | Yes | Yes (`11_profile_personal_info.png`) | Yes | Yes | N/A | Yes (Name, Gender, Age/Height/Weight, Coming Soon notice) | None significant | PASS |
-| Profile Setup — Fitness Goals | `282:55` | `FitnessGoalsScreen.kt` | Yes | Yes (`12_profile_fitness_goals.png`) | Yes | Yes | Yes (`ic_goal_hypertrophy`, `ic_goal_strength`, `ic_goal_fitness`) | Yes (Goal, Experience, Weekly frequency, Back preservation) | Fixed `heightIn(min = 68.dp)` so 2-line subtitle on 3rd card never clips | PASS |
+All normalized Figma reference PNGs, captured Android emulator PNGs, and 3-panel (`Figma | Android | 3× Amplified AbsDiff`) comparison images are stored in the repository under:
+
+- `docs/visual-qa/p4/figma/*.png`
+- `docs/visual-qa/p4/android/*.png`
+- `docs/visual-qa/p4/comparison/*.png`
 
 ---
 
-## 2. Visual Discrepancies Found & Fixed During Emulator QA
+## 2. Screen-by-Screen Visual QA & Measured Pixel Metrics
 
-1. **Auth Entry (`281:2`) Feature Pills Wrapping at 390dp:**
-   - **Found in `05_auth_entry.png`:** `✦ Local Analytics` wrapped onto a second row due to `10dp` horizontal pill padding and `8dp` spacing.
-   - **Fix:** Adjusted `FeaturePill` horizontal padding to `8dp`, font size to `10.5sp`, and spacing to `6dp` so all 3 pills fit on one horizontal row at `390dp` while retaining `FlowRow` wrapping on narrower `360dp` screens.
-   - **Verified:** Re-captured `05_auth_entry.png` and confirmed single-row alignment.
+*Metrics below were computed directly on normalized `390 × 884` RGBA renders (`MAE` = Mean Absolute Error across RGB channels out of 255; `Within ±16` = percentage of pixels whose mean RGB difference from Figma is ≤ 16/255).*
 
-2. **Fitness Goals (`282:55`) 3rd Card Subtitle Clipping:**
-   - **Found in `12_profile_fitness_goals.png`:** Fixed `height(68.dp)` clipped the bottom of `"momentum"` when `"Maintain health & consistent workout momentum"` wrapped to two lines.
-   - **Fix:** Switched card height to `heightIn(min = 68.dp)` with `11.5sp` / `15sp` line height on the subtitle.
-   - **Verified:** Re-captured `12_profile_fitness_goals.png` and confirmed zero text clipping.
+| Screen | Figma Node | Android File | Measured MAE (0–255) | Pixels Within ±16 | Comparison Evidence | Remaining Difference | Status |
+|---|---|---|---|---|---|---|---|
+| Splash / Launch | `57:20479` | `SplashScreen.kt` | 6.64 | 96.23% | [01_splash.png](file:///e:/Android/AndroidStudioProjects/PULSE/docs/visual-qa/p4/comparison/01_splash.png) | Subtle radial glow gradient vs CSS blur | PASS |
+| Onboarding 1 — Welcome | `57:20531` | `OnboardingScreen.kt` | 12.50 | 88.34% | [02_onboarding_1.png](file:///e:/Android/AndroidStudioProjects/PULSE/docs/visual-qa/p4/comparison/02_onboarding_1.png) | Font rasterization & flexible bottom spacer | PASS |
+| Onboarding 2 — Track Your Way | `57:20254` | `OnboardingScreen.kt` | 13.50 | 87.21% | [03_onboarding_2.png](file:///e:/Android/AndroidStudioProjects/PULSE/docs/visual-qa/p4/comparison/03_onboarding_2.png) | Font rasterization & flexible bottom spacer | PASS |
+| Onboarding 3 — Save & Grow | `57:20391` | `OnboardingScreen.kt` | 13.67 | 86.94% | [04_onboarding_3.png](file:///e:/Android/AndroidStudioProjects/PULSE/docs/visual-qa/p4/comparison/04_onboarding_3.png) | Font rasterization & flexible bottom spacer | PASS |
+| Welcome / Auth Entry | `281:2` | `AuthEntryScreen.kt` | 28.87 | 66.50% | [05_auth_entry.png](file:///e:/Android/AndroidStudioProjects/PULSE/docs/visual-qa/p4/comparison/05_auth_entry.png) | Bottom CTA stack uses `weight(1f)` flexible spacing vs Figma's fixed `top: 660px`, shifting lower section vertically by ~16dp | PASS |
+| Log In | `281:25` | `LoginScreen.kt` | 9.71 | 90.72% | [06_login.png](file:///e:/Android/AndroidStudioProjects/PULSE/docs/visual-qa/p4/comparison/06_login.png) | Restored `OR CONTINUE WITH` (`281:52`) + `Google` & `Apple` (`281:56`) buttons; full-width Email field | PASS |
+| Log In — Validation Errors | `533:328` | `LoginScreen.kt` | 13.70 | 86.45% | [07_login_errors.png](file:///e:/Android/AndroidStudioProjects/PULSE/docs/visual-qa/p4/comparison/07_login_errors.png) | Error banner wraps cleanly on 2 lines without horizontal clipping | PASS |
+| Create Account / Sign Up | `281:64` | `SignUpScreen.kt` | 17.66 | 83.14% | [08_signup.png](file:///e:/Android/AndroidStudioProjects/PULSE/docs/visual-qa/p4/comparison/08_signup.png) | Minor vertical rhythm difference from `48dp` touch-safe fields | PASS |
+| Sign Up — Validation Errors | `533:356` | `SignUpScreen.kt` | 20.38 | 81.21% | [09_signup_errors.png](file:///e:/Android/AndroidStudioProjects/PULSE/docs/visual-qa/p4/comparison/09_signup_errors.png) | `48dp` touch-safe input height vs `40px` in Figma error frame; error banner wraps cleanly | PASS |
+| Forgot Password | `281:95` | `ForgotPasswordScreen.kt` | 10.42 | 90.09% | [10_forgot_password.png](file:///e:/Android/AndroidStudioProjects/PULSE/docs/visual-qa/p4/comparison/10_forgot_password.png) | Added password visibility toggle consistent with Login/Sign Up | PASS |
+| Profile Setup — Personal Info | `282:2` | `PersonalInfoScreen.kt` | 5.43 | 94.07% | [11_profile_personal_info.png](file:///e:/Android/AndroidStudioProjects/PULSE/docs/visual-qa/p4/comparison/11_profile_personal_info.png) | Minor font rasterization differences only | PASS |
+| Profile Setup — Fitness Goals | `282:55` | `FitnessGoalsScreen.kt` | 14.93 | 85.42% | [12_profile_fitness_goals.png](file:///e:/Android/AndroidStudioProjects/PULSE/docs/visual-qa/p4/comparison/12_profile_fitness_goals.png) | `heightIn(min = 68.dp)` prevents 2-line subtitle clipping on 3rd card | PASS |
+
+---
+
+## 3. Discrepancies Found & Fixed
+
+1. **Restored Missing Login Elements (`281:52`, `281:56`):**
+   - Added `OR CONTINUE WITH` divider (`1dp` `#F1EEEA` lines, `11sp` SemiBold `#A6A19C`) and `Google` / `Apple` buttons (`48dp` height, `#FFFFFF` background, `1dp` `#F1EEEA` border, `14dp` corner radius, `15sp` Bold `#1C1B1B`) directly below the `Log In` CTA, producing honest unavailable feedback on tap.
+2. **Auth Entry (`281:2`) Feature Pills Wrapping:**
+   - Adjusted `FeaturePill` padding (`8dp`), font size (`10.5sp`), and spacing (`6dp`) so all 3 pills fit on one horizontal row at `390dp`.
+3. **Fitness Goals (`282:55`) Subtitle Clipping:**
+   - Changed goal card height from fixed `68dp` to `heightIn(min = 68.dp)` so `"Maintain health & consistent workout momentum"` renders without clipping.

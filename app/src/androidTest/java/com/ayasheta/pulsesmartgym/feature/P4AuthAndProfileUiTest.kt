@@ -146,11 +146,19 @@ class P4AuthAndProfileUiTest {
         composeRule.onNodeWithText("✕ Weak password: Minimum 8 characters required with symbol & number.").assertIsDisplayed()
         composeRule.onNodeWithText("✕ Confirmation mismatch: Passwords do not match.").assertIsDisplayed()
 
-        // Go back to Auth Entry -> Log In -> Validation Errors + Forgot Password
+        // Go back to Auth Entry -> Log In -> Google/Apple honest unavailable feedback -> Validation Errors + Forgot Password
         composeRule.onNodeWithContentDescription("Back").performClick()
         composeRule.onNodeWithText("Log In").performClick()
         composeRule.onNodeWithText("Welcome Back").assertIsDisplayed()
-        composeRule.onNodeWithText("⚠ Test Invalid Login & Error Feedback").performClick()
+
+        // Verify restored Figma OR CONTINUE WITH + Google / Apple buttons
+        composeRule.onNodeWithText("OR CONTINUE WITH").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Google").performScrollTo().performClick()
+        composeRule.onNodeWithText("Google Sign-In Unavailable").assertIsDisplayed()
+        composeRule.onNodeWithText("Apple").performScrollTo().performClick()
+        composeRule.onNodeWithText("Apple Sign-In Unavailable").assertIsDisplayed()
+
+        composeRule.onNodeWithText("⚠ Test Invalid Login & Error Feedback").performScrollTo().performClick()
         composeRule.onNodeWithText("Incorrect Email or Password").assertIsDisplayed()
         composeRule.onNodeWithText("✕ Invalid email. Format must be name@example.com, not empty.").assertIsDisplayed()
         composeRule.onNodeWithText("✕ Password cannot be empty (minimum 8 characters required).").assertIsDisplayed()
@@ -161,5 +169,30 @@ class P4AuthAndProfileUiTest {
         composeRule.onNodeWithTag("field_NEW PASSWORD").performTextInput("Pulse@2026!")
         composeRule.onNodeWithText("Save New Password").performClick()
         composeRule.onNodeWithText("Password Reset Unavailable").assertIsDisplayed()
+    }
+
+    @Test
+    fun restoredMainFlow_withoutValidSession_resetsToAuthEntryWithoutBypass() {
+        runBlocking {
+            dataContainer.userPreferencesRepository.setOnboardingCompleted(true)
+            dataContainer.authRepository.signOut()
+        }
+
+        composeRule.setContent {
+            PulseApp(
+                isDebugEntryEnabled = true,
+                initialFlow = AppEntryFlow.MAIN,
+                dataContainer = dataContainer,
+                enforceAuthGuard = true,
+            )
+        }
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithText("Elevate Every Rep").assertExists()
+                true
+            }.getOrDefault(false)
+        }
+        composeRule.onNodeWithText("Route: HomeTab").assertDoesNotExist()
     }
 }

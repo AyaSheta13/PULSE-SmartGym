@@ -135,6 +135,43 @@ class Migration1To2Test {
             val storedAccount = db.localAccountDao().getByEmail("alex@pulse.fit")!!
             assertNotEquals("Pulse@2026!", storedAccount.passwordHash)
 
+            // 4b. Duplicate registration is rejected
+            val dupReg = authRepo.registerLocalAccount("Alex Two", "ALEX@pulse.fit", "Pulse@2026!")
+            assertTrue(dupReg is DomainResult.Failure)
+
+            // 4c. Logout -> wrong password rejected -> valid login with rememberMe = false
+            authRepo.signOut()
+            val badLogin = authRepo.signInWithEmail("alex@pulse.fit", "Wrong@123!", rememberMe = true)
+            assertTrue(badLogin is DomainResult.Failure)
+            assertTrue((badLogin as DomainResult.Failure).error is DataError.Unauthorized)
+
+            val loginNoRemember = authRepo.signInWithEmail("alex@pulse.fit", "Pulse@2026!", rememberMe = false)
+            assertTrue(loginNoRemember is DomainResult.Success)
+
+            // Simulate process death with fresh LocalAuthRepository: rememberMe = false -> Unauthenticated
+            val processDeathRepo1 = LocalAuthRepository(
+                accountDao = db.localAccountDao(),
+                preferencesDataSource = prefsSource,
+                transactionRunner = txRunner,
+                allowDemoSignIn = false,
+            )
+            assertEquals(AuthState.Initializing, processDeathRepo1.observeAuthState().first())
+            assertEquals(AuthState.Unauthenticated, processDeathRepo1.restoreSession())
+
+            // Login with rememberMe = true -> fresh LocalAuthRepository restores Authenticated
+            assertTrue(
+                processDeathRepo1.signInWithEmail("alex@pulse.fit", "Pulse@2026!", rememberMe = true) is DomainResult.Success,
+            )
+            val processDeathRepo2 = LocalAuthRepository(
+                accountDao = db.localAccountDao(),
+                preferencesDataSource = prefsSource,
+                transactionRunner = txRunner,
+                allowDemoSignIn = false,
+            )
+            val restoredLocal = processDeathRepo2.restoreSession()
+            assertTrue(restoredLocal is AuthState.Authenticated)
+            assertEquals(localUser.id, (restoredLocal as AuthState.Authenticated).user.id)
+
             // 5. Save completed profile under localUser.id and verify guest has no profile
             val saveProfile = profileRepo.saveCompletedProfile(
                 ownerId = localUser.id,

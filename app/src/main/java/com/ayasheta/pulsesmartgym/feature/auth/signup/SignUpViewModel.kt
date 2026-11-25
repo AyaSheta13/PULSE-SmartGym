@@ -1,5 +1,6 @@
 package com.ayasheta.pulsesmartgym.feature.auth.signup
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ayasheta.pulsesmartgym.core.model.common.DomainResult
@@ -36,19 +37,27 @@ data class SignUpUiState(
 }
 
 class SignUpViewModel(
+    private val savedStateHandle: SavedStateHandle,
     private val authRepository: AuthRepository,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(SignUpUiState())
+    private val _uiState = MutableStateFlow(
+        SignUpUiState(
+            fullName = savedStateHandle.get<String>(KEY_FULL_NAME).orEmpty(),
+            email = savedStateHandle.get<String>(KEY_EMAIL).orEmpty(),
+        ),
+    )
     val uiState: StateFlow<SignUpUiState> = _uiState.asStateFlow()
 
     fun onFullNameChange(value: String) {
+        savedStateHandle[KEY_FULL_NAME] = value
         _uiState.update {
             it.copy(fullName = value, fullNameError = null, bannerTitle = null, bannerMessage = null)
         }
     }
 
     fun onEmailChange(value: String) {
+        savedStateHandle[KEY_EMAIL] = value
         _uiState.update {
             it.copy(email = value, emailError = null, bannerTitle = null, bannerMessage = null)
         }
@@ -188,5 +197,10 @@ class SignUpViewModel(
 
     fun consumeNavigation() {
         _uiState.update { it.copy(navigateToPersonalInfo = false) }
+    }
+
+    private companion object {
+        const val KEY_FULL_NAME = "signup_full_name"
+        const val KEY_EMAIL = "signup_email"
     }
 }

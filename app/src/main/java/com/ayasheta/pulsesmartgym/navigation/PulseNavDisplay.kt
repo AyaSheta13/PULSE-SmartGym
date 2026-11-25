@@ -79,6 +79,9 @@ private fun rememberStackEntries(
     entryProvider: (NavKey) -> NavEntry<NavKey>,
 ): List<NavEntry<NavKey>> = rememberDecoratedNavEntries(
     backStack = backStack,
-    entryDecorators = listOf(rememberSaveableStateHolderNavEntryDecorator()),
+    entryDecorators = listOf(
+        rememberSaveableStateHolderNavEntryDecorator(),
+        rememberPulseViewModelStoreNavEntryDecorator(),
+    ),
     entryProvider = entryProvider,
 )
