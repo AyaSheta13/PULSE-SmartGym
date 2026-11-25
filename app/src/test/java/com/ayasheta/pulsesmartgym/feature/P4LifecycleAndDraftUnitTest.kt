@@ -14,10 +14,11 @@ import com.ayasheta.pulsesmartgym.core.model.profile.UserPreferences
 import com.ayasheta.pulsesmartgym.core.model.repository.UserPreferencesRepository
 import com.ayasheta.pulsesmartgym.feature.onboarding.OnboardingViewModel
 import com.ayasheta.pulsesmartgym.feature.profilesetup.ProfileSetupDraftHolder
-import com.ayasheta.pulsesmartgym.navigation.NavEntryViewModelStoreRegistry
+import com.ayasheta.pulsesmartgym.navigation.PerStackViewModelStoreHolder
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -97,30 +98,58 @@ class P4LifecycleAndDraftUnitTest {
     }
 
     @Test
-    fun navEntryViewModelStoreRegistry_retainsAndClearsOnPop() {
-        var cleared = false
+    fun perStackViewModelStoreHolder_isolatesStacks_andClearsAllOnClear() {
+        var clearedHome = false
+        var clearedWorkouts = false
 
-        val registry = NavEntryViewModelStoreRegistry()
-        val store = registry.getOrCreateStore("Login")
-        val owner = object : androidx.lifecycle.ViewModelStoreOwner {
-            override val viewModelStore = store
-        }
-        val factory = object : ViewModelProvider.Factory {
-            @Suppress("UNCHECKED_CAST")
-            override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                SampleEntryVm { cleared = true } as T
-        }
-        val vm = ViewModelProvider(owner, factory)[SampleEntryVm::class.java]
+        val holder = PerStackViewModelStoreHolder()
+        val homeStore = holder.storeFor("TAB_HOME")
+        val workoutsStore = holder.storeFor("TAB_WORKOUTS")
+        assertNotSame(homeStore, workoutsStore)
 
-        // Re-fetching same key returns same ViewModel instance
-        val sameOwner = object : androidx.lifecycle.ViewModelStoreOwner {
-            override val viewModelStore = registry.getOrCreateStore("Login")
+        val homeOwner = object : androidx.lifecycle.ViewModelStoreOwner {
+            override val viewModelStore = homeStore
         }
-        val sameVm = ViewModelProvider(sameOwner, factory)[SampleEntryVm::class.java]
-        assertTrue(vm === sameVm)
+        val workoutsOwner = object : androidx.lifecycle.ViewModelStoreOwner {
+            override val viewModelStore = workoutsStore
+        }
 
-        // Popping entry clears its ViewModelStore and triggers onCleared()
-        registry.clearStore("Login")
-        assertTrue(cleared)
+        val homeVm = ViewModelProvider(
+            homeOwner,
+            object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                    SampleEntryVm { clearedHome = true } as T
+            },
+        )[SampleEntryVm::class.java]
+
+        val workoutsVm = ViewModelProvider(
+            workoutsOwner,
+            object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                    SampleEntryVm { clearedWorkouts = true } as T
+            },
+        )[SampleEntryVm::class.java]
+
+        assertNotSame(homeVm, workoutsVm)
+
+        // Calling onCleared via a parent ViewModelStore clears both stack stores
+        val parentStore = androidx.lifecycle.ViewModelStore()
+        val parentOwner = object : androidx.lifecycle.ViewModelStoreOwner {
+            override val viewModelStore = parentStore
+        }
+        val managedHolder = ViewModelProvider(
+            parentOwner,
+            object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T = holder as T
+            },
+        )[PerStackViewModelStoreHolder::class.java]
+        assertTrue(managedHolder === holder)
+
+        parentStore.clear()
+        assertTrue(clearedHome)
+        assertTrue(clearedWorkouts)
     }
 }

@@ -43,7 +43,8 @@ All 12 Figma reference frames (designed at `390 × 884`) were inspected individu
   - `AuthState.Initializing` prevents `PulseApp` from treating a not-yet-restored session as signed-out while `AppEntryFlow.MAIN` is restored after process death.
   - `PulseApp` runs `restoreSession()` immediately and suppresses unauthorized `MAIN` UI until restoration resolves; incomplete profiles redirect to `ProfileSetupPersonalInfo`, and invalid/logged-out sessions redirect to `AuthEntry`.
 - **Navigation 3 ViewModel Lifecycle & Owner-Isolated Drafts:**
-  - `PulseViewModelStoreDecorator.kt` (`rememberPulseViewModelStoreNavEntryDecorator` + `pulseNavViewModel`) scopes a `ViewModelStore` + `SavedStateHandle` to each Navigation 3 `NavEntry`, retains across Activity recreation, and calls `ViewModelStore.clear()` on `onPop`.
+  - Uses the official `androidx.lifecycle:lifecycle-viewmodel-navigation3` (`rememberViewModelStoreNavEntryDecorator()`) paired with `rememberSaveableStateHolderNavEntryDecorator()` in `PulseNavDisplay.kt`.
+  - Each stack (`AUTH` and each `PulseTab`) is scoped to its own `StackScopedViewModelStoreOwner` retained in `PerStackViewModelStoreHolder`, preventing cross-tab ViewModel collisions when the same destination key is opened in multiple tabs while preserving `SavedStateHandle` across Activity recreation and clearing popped destination `ViewModel`s automatically.
   - Non-sensitive form fields (`OnboardingViewModel.currentPage`, `LoginViewModel.email`/`rememberMe`, `SignUpViewModel.fullName`/`email`, `ProfileSetupDraftHolder`) use `SavedStateHandle`; passwords are never persisted in `SavedStateHandle`, DataStore, or Room.
   - `ProfileSetupDraftHolder` keys drafts strictly by `ownerId` and resets immediately on owner/account switch.
 - **Restored Login Figma Elements (`281:52`, `281:56`):**
@@ -84,5 +85,5 @@ All 12 Figma reference frames (designed at `390 × 884`) were inspected individu
   - `:core:designsystem:testDebugUnitTest` (`PulseDesignSystemContractTest`) — **PASSED**
   - `:app:testDebugUnitTest` (`ExampleUnitTest`, `PulseNavigatorTest`, `P4LifecycleAndDraftUnitTest` — 14 tests) — **PASSED**
   - `:core:data:connectedDebugAndroidTest` (`PulseRoomIntegrationTest` + `Migration1To2Test`, 14/14 tests on `Medium_Phone_API_36.0`) — **PASSED**
-  - `:app:connectedDebugAndroidTest` (`PulseNavigationUiTest`, `PulseActivityRecreationUiTest`, `P4AuthAndProfileUiTest`, `P4ScreenshotCaptureTest`, `ExampleInstrumentedTest`, 10/10 tests on `Medium_Phone_API_36.0`) — **PASSED**
-- **Visual QA:** All 12 screens were captured on `Medium_Phone_API_36.0` at `390 × 884` dp and compared against Figma references with normalized side-by-side + diff images saved in `docs/visual-qa/p4/`; see [P4_VISUAL_QA_REPORT.md](file:///e:/Android/AndroidStudioProjects/PULSE/docs/P4_VISUAL_QA_REPORT.md).
+  - `:app:connectedDebugAndroidTest` (`PulseNavigationUiTest`, `PulseActivityRecreationUiTest`, `P4AuthAndProfileUiTest`, `P4ScreenshotCaptureTest`, `ExampleInstrumentedTest`, 14/14 tests on `Medium_Phone_API_36.0`) — **PASSED**
+- **Visual QA:** All 12 screens were captured on `Medium_Phone_API_36.0` at `390 × 884` dp and compared against Figma references with normalized side-by-side + diff images saved in `docs/visual-qa/p4/`; see [P4_VISUAL_QA_REPORT.md](P4_VISUAL_QA_REPORT.md).

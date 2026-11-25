@@ -99,7 +99,7 @@ fun AuthEntryContent(
             .padding(horizontal = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(modifier = Modifier.height(44.dp))
+        Spacer(modifier = Modifier.height(50.dp))
 
         // Brand Header (Figma 607:345)
         Row(
@@ -231,7 +231,7 @@ fun AuthEntryContent(
             )
         }
 
-        Spacer(modifier = Modifier.weight(1f, fill = true))
+        Spacer(modifier = Modifier.weight(0.615f, fill = true))
         Spacer(modifier = Modifier.height(24.dp))
 
         // Action Buttons (Figma 607:367)
@@ -303,7 +303,8 @@ fun AuthEntryContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.weight(0.385f, fill = true))
+        Spacer(modifier = Modifier.height(16.dp))
     }
 }
 

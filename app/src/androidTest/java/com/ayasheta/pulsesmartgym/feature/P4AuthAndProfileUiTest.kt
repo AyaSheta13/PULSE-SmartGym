@@ -16,8 +16,24 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.ayasheta.pulsesmartgym.app.PulseApp
 import com.ayasheta.pulsesmartgym.core.data.di.PulseDataContainer
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTab
+import com.ayasheta.pulsesmartgym.core.model.common.DomainResult
+import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
+import com.ayasheta.pulsesmartgym.core.model.profile.AuthState
+import com.ayasheta.pulsesmartgym.core.model.profile.ExperienceLevel
+import com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoal
+import com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoalsDraft
+import com.ayasheta.pulsesmartgym.core.model.profile.GenderIdentity
+import com.ayasheta.pulsesmartgym.core.model.profile.PersonalInfoDraft
 import com.ayasheta.pulsesmartgym.navigation.AppEntryFlow
+import com.ayasheta.pulsesmartgym.navigation.PulseNavDisplay
+import com.ayasheta.pulsesmartgym.navigation.PulseNavigator
+import com.ayasheta.pulsesmartgym.navigation.rememberPulseNavigationState
+import com.ayasheta.pulsesmartgym.navigation.route.WorkoutDetails
+import androidx.compose.runtime.remember
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -194,5 +210,132 @@ class P4AuthAndProfileUiTest {
             }.getOrDefault(false)
         }
         composeRule.onNodeWithText("Route: HomeTab").assertDoesNotExist()
+    }
+
+    @Test
+    fun authenticatedIncompleteProfile_restoredMain_redirectsToProfileSetupWithoutShowingMain() {
+        runBlocking {
+            dataContainer.userPreferencesRepository.setOnboardingCompleted(true)
+            dataContainer.authRepository.signOut()
+            val email = "incomplete_${System.nanoTime()}@pulse.fit"
+            val reg = dataContainer.authRepository.registerLocalAccount("Taylor", email, "Pulse@2026!")
+            assertTrue(reg is DomainResult.Success)
+        }
+
+        composeRule.setContent {
+            PulseApp(
+                isDebugEntryEnabled = true,
+                initialFlow = AppEntryFlow.MAIN,
+                dataContainer = dataContainer,
+                enforceAuthGuard = true,
+            )
+        }
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithText("About You").assertExists()
+                true
+            }.getOrDefault(false)
+        }
+        composeRule.onNodeWithText("Route: HomeTab").assertDoesNotExist()
+    }
+
+    @Test
+    fun rememberMeDisabled_retainedInMemory_clearedOnNewContainerProcessRestart() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val email = "noremem_${System.nanoTime()}@pulse.fit"
+        runBlocking {
+            dataContainer.authRepository.registerLocalAccount("Jordan", email, "Pulse@2026!")
+            dataContainer.authRepository.signOut()
+            val login = dataContainer.authRepository.signInWithEmail(email, "Pulse@2026!", rememberMe = false)
+            assertTrue(login is DomainResult.Success)
+            // Same process (Activity recreation) retains Authenticated state
+            assertTrue(dataContainer.authRepository.restoreSession() is AuthState.Authenticated)
+
+            // Simulated process restart with a fresh PulseDataContainer clears session
+            val freshContainer = PulseDataContainer(context)
+            assertEquals(AuthState.Unauthenticated, freshContainer.authRepository.restoreSession())
+        }
+    }
+
+    @Test
+    fun accountSwitching_isolatesProfileDraftAndPersistedProfile() {
+        val emailA = "usera_${System.nanoTime()}@pulse.fit"
+        val emailB = "userb_${System.nanoTime()}@pulse.fit"
+        val userA = runBlocking {
+            dataContainer.userPreferencesRepository.setOnboardingCompleted(true)
+            val rA = dataContainer.authRepository.registerLocalAccount("Alice Alpha", emailA, "Pulse@2026!")
+            (rA as DomainResult.Success).data
+        }
+
+        composeRule.setContent {
+            PulseApp(
+                isDebugEntryEnabled = true,
+                initialFlow = AppEntryFlow.AUTH,
+                dataContainer = dataContainer,
+            )
+        }
+
+        // Alice enters Personal Info (incomplete, not saved)
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithText("About You").assertExists()
+                true
+            }.getOrDefault(false)
+        }
+        composeRule.onNodeWithTag("metric_AGE").performTextInput("27")
+
+        // Switch active auth identity to Bob Beta
+        runBlocking {
+            dataContainer.authRepository.signOut()
+            dataContainer.authRepository.registerLocalAccount("Bob Beta", emailB, "Pulse@2026!")
+        }
+
+        // Re-verify: Bob does not inherit Alice's age "27" or profile
+        runBlocking {
+            assertEquals(null, dataContainer.userProfileRepository.getProfile(userA.id))
+            val bobAuth = dataContainer.authRepository.observeAuthState().first() as AuthState.Authenticated
+            assertEquals("Bob Beta", bobAuth.user.displayName)
+            assertEquals(null, dataContainer.userProfileRepository.getProfile(bobAuth.user.id))
+        }
+    }
+
+    @Test
+    fun sameDestinationInTwoTabs_hasIndependentViewModels_andPopClearsOnlyPopped() {
+        lateinit var navigator: PulseNavigator
+        composeRule.setContent {
+            com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme {
+                val navState = rememberPulseNavigationState(
+                    initialFlow = AppEntryFlow.MAIN,
+                    initialTab = PulseTab.HOME,
+                )
+                navigator = remember(navState) { PulseNavigator(navState) }
+                PulseNavDisplay(
+                    navigationState = navState,
+                    navigator = navigator,
+                    isDebugEntryEnabled = true,
+                    dataContainer = dataContainer,
+                )
+            }
+        }
+
+        // Push WorkoutDetails("plan_sample_1") on HOME tab
+        composeRule.runOnIdle { navigator.navigate(WorkoutDetails("plan_sample_1")) }
+        composeRule.onNodeWithText("Route: WorkoutDetails").assertIsDisplayed()
+        composeRule.onNodeWithText("Increment Local State").performClick()
+        composeRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
+
+        // Switch to WORKOUTS tab and push same WorkoutDetails("plan_sample_1")
+        composeRule.runOnIdle { navigator.selectTab(PulseTab.WORKOUTS) }
+        composeRule.runOnIdle { navigator.navigate(WorkoutDetails("plan_sample_1")) }
+        composeRule.onNodeWithText("Route: WorkoutDetails").assertIsDisplayed()
+        composeRule.onNodeWithText("Saved State Counter: 0").assertIsDisplayed()
+
+        // Pop WORKOUTS's WorkoutDetails, then switch back to HOME -> HOME's WorkoutDetails state is intact
+        composeRule.runOnIdle { navigator.navigateBack() }
+        composeRule.onNodeWithText("Route: WorkoutsTab").assertIsDisplayed()
+        composeRule.runOnIdle { navigator.selectTab(PulseTab.HOME) }
+        composeRule.onNodeWithText("Route: WorkoutDetails").assertIsDisplayed()
+        composeRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
     }
 }
