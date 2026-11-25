@@ -4,6 +4,9 @@ import androidx.compose.runtime.Stable
 import androidx.navigation3.runtime.NavKey
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTab
 import com.ayasheta.pulsesmartgym.navigation.route.AuthEntry
+import com.ayasheta.pulsesmartgym.navigation.route.CreateWorkoutPlan
+import com.ayasheta.pulsesmartgym.navigation.route.EditWorkoutPlan
+import com.ayasheta.pulsesmartgym.navigation.route.ExercisePicker
 import com.ayasheta.pulsesmartgym.navigation.route.WorkoutDetails
 import com.ayasheta.pulsesmartgym.navigation.route.WorkoutSession
 import com.ayasheta.pulsesmartgym.navigation.route.toRootRoute
@@ -91,6 +94,33 @@ class PulseNavigator(
 
     fun openWorkoutDetails(planId: String) {
         navigate(WorkoutDetails(planId = planId))
+    }
+
+    fun replaceTopWithWorkoutDetails(planId: String) {
+        val stack = state.activeBackStack
+        if (stack.size > 1 && stack.lastOrNull() is CreateWorkoutPlan) {
+            stack.removeAt(stack.lastIndex)
+        }
+        val target = WorkoutDetails(planId = planId)
+        if (stack.lastOrNull() != target) {
+            stack.add(target)
+        }
+    }
+
+    fun popWorkoutPlanFlowAfterDelete(deletedPlanId: String) {
+        state.tabBackStacks.values.forEach { stack ->
+            while (stack.size > 1) {
+                val top = stack.lastOrNull()
+                val belongsToDeletedPlan = (top is EditWorkoutPlan && top.planId == deletedPlanId) ||
+                    (top is WorkoutDetails && top.planId == deletedPlanId) ||
+                    (top is ExercisePicker && top.planId == deletedPlanId)
+                if (belongsToDeletedPlan) {
+                    stack.removeAt(stack.lastIndex)
+                } else {
+                    break
+                }
+            }
+        }
     }
 
     fun startWorkoutSession(planId: String, sessionId: String? = null) {

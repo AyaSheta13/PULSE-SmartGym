@@ -66,6 +66,10 @@ sealed interface RecordSetResult {
 }
 
 object PulseValidators {
+    const val MAX_SETS_PER_EXERCISE = 30
+    const val MAX_TARGET_REPS = 100
+    const val MAX_REST_SECONDS = 600
+
     fun validateOwnerId(ownerId: String): String? =
         if (ownerId.isBlank()) "Owner ID cannot be blank" else null
 
@@ -75,8 +79,24 @@ object PulseValidators {
     fun validateSetIndex(setIndex: Int): String? =
         if (setIndex <= 0) "Set index must be >= 1 (1-based policy), got $setIndex" else null
 
-    fun validateTargetReps(targetReps: Int): String? =
-        if (targetReps <= 0) "Target repetitions must be > 0, got $targetReps" else null
+    fun validateTargetReps(targetReps: Int): String? = when {
+        targetReps <= 0 -> "Target repetitions must be > 0, got $targetReps"
+        targetReps > MAX_TARGET_REPS -> "Target repetitions cannot exceed $MAX_TARGET_REPS, got $targetReps"
+        else -> null
+    }
+
+    fun validateRestSeconds(restSeconds: Int?): String? = when {
+        restSeconds == null -> null
+        restSeconds < 0 -> "Rest duration cannot be negative: $restSeconds"
+        restSeconds > MAX_REST_SECONDS -> "Rest duration cannot exceed ${MAX_REST_SECONDS}s, got $restSeconds"
+        else -> null
+    }
+
+    fun validateSetCount(setCount: Int): String? = when {
+        setCount <= 0 -> "Each exercise must include at least 1 planned set"
+        setCount > MAX_SETS_PER_EXERCISE -> "Planned sets cannot exceed $MAX_SETS_PER_EXERCISE per exercise, got $setCount"
+        else -> null
+    }
 
     fun validatePerformedReps(fullReps: Int, partialReps: Int): String? = when {
         fullReps < 0 -> "Full repetitions cannot be negative: $fullReps"

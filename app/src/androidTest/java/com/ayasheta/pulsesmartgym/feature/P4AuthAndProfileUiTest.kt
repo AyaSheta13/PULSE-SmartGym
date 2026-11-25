@@ -348,23 +348,24 @@ class P4AuthAndProfileUiTest {
             }
         }
 
-        // Push WorkoutDetails("plan_sample_1") on HOME tab
-        composeRule.runOnIdle { navigator.navigate(WorkoutDetails("plan_sample_1")) }
-        composeRule.onNodeWithText("Route: WorkoutDetails").assertIsDisplayed()
+        // Push SessionDetails("session_sample_1") on PROGRESS tab
+        composeRule.runOnIdle { navigator.selectTab(PulseTab.PROGRESS) }
+        composeRule.runOnIdle { navigator.navigate(com.ayasheta.pulsesmartgym.navigation.route.SessionDetails("session_sample_1")) }
+        composeRule.onNodeWithText("Route: SessionDetails").assertIsDisplayed()
         composeRule.onNodeWithText("Increment Local State").performClick()
         composeRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
 
-        // Switch to WORKOUTS tab and push same WorkoutDetails("plan_sample_1")
-        composeRule.runOnIdle { navigator.selectTab(PulseTab.WORKOUTS) }
-        composeRule.runOnIdle { navigator.navigate(WorkoutDetails("plan_sample_1")) }
-        composeRule.onNodeWithText("Route: WorkoutDetails").assertIsDisplayed()
+        // Switch to HISTORY tab and push same SessionDetails("session_sample_1")
+        composeRule.runOnIdle { navigator.selectTab(PulseTab.HISTORY) }
+        composeRule.runOnIdle { navigator.navigate(com.ayasheta.pulsesmartgym.navigation.route.SessionDetails("session_sample_1")) }
+        composeRule.onNodeWithText("Route: SessionDetails").assertIsDisplayed()
         composeRule.onNodeWithText("Saved State Counter: 0").assertIsDisplayed()
 
-        // Pop WORKOUTS's WorkoutDetails, then switch back to HOME -> HOME's WorkoutDetails state is intact
+        // Pop HISTORY's SessionDetails, then switch back to PROGRESS -> PROGRESS's SessionDetails state is intact
         composeRule.runOnIdle { navigator.navigateBack() }
-        composeRule.onNodeWithText("Route: WorkoutsTab").assertIsDisplayed()
-        composeRule.runOnIdle { navigator.selectTab(PulseTab.HOME) }
-        composeRule.onNodeWithText("Route: WorkoutDetails").assertIsDisplayed()
+        composeRule.onNodeWithText("Route: HistoryTab").assertIsDisplayed()
+        composeRule.runOnIdle { navigator.selectTab(PulseTab.PROGRESS) }
+        composeRule.onNodeWithText("Route: SessionDetails").assertIsDisplayed()
         composeRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
     }
 

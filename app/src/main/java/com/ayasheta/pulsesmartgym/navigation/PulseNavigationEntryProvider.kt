@@ -40,6 +40,15 @@ import com.ayasheta.pulsesmartgym.feature.profilesetup.personalinfo.PersonalInfo
 import com.ayasheta.pulsesmartgym.feature.splash.SplashDestination
 import com.ayasheta.pulsesmartgym.feature.splash.SplashScreen
 import com.ayasheta.pulsesmartgym.feature.splash.SplashViewModel
+import com.ayasheta.pulsesmartgym.feature.workout.details.WorkoutDetailsScreen
+import com.ayasheta.pulsesmartgym.feature.workout.details.WorkoutDetailsViewModel
+import com.ayasheta.pulsesmartgym.feature.workout.editor.WorkoutPlanEditorScreen
+import com.ayasheta.pulsesmartgym.feature.workout.editor.WorkoutPlanEditorViewModel
+import com.ayasheta.pulsesmartgym.feature.workout.editor.WorkoutPlanSelectionBridge
+import com.ayasheta.pulsesmartgym.feature.workout.list.MyWorkoutsScreen
+import com.ayasheta.pulsesmartgym.feature.workout.list.MyWorkoutsViewModel
+import com.ayasheta.pulsesmartgym.feature.workout.picker.ExercisePickerScreen
+import com.ayasheta.pulsesmartgym.feature.workout.picker.ExercisePickerViewModel
 import kotlinx.coroutines.launch
 import com.ayasheta.pulsesmartgym.navigation.route.AuthEntry
 import com.ayasheta.pulsesmartgym.navigation.route.CreateWorkoutPlan
@@ -89,6 +98,12 @@ fun rememberPulseEntryProvider(
         ProfileSetupDraftFlowViewModel(createSavedStateHandle())
     }
     val profileDraftHolder = profileDraftViewModel.draftHolder
+    val workoutSelectionBridge: WorkoutPlanSelectionBridge = viewModel(
+        viewModelStoreOwner = authFlowViewModelStoreOwner,
+        key = "workout_plan_selection_bridge",
+    ) {
+        WorkoutPlanSelectionBridge()
+    }
     val coroutineScope = rememberCoroutineScope()
 
     return entryProvider {
@@ -244,23 +259,17 @@ fun rememberPulseEntryProvider(
     }
 
     entry<WorkoutsTab> {
-        NavigationPlaceholderScreen(
-            title = "My Workouts",
-            routeLabel = "WorkoutsTab",
-            topBarStyle = PulseTopAppBarStyle.RootNavigationHeader(
-                overline = "CHOOSE YOUR NEXT SESSION",
-                title = "My Workouts",
-                actionLabel = "+ New Plan",
-                onActionClick = { navigator.navigate(CreateWorkoutPlan) },
-            ),
-            actions = listOf(
-                NavigationDemoAction("Open Workout Details", isPrimary = true) {
-                    navigator.openWorkoutDetails(planId = "plan_sample_1")
-                },
-                NavigationDemoAction("Create Workout Plan") {
-                    navigator.navigate(CreateWorkoutPlan)
-                },
-            ),
+        val viewModel: MyWorkoutsViewModel = viewModel {
+            MyWorkoutsViewModel(
+                authRepository = dataContainer.authRepository,
+                workoutPlanRepository = dataContainer.workoutPlanRepository,
+                exerciseRepository = dataContainer.exerciseRepository,
+            )
+        }
+        MyWorkoutsScreen(
+            viewModel = viewModel,
+            onNewPlanClick = { navigator.navigate(CreateWorkoutPlan) },
+            onPlanClick = { planId -> navigator.openWorkoutDetails(planId = planId) },
         )
     }
 
@@ -304,71 +313,81 @@ fun rememberPulseEntryProvider(
         )
     }
 
-    // --- Workout Planning ---
+    // --- Workout Planning (P6) ---
     entry<WorkoutDetails> { key ->
-        NavigationPlaceholderScreen(
-            title = "Workout Details",
-            routeLabel = "WorkoutDetails",
-            topBarStyle = PulseTopAppBarStyle.BackWithTitleAndAction(
-                title = "Workout Details",
-                actionLabel = "Edit",
-                onBackClick = { navigator.navigateBack() },
-                onActionClick = { navigator.navigate(EditWorkoutPlan(key.planId)) },
-            ),
-            routeArguments = listOf("planId" to key.planId),
-            actions = listOf(
-                NavigationDemoAction("Start Workout Session", isPrimary = true) {
-                    navigator.startWorkoutSession(planId = key.planId, sessionId = "session_sample_1")
-                },
-                NavigationDemoAction("Edit Workout Plan") {
-                    navigator.navigate(EditWorkoutPlan(key.planId))
-                },
-            ),
+        val viewModel: WorkoutDetailsViewModel = viewModel {
+            WorkoutDetailsViewModel(
+                savedStateHandle = createSavedStateHandle(),
+                planId = key.planId,
+                authRepository = dataContainer.authRepository,
+                workoutPlanRepository = dataContainer.workoutPlanRepository,
+                exerciseRepository = dataContainer.exerciseRepository,
+                userPreferencesRepository = dataContainer.userPreferencesRepository,
+            )
+        }
+        WorkoutDetailsScreen(
+            viewModel = viewModel,
             onBackClick = { navigator.navigateBack() },
+            onEditPlanClick = { planId -> navigator.navigate(EditWorkoutPlan(planId)) },
         )
     }
 
     entry<CreateWorkoutPlan> {
-        NavigationPlaceholderScreen(
-            title = "Create Workout Plan",
-            routeLabel = "CreateWorkoutPlan",
-            topBarStyle = PulseTopAppBarStyle.BackWithTitle("New Plan", onBackClick = { navigator.navigateBack() }),
-            actions = listOf(
-                NavigationDemoAction("Add Exercises (Picker)", isPrimary = true) {
-                    navigator.navigate(ExercisePicker(planId = null))
-                },
-            ),
-            onBackClick = { navigator.navigateBack() },
+        val viewModel: WorkoutPlanEditorViewModel = viewModel {
+            WorkoutPlanEditorViewModel(
+                planId = null,
+                authRepository = dataContainer.authRepository,
+                workoutPlanRepository = dataContainer.workoutPlanRepository,
+                exerciseRepository = dataContainer.exerciseRepository,
+                userPreferencesRepository = dataContainer.userPreferencesRepository,
+                selectionBridge = workoutSelectionBridge,
+            )
+        }
+        WorkoutPlanEditorScreen(
+            viewModel = viewModel,
+            onOpenExercisePicker = { planId -> navigator.navigate(ExercisePicker(planId = planId)) },
+            onPlanCreated = { createdPlanId -> navigator.replaceTopWithWorkoutDetails(createdPlanId) },
+            onPlanUpdated = { navigator.navigateBack() },
+            onPlanDeleted = { navigator.navigateBack() },
+            onNavigateBack = { navigator.navigateBack() },
         )
     }
 
     entry<EditWorkoutPlan> { key ->
-        NavigationPlaceholderScreen(
-            title = "Edit Workout Plan",
-            routeLabel = "EditWorkoutPlan",
-            topBarStyle = PulseTopAppBarStyle.BackWithTitleAndDelete(
-                title = "Edit Workout Plan",
-                onBackClick = { navigator.navigateBack() },
-                onDeleteClick = { navigator.navigateBack() },
-            ),
-            routeArguments = listOf("planId" to key.planId),
-            actions = listOf(
-                NavigationDemoAction("Open Exercise Picker", isPrimary = true) {
-                    navigator.navigate(ExercisePicker(planId = key.planId))
-                },
-            ),
-            onBackClick = { navigator.navigateBack() },
-            supportsDialogDemo = true,
+        val viewModel: WorkoutPlanEditorViewModel = viewModel {
+            WorkoutPlanEditorViewModel(
+                planId = key.planId,
+                authRepository = dataContainer.authRepository,
+                workoutPlanRepository = dataContainer.workoutPlanRepository,
+                exerciseRepository = dataContainer.exerciseRepository,
+                userPreferencesRepository = dataContainer.userPreferencesRepository,
+                selectionBridge = workoutSelectionBridge,
+            )
+        }
+        WorkoutPlanEditorScreen(
+            viewModel = viewModel,
+            onOpenExercisePicker = { planId -> navigator.navigate(ExercisePicker(planId = planId)) },
+            onPlanCreated = { navigator.navigateBack() },
+            onPlanUpdated = { navigator.navigateBack() },
+            onPlanDeleted = { navigator.popWorkoutPlanFlowAfterDelete(key.planId) },
+            onNavigateBack = { navigator.navigateBack() },
         )
     }
 
     entry<ExercisePicker> { key ->
-        NavigationPlaceholderScreen(
-            title = "Exercise Picker",
-            routeLabel = "ExercisePicker",
-            topBarStyle = PulseTopAppBarStyle.BackWithTitle("Select Exercises", onBackClick = { navigator.navigateBack() }),
-            routeArguments = listOf("planId" to (key.planId ?: "new")),
+        val viewModel: ExercisePickerViewModel = viewModel {
+            ExercisePickerViewModel(
+                savedStateHandle = createSavedStateHandle(),
+                routePlanId = key.planId,
+                authRepository = dataContainer.authRepository,
+                exerciseRepository = dataContainer.exerciseRepository,
+                selectionBridge = workoutSelectionBridge,
+            )
+        }
+        ExercisePickerScreen(
+            viewModel = viewModel,
             onBackClick = { navigator.navigateBack() },
+            onSelectionConfirmed = { navigator.navigateBack() },
         )
     }
 

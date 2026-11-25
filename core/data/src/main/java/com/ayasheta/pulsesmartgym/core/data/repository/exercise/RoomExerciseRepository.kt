@@ -20,11 +20,15 @@ class RoomExerciseRepository(
 ) : ExerciseRepository {
 
     private val seedMutex = Mutex()
+    @Volatile
+    private var hasSeeded = false
 
     private suspend fun ensureSeeded() {
+        if (hasSeeded) return
         seedMutex.withLock {
-            if (exerciseDao.count() == 0) {
+            if (!hasSeeded) {
                 exerciseDao.insertAllIgnore(ExerciseCatalogSeed.defaultExercises)
+                hasSeeded = true
             }
         }
     }

@@ -96,7 +96,8 @@ class P5HomeAndProfileUiTest {
 
         // Home -> Workouts via See all
         composeRule.onNodeWithText("See all ›").performClick()
-        composeRule.onNodeWithText("Route: WorkoutsTab").assertIsDisplayed()
+        composeRule.onNodeWithText("My Workouts").assertIsDisplayed()
+        composeRule.onNodeWithText("Upper Body Power").assertIsDisplayed()
 
         // Home -> Progress via View Training Progress & PRs
         composeRule.onNodeWithText(PulseTab.HOME.label).performClick()

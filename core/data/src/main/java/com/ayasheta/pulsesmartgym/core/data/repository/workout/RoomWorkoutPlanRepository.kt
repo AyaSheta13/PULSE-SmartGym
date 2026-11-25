@@ -109,9 +109,22 @@ class RoomWorkoutPlanRepository(
         PulseValidators.validatePlanName(draft.name)?.let {
             return DataError.ValidationError(it)
         }
+        if (draft.exercises.isEmpty()) {
+            return DataError.ValidationError("Add at least one exercise to the workout plan")
+        }
+        val seenOrderIndices = mutableSetOf<Int>()
         for (exercise in draft.exercises) {
+            if (exercise.exerciseId.isBlank()) {
+                return DataError.ValidationError("Exercise ID cannot be blank")
+            }
+            if (exercise.orderIndex < 0 || !seenOrderIndices.add(exercise.orderIndex)) {
+                return DataError.ValidationError("Invalid or duplicate exercise orderIndex ${exercise.orderIndex}")
+            }
             if (exerciseDao.getById(exercise.exerciseId) == null) {
                 return DataError.ValidationError("Unknown exerciseId '${exercise.exerciseId}'")
+            }
+            PulseValidators.validateSetCount(exercise.plannedSets.size)?.let {
+                return DataError.ValidationError(it)
             }
             val seenIndices = mutableSetOf<Int>()
             for (set in exercise.plannedSets) {
@@ -119,6 +132,9 @@ class RoomWorkoutPlanRepository(
                     return DataError.ValidationError(it)
                 }
                 PulseValidators.validateTargetReps(set.targetReps)?.let {
+                    return DataError.ValidationError(it)
+                }
+                PulseValidators.validateRestSeconds(set.targetRestSeconds)?.let {
                     return DataError.ValidationError(it)
                 }
                 if (!seenIndices.add(set.setIndex)) {
