@@ -1,5 +1,6 @@
 package com.ayasheta.pulsesmartgym.core.data.repository.workout
 
+import com.ayasheta.pulsesmartgym.core.data.local.database.PulseTransactionRunner
 import com.ayasheta.pulsesmartgym.core.data.local.database.dao.ExerciseDao
 import com.ayasheta.pulsesmartgym.core.data.local.database.dao.WorkoutPlanDao
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.PlanExerciseEntity
@@ -19,63 +20,88 @@ import java.util.UUID
 class RoomWorkoutPlanRepository(
     private val workoutPlanDao: WorkoutPlanDao,
     private val exerciseDao: ExerciseDao,
+    private val transactionRunner: PulseTransactionRunner,
     private val clockMs: () -> Long = { System.currentTimeMillis() },
 ) : WorkoutPlanRepository {
 
-    override fun observePlans(): Flow<List<WorkoutPlan>> =
-        workoutPlanDao.observeAllPlans().map { list -> list.map { it.toDomain() } }
+    override fun observePlans(ownerId: String): Flow<List<WorkoutPlan>> =
+        workoutPlanDao.observeAllPlans(ownerId).map { list -> list.map { it.toDomain() } }
 
-    override fun observePlan(planId: String): Flow<WorkoutPlan?> =
-        workoutPlanDao.observePlan(planId).map { it?.toDomain() }
+    override fun observePlan(ownerId: String, planId: String): Flow<WorkoutPlan?> =
+        workoutPlanDao.observePlan(ownerId, planId).map { it?.toDomain() }
 
-    override suspend fun getPlan(planId: String): WorkoutPlan? =
-        workoutPlanDao.getPlan(planId)?.toDomain()
+    override suspend fun getPlan(ownerId: String, planId: String): WorkoutPlan? =
+        workoutPlanDao.getPlan(ownerId, planId)?.toDomain()
 
-    override suspend fun createPlan(draft: WorkoutPlanDraft): DomainResult<WorkoutPlan> {
-        validateDraft(draft)?.let { return DomainResult.Failure(it) }
+    override suspend fun createPlan(ownerId: String, draft: WorkoutPlanDraft): DomainResult<WorkoutPlan> {
+        PulseValidators.validateOwnerId(ownerId)?.let {
+            return DomainResult.Failure(DataError.ValidationError(it))
+        }
+        return transactionRunner.runInTransaction {
+            validateDraft(draft)?.let { return@runInTransaction DomainResult.Failure(it) }
 
-        val now = clockMs()
-        val planId = UUID.randomUUID().toString()
-        val planEntity = WorkoutPlanEntity(
-            id = planId,
-            ownerProfileId = draft.ownerProfileId,
-            name = draft.name.trim(),
-            description = draft.description?.trim(),
-            createdAtEpochMs = now,
-            updatedAtEpochMs = now,
-        )
-        val (exerciseEntities, setEntities) = buildChildEntities(planId, draft)
-        workoutPlanDao.createPlanGraph(planEntity, exerciseEntities, setEntities)
+            val now = clockMs()
+            val planId = UUID.randomUUID().toString()
+            val planEntity = WorkoutPlanEntity(
+                id = planId,
+                ownerProfileId = ownerId,
+                name = draft.name.trim(),
+                description = draft.description?.trim(),
+                createdAtEpochMs = now,
+                updatedAtEpochMs = now,
+            )
+            val (exerciseEntities, setEntities) = buildChildEntities(planId, draft)
+            workoutPlanDao.insertPlan(planEntity)
+            if (exerciseEntities.isNotEmpty()) workoutPlanDao.insertPlanExercises(exerciseEntities)
+            if (setEntities.isNotEmpty()) workoutPlanDao.insertPlannedSets(setEntities)
 
-        val created = workoutPlanDao.getPlan(planId)?.toDomain()
-            ?: return DomainResult.Failure(DataError.StorageError("Failed to read created workout plan"))
-        return DomainResult.Success(created)
+            val created = workoutPlanDao.getPlan(ownerId, planId)?.toDomain()
+                ?: return@runInTransaction DomainResult.Failure(DataError.StorageError("Failed to read created workout plan"))
+            DomainResult.Success(created)
+        }
     }
 
-    override suspend fun updatePlan(planId: String, draft: WorkoutPlanDraft): DomainResult<WorkoutPlan> {
-        val existing = workoutPlanDao.getPlan(planId)
-            ?: return DomainResult.Failure(DataError.NotFound("Workout plan '$planId' not found"))
-        validateDraft(draft)?.let { return DomainResult.Failure(it) }
+    override suspend fun updatePlan(
+        ownerId: String,
+        planId: String,
+        draft: WorkoutPlanDraft,
+    ): DomainResult<WorkoutPlan> {
+        PulseValidators.validateOwnerId(ownerId)?.let {
+            return DomainResult.Failure(DataError.ValidationError(it))
+        }
+        return transactionRunner.runInTransaction {
+            val existing = workoutPlanDao.getPlan(ownerId, planId)
+                ?: return@runInTransaction DomainResult.Failure(DataError.NotFound("Workout plan '$planId' not found"))
+            validateDraft(draft)?.let { return@runInTransaction DomainResult.Failure(it) }
 
-        val updatedEntity = existing.plan.copy(
-            name = draft.name.trim(),
-            description = draft.description?.trim(),
-            updatedAtEpochMs = clockMs(),
-        )
-        val (exerciseEntities, setEntities) = buildChildEntities(planId, draft)
-        workoutPlanDao.replacePlanGraph(updatedEntity, exerciseEntities, setEntities)
+            val updatedEntity = existing.plan.copy(
+                name = draft.name.trim(),
+                description = draft.description?.trim(),
+                updatedAtEpochMs = clockMs(),
+            )
+            val (exerciseEntities, setEntities) = buildChildEntities(planId, draft)
+            workoutPlanDao.updatePlan(updatedEntity)
+            workoutPlanDao.deletePlanExercisesByPlanId(planId)
+            if (exerciseEntities.isNotEmpty()) workoutPlanDao.insertPlanExercises(exerciseEntities)
+            if (setEntities.isNotEmpty()) workoutPlanDao.insertPlannedSets(setEntities)
 
-        val updated = workoutPlanDao.getPlan(planId)?.toDomain()
-            ?: return DomainResult.Failure(DataError.StorageError("Failed to read updated workout plan"))
-        return DomainResult.Success(updated)
+            val updated = workoutPlanDao.getPlan(ownerId, planId)?.toDomain()
+                ?: return@runInTransaction DomainResult.Failure(DataError.StorageError("Failed to read updated workout plan"))
+            DomainResult.Success(updated)
+        }
     }
 
-    override suspend fun deletePlan(planId: String): DomainResult<Unit> {
-        val deletedRows = workoutPlanDao.deletePlanById(planId)
-        return if (deletedRows > 0) {
-            DomainResult.Success(Unit)
-        } else {
-            DomainResult.Failure(DataError.NotFound("Workout plan '$planId' not found"))
+    override suspend fun deletePlan(ownerId: String, planId: String): DomainResult<Unit> {
+        PulseValidators.validateOwnerId(ownerId)?.let {
+            return DomainResult.Failure(DataError.ValidationError(it))
+        }
+        return transactionRunner.runInTransaction {
+            val deletedRows = workoutPlanDao.deletePlanById(ownerId, planId)
+            if (deletedRows > 0) {
+                DomainResult.Success(Unit)
+            } else {
+                DomainResult.Failure(DataError.NotFound("Workout plan '$planId' not found"))
+            }
         }
     }
 

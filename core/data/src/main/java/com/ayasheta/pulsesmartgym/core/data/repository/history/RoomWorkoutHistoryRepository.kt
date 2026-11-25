@@ -15,18 +15,21 @@ class RoomWorkoutHistoryRepository(
     private val sessionDao: WorkoutSessionDao,
 ) : WorkoutHistoryRepository {
 
-    override fun observeHistory(statusFilter: SessionStatus?): Flow<List<SessionSummary>> =
-        sessionDao.observeHistory(statusFilter).map { sessions ->
+    override fun observeHistory(
+        ownerId: String,
+        statusFilter: SessionStatus?,
+    ): Flow<List<SessionSummary>> =
+        sessionDao.observeHistory(ownerId, statusFilter).map { sessions ->
             sessions.map { relation ->
                 WorkoutAnalytics.summarizeSession(relation.toDomain())
             }
         }
 
-    override fun observeAggregateMetrics(): Flow<HistoryAggregateMetrics> =
-        observeHistory(statusFilter = null).map { summaries ->
+    override fun observeAggregateMetrics(ownerId: String): Flow<HistoryAggregateMetrics> =
+        observeHistory(ownerId = ownerId, statusFilter = null).map { summaries ->
             WorkoutAnalytics.aggregateSummaries(summaries)
         }
 
-    override suspend fun getSessionDetails(sessionId: String): WorkoutSession? =
-        sessionDao.getSession(sessionId)?.toDomain()
+    override suspend fun getSessionDetails(ownerId: String, sessionId: String): WorkoutSession? =
+        sessionDao.getSession(ownerId, sessionId)?.toDomain()
 }

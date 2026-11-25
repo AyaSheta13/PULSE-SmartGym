@@ -43,7 +43,8 @@ erDiagram
 ## 3. Data Integrity & Unit Policies
 
 - **Duplicate Set Protection:** `performed_sets` enforces a unique SQLite index on `(sessionId, sessionExerciseId, setIndex)`. `WorkoutSessionDao.insertPerformedSetIgnore` uses `OnConflictStrategy.IGNORE` and returns `-1L` on conflict, mapped to `RecordSetResult.AlreadyRecorded`. `OnConflictStrategy.REPLACE` is never used for performed sets.
-- **Explicit Corrections:** `correctPerformedSet` uses `@Update` + `replacePerformedSetCorrection` on the existing row rather than disguised inserts.
+- **Owner Isolation & Conditional Status Updates:** All `WorkoutPlanDao` and `WorkoutSessionDao` queries and mutations filter by `ownerProfileId = :ownerId`. Terminal transitions use `updateSessionStatusIfActive` (`WHERE id = :sessionId AND ownerProfileId = :ownerId AND status = 'ACTIVE'`), ensuring sets cannot be recorded after a session becomes terminal and concurrent terminal transitions cannot overwrite each other.
+- **Explicit Corrections:** `correctPerformedSet` uses `@Update` + `replace` of rep records on the existing row inside a single transaction rather than disguised inserts.
 - **1-Based `setIndex`:** All planned and performed sets use 1-based `setIndex` (`>= 1`), validated by `PulseValidators`.
 - **Canonical Units:**
   - Load is stored as `Long` grams (`actualLoadGrams`, `targetLoadGrams`); `null` represents unknown/bodyweight load and is never converted to `0`.

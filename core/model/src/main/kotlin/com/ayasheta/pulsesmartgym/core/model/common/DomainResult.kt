@@ -57,6 +57,9 @@ sealed interface RecordSetResult {
 }
 
 object PulseValidators {
+    fun validateOwnerId(ownerId: String): String? =
+        if (ownerId.isBlank()) "Owner ID cannot be blank" else null
+
     fun validatePlanName(name: String): String? =
         if (name.isBlank()) "Workout plan name cannot be empty" else null
 

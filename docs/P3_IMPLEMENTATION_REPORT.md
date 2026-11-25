@@ -47,11 +47,11 @@
 
 ---
 
-## 5. Transactional Workflows, Duplicate Protection & Snapshots
+## 5. Transactional Workflows, Duplicate Protection & Owner Isolation
 
-- **Create/Update Plan:** Atomic `@Transaction` (`createPlanGraph`, `replacePlanGraph`) with domain validation.
-- **Start Session:** Atomic `@Transaction` (`startSessionGraph`) snapshotting plan name, exercise metadata, and planned sets.
-- **Duplicate Set Prevention:** Unique SQLite index on `(sessionId, sessionExerciseId, setIndex)` in `performed_sets` + `OnConflictStrategy.IGNORE` returning `-1L` → `RecordSetResult.AlreadyRecorded`. Explicit corrections use `correctPerformedSet`.
+- **Atomic `withTransaction` Workflows (`RoomTransactionRunner`):** `createPlan`, `updatePlan`, `deletePlan`, `startSessionFromPlan`, `recordPerformedSet`, `correctPerformedSet`, `completeSession`, and `endSessionEarly` execute validation + reads + writes inside a single `RoomDatabase.withTransaction` block.
+- **Owner Isolation:** Every query and mutation in `WorkoutPlanRepository`, `WorkoutSessionRepository`, and `WorkoutHistoryRepository` enforces an explicit `ownerId: String` (`ownerProfileId = :ownerId`), preventing cross-owner reads or mutations.
+- **Duplicate Set Prevention:** Unique SQLite index on `(sessionId, sessionExerciseId, setIndex)` in `performed_sets` + `OnConflictStrategy.IGNORE` returning `-1L` → `RecordSetResult.AlreadyRecorded`. Terminal status transitions use `updateSessionStatusIfActive`.
 - **Immutable History:** `workout_sessions.sourcePlanId` uses `ForeignKey.SET_NULL`; `session_exercises.sourceExerciseId` uses `ForeignKey.SET_NULL`. Editing or deleting a source plan preserves all completed/partial session history.
 
 ---
@@ -60,16 +60,16 @@
 
 - **Unit & Build:**
   ```powershell
-  .\gradlew.bat :core:model:build :core:data:assembleDebug :core:data:testDebugUnitTest :core:designsystem:assembleDebug :app:assembleDebug :app:testDebugUnitTest --no-daemon
+  .\gradlew.bat :core:model:build :core:data:testDebugUnitTest :core:designsystem:testDebugUnitTest :app:testDebugUnitTest --no-daemon
   ```
-  - **Result:** `BUILD SUCCESSFUL in 3m 9s` (all unit tests in `:core:model`, `:core:data`, and `:app` passed).
+  - **Result:** `BUILD SUCCESSFUL` — all unit tests in `:core:model` (3 tests), `:core:data` (2 tests), `:core:designsystem` (4 tests), and `:app` (11 tests) **PASSED**.
 - **Instrumentation Tests (`Medium_Phone_API_36.0(AVD) - 16`):**
   ```powershell
   .\gradlew.bat :core:data:connectedDebugAndroidTest :app:connectedDebugAndroidTest --no-daemon
   ```
-  - **Result:** `BUILD SUCCESSFUL in 2m 16s`
-  - `:app:connectedDebugAndroidTest`: **6/6 PASSED** (0 failed, 0 skipped)
-  - `:core:data:connectedDebugAndroidTest` (`PulseRoomIntegrationTest`): **7/7 PASSED** (0 failed, 0 skipped)
+  - **Result:** `BUILD SUCCESSFUL in 1m 46s`
+  - `:core:data:connectedDebugAndroidTest` (`PulseRoomIntegrationTest`): **12/12 PASSED** (0 failed, 0 skipped — including `Dispatchers.IO` concurrency races, genuine multi-write rollback, owner isolation, plan deletion history preservation, file-backed restart, and DataStore).
+  - `:app:connectedDebugAndroidTest` (`PulseNavigationUiTest`, `PulseActivityRecreationUiTest`, `ExampleInstrumentedTest`): **6/6 PASSED** (0 failed, 0 skipped).
 
 ---
 

@@ -30,11 +30,14 @@
 
 ---
 
-## 3. Persistence & Preferences Ownership
+## 3. Persistence, Transactions & Owner Isolation
 
 - **Room (`PulseDatabase`):** Relational workout data (exercise catalog, workout plans, session snapshots, performed sets, rep records).
+- **Atomic Transactions (`PulseTransactionRunner` / `RoomTransactionRunner`):** `RoomWorkoutPlanRepository` and `RoomWorkoutSessionRepository` execute multi-step read-validate-write workflows inside `database.withTransaction { ... }`, preventing race conditions between validation and persistence.
+- **Explicit Owner Scoping:** `WorkoutPlanRepository`, `WorkoutSessionRepository`, and `WorkoutHistoryRepository` require an explicit non-blank `ownerId: String` on every query and mutation. `WorkoutPlanDraft` contains no hardcoded default owner.
+- **How P4 Supplies `ownerId`:** P4+ ViewModels observe `AuthRepository.observeAuthState()` and pass `(authState as AuthState.Authenticated).user.id` into repository calls without global mutable state.
 - **Preferences DataStore (`PulsePreferencesDataSource`):** Simple non-sensitive settings only (`preferredWeightUnit`, `onboardingCompleted`, `defaultRestSeconds`). IO exceptions recover safely with `emptyPreferences()`.
-- **Composition Root (`PulseDataContainer` & `PulseApplication`):** Provides a single `PulseDatabase` instance, single `DataStore<Preferences>`, and lazy repository singletons per process without Hilt overhead.
+- **Composition Root (`PulseDataContainer` & `PulseApplication`):** Provides a single `PulseDatabase` instance, single `RoomTransactionRunner`, single `DataStore<Preferences>`, and lazy repository singletons per process without Hilt overhead.
 
 ---
 

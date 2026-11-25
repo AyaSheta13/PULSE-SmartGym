@@ -19,27 +19,38 @@ import kotlinx.coroutines.flow.Flow
 interface WorkoutSessionDao {
 
     @Transaction
-    @Query("SELECT * FROM workout_sessions WHERE status = 'ACTIVE' ORDER BY startedAtEpochMs DESC LIMIT 1")
-    fun observeActiveSession(): Flow<WorkoutSessionWithExercises?>
+    @Query(
+        """
+        SELECT * FROM workout_sessions
+        WHERE ownerProfileId = :ownerId AND status = 'ACTIVE'
+        ORDER BY startedAtEpochMs DESC
+        LIMIT 1
+        """,
+    )
+    fun observeActiveSession(ownerId: String): Flow<WorkoutSessionWithExercises?>
 
     @Transaction
-    @Query("SELECT * FROM workout_sessions WHERE id = :sessionId")
-    fun observeSession(sessionId: String): Flow<WorkoutSessionWithExercises?>
+    @Query("SELECT * FROM workout_sessions WHERE id = :sessionId AND ownerProfileId = :ownerId")
+    fun observeSession(ownerId: String, sessionId: String): Flow<WorkoutSessionWithExercises?>
 
     @Transaction
-    @Query("SELECT * FROM workout_sessions WHERE id = :sessionId")
-    suspend fun getSession(sessionId: String): WorkoutSessionWithExercises?
+    @Query("SELECT * FROM workout_sessions WHERE id = :sessionId AND ownerProfileId = :ownerId")
+    suspend fun getSession(ownerId: String, sessionId: String): WorkoutSessionWithExercises?
 
     @Transaction
     @Query(
         """
         SELECT * FROM workout_sessions
-        WHERE status IN ('COMPLETED', 'PARTIALLY_COMPLETED')
+        WHERE ownerProfileId = :ownerId
+          AND status IN ('COMPLETED', 'PARTIALLY_COMPLETED')
           AND (:statusFilter IS NULL OR status = :statusFilter)
         ORDER BY startedAtEpochMs DESC
         """,
     )
-    fun observeHistory(statusFilter: SessionStatus?): Flow<List<WorkoutSessionWithExercises>>
+    fun observeHistory(
+        ownerId: String,
+        statusFilter: SessionStatus?,
+    ): Flow<List<WorkoutSessionWithExercises>>
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertSession(session: WorkoutSessionEntity)
@@ -77,46 +88,19 @@ interface WorkoutSessionDao {
     @Query("DELETE FROM rep_records WHERE performedSetId = :performedSetId")
     suspend fun deleteRepRecordsForSet(performedSetId: String)
 
-    @Query("UPDATE workout_sessions SET status = :status, endedAtEpochMs = :endedAtEpochMs WHERE id = :sessionId")
-    suspend fun updateSessionStatus(
+    @Query(
+        """
+        UPDATE workout_sessions
+        SET status = :status, endedAtEpochMs = :endedAtEpochMs
+        WHERE id = :sessionId
+          AND ownerProfileId = :ownerId
+          AND status = 'ACTIVE'
+        """,
+    )
+    suspend fun updateSessionStatusIfActive(
+        ownerId: String,
         sessionId: String,
         status: SessionStatus,
         endedAtEpochMs: Long,
-    )
-
-    @Transaction
-    suspend fun startSessionGraph(
-        session: WorkoutSessionEntity,
-        exercises: List<SessionExerciseEntity>,
-        plannedSets: List<SessionPlannedSetEntity>,
-    ) {
-        insertSession(session)
-        if (exercises.isNotEmpty()) insertSessionExercises(exercises)
-        if (plannedSets.isNotEmpty()) insertSessionPlannedSets(plannedSets)
-    }
-
-    @Transaction
-    suspend fun insertPerformedSetWithRepsIfAbsent(
-        set: PerformedSetEntity,
-        repRecords: List<RepRecordEntity>,
-    ): Boolean {
-        val rowId = insertPerformedSetIgnore(set)
-        if (rowId == -1L) return false
-        if (repRecords.isNotEmpty()) {
-            insertRepRecords(repRecords)
-        }
-        return true
-    }
-
-    @Transaction
-    suspend fun replacePerformedSetCorrection(
-        updatedSet: PerformedSetEntity,
-        repRecords: List<RepRecordEntity>,
-    ) {
-        updatePerformedSet(updatedSet)
-        deleteRepRecordsForSet(updatedSet.id)
-        if (repRecords.isNotEmpty()) {
-            insertRepRecords(repRecords)
-        }
-    }
+    ): Int
 }

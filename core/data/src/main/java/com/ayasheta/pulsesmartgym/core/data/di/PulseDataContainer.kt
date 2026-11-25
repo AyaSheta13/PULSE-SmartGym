@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import androidx.room.Room
 import com.ayasheta.pulsesmartgym.core.data.local.database.PulseDatabase
+import com.ayasheta.pulsesmartgym.core.data.local.database.PulseTransactionRunner
+import com.ayasheta.pulsesmartgym.core.data.local.database.RoomTransactionRunner
 import com.ayasheta.pulsesmartgym.core.data.local.preferences.PulsePreferencesDataSource
 import com.ayasheta.pulsesmartgym.core.data.local.preferences.pulsePreferencesDataStore
 import com.ayasheta.pulsesmartgym.core.data.repository.auth.FakeAuthRepository
@@ -33,6 +35,10 @@ class PulseDataContainer(
         ).build()
     }
 
+    private val transactionRunner: PulseTransactionRunner by lazy {
+        RoomTransactionRunner(database)
+    }
+
     private val preferencesDataSource: PulsePreferencesDataSource by lazy {
         PulsePreferencesDataSource(appContext.pulsePreferencesDataStore)
     }
@@ -45,6 +51,7 @@ class PulseDataContainer(
         RoomWorkoutPlanRepository(
             workoutPlanDao = database.workoutPlanDao(),
             exerciseDao = database.exerciseDao(),
+            transactionRunner = transactionRunner,
         )
     }
 
@@ -53,6 +60,7 @@ class PulseDataContainer(
             sessionDao = database.workoutSessionDao(),
             planDao = database.workoutPlanDao(),
             exerciseDao = database.exerciseDao(),
+            transactionRunner = transactionRunner,
         )
     }
 

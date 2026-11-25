@@ -47,6 +47,5 @@ data class PlanExerciseDraft(
 data class WorkoutPlanDraft(
     val name: String,
     val description: String? = null,
-    val ownerProfileId: String = "local_default",
     val exercises: List<PlanExerciseDraft>,
 )

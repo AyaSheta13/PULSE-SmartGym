@@ -16,16 +16,16 @@ import kotlinx.coroutines.flow.Flow
 interface WorkoutPlanDao {
 
     @Transaction
-    @Query("SELECT * FROM workout_plans ORDER BY updatedAtEpochMs DESC")
-    fun observeAllPlans(): Flow<List<WorkoutPlanWithExercises>>
+    @Query("SELECT * FROM workout_plans WHERE ownerProfileId = :ownerId ORDER BY updatedAtEpochMs DESC")
+    fun observeAllPlans(ownerId: String): Flow<List<WorkoutPlanWithExercises>>
 
     @Transaction
-    @Query("SELECT * FROM workout_plans WHERE id = :planId")
-    fun observePlan(planId: String): Flow<WorkoutPlanWithExercises?>
+    @Query("SELECT * FROM workout_plans WHERE id = :planId AND ownerProfileId = :ownerId")
+    fun observePlan(ownerId: String, planId: String): Flow<WorkoutPlanWithExercises?>
 
     @Transaction
-    @Query("SELECT * FROM workout_plans WHERE id = :planId")
-    suspend fun getPlan(planId: String): WorkoutPlanWithExercises?
+    @Query("SELECT * FROM workout_plans WHERE id = :planId AND ownerProfileId = :ownerId")
+    suspend fun getPlan(ownerId: String, planId: String): WorkoutPlanWithExercises?
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertPlan(plan: WorkoutPlanEntity)
@@ -42,29 +42,6 @@ interface WorkoutPlanDao {
     @Query("DELETE FROM plan_exercises WHERE planId = :planId")
     suspend fun deletePlanExercisesByPlanId(planId: String)
 
-    @Query("DELETE FROM workout_plans WHERE id = :planId")
-    suspend fun deletePlanById(planId: String): Int
-
-    @Transaction
-    suspend fun createPlanGraph(
-        plan: WorkoutPlanEntity,
-        exercises: List<PlanExerciseEntity>,
-        sets: List<PlannedSetEntity>,
-    ) {
-        insertPlan(plan)
-        if (exercises.isNotEmpty()) insertPlanExercises(exercises)
-        if (sets.isNotEmpty()) insertPlannedSets(sets)
-    }
-
-    @Transaction
-    suspend fun replacePlanGraph(
-        plan: WorkoutPlanEntity,
-        exercises: List<PlanExerciseEntity>,
-        sets: List<PlannedSetEntity>,
-    ) {
-        updatePlan(plan)
-        deletePlanExercisesByPlanId(plan.id)
-        if (exercises.isNotEmpty()) insertPlanExercises(exercises)
-        if (sets.isNotEmpty()) insertPlannedSets(sets)
-    }
+    @Query("DELETE FROM workout_plans WHERE id = :planId AND ownerProfileId = :ownerId")
+    suspend fun deletePlanById(ownerId: String, planId: String): Int
 }
