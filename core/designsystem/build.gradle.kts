@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "net.thechance.tcos.designsystem"
+    namespace = "com.ayasheta.pulsesmartgym.core.designsystem"
     compileSdk {
         version = release(37)
     }
@@ -41,6 +41,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.foundation)
 
+    testImplementation(libs.junit)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

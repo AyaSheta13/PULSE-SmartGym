@@ -4,13 +4,13 @@ plugins {
 }
 
 android {
-    namespace = "com.example.pulse"
+    namespace = "com.ayasheta.pulsesmartgym"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "com.example.pulse"
+        applicationId = "com.ayasheta.pulsesmartgym"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
