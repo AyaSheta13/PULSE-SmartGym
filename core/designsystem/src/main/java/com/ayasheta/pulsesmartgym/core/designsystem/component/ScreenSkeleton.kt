@@ -24,16 +24,23 @@ import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
 @Composable
 fun ScreenSkeleton(
     modifier: Modifier = Modifier,
+    applyStatusBarPadding: Boolean = true,
     topBar: @Composable () -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
     toast: @Composable () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
+    val insetsModifier = if (applyStatusBarPadding) {
+        Modifier.padding(WindowInsets.statusBars.asPaddingValues())
+    } else {
+        Modifier
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(PulseTheme.color.background)
-            .padding(WindowInsets.statusBars.asPaddingValues()),
+            .then(insetsModifier),
     ) {
         Column(Modifier.fillMaxSize()) {
             topBar()

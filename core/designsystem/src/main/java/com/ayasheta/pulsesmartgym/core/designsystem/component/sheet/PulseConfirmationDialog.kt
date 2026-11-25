@@ -20,9 +20,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.dialog
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.ayasheta.pulsesmartgym.core.designsystem.component.button.CompactButton
 import com.ayasheta.pulsesmartgym.core.designsystem.component.button.NegativeButton
 import com.ayasheta.pulsesmartgym.core.designsystem.component.button.OutlineButton
@@ -39,72 +43,86 @@ fun PulseConfirmationDialog(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     isDestructive: Boolean = false,
+    dismissOnBackPress: Boolean = true,
+    dismissOnClickOutside: Boolean = true,
 ) {
     if (!visible) return
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.5f))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onDismiss,
-            )
-            .padding(PulseTheme.space.huge),
-        contentAlignment = Alignment.Center,
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+            dismissOnBackPress = dismissOnBackPress,
+            dismissOnClickOutside = dismissOnClickOutside,
+        ),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(PulseTheme.corners.xLarge)
-                .background(PulseTheme.color.container)
-                .border(1.dp, PulseTheme.color.border, PulseTheme.corners.xLarge)
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = {},
-                )
-                .padding(PulseTheme.space.huge),
-        ) {
-            BasicText(
-                text = title,
-                style = PulseTheme.typography.sectionTitle.copy(
-                    fontSize = 18.sp,
-                    color = PulseTheme.color.shadePrimary,
-                ),
-            )
-            Spacer(Modifier.height(PulseTheme.space.small))
-            BasicText(
-                text = message,
-                style = PulseTheme.typography.contentSecondary.copy(
-                    color = PulseTheme.color.shadeSecondary,
-                ),
-            )
-            Spacer(Modifier.height(PulseTheme.space.huge))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(PulseTheme.space.medium),
-            ) {
-                OutlineButton(
-                    caption = dismissLabel,
-                    isCompact = true,
+                    enabled = dismissOnClickOutside,
                     onClick = onDismiss,
-                    modifier = Modifier.weight(1f),
                 )
-                if (isDestructive) {
-                    NegativeButton(
-                        caption = confirmLabel,
-                        isFilled = true,
-                        onClick = onConfirm,
+                .padding(PulseTheme.space.huge)
+                .semantics { dialog() },
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(PulseTheme.corners.xLarge)
+                    .background(PulseTheme.color.container)
+                    .border(1.dp, PulseTheme.color.border, PulseTheme.corners.xLarge)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {},
+                    )
+                    .padding(PulseTheme.space.huge),
+            ) {
+                BasicText(
+                    text = title,
+                    style = PulseTheme.typography.sectionTitle.copy(
+                        fontSize = 18.sp,
+                        color = PulseTheme.color.shadePrimary,
+                    ),
+                )
+                Spacer(Modifier.height(PulseTheme.space.small))
+                BasicText(
+                    text = message,
+                    style = PulseTheme.typography.contentSecondary.copy(
+                        color = PulseTheme.color.shadeSecondary,
+                    ),
+                )
+                Spacer(Modifier.height(PulseTheme.space.huge))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(PulseTheme.space.medium),
+                ) {
+                    OutlineButton(
+                        caption = dismissLabel,
+                        isCompact = true,
+                        onClick = onDismiss,
                         modifier = Modifier.weight(1f),
                     )
-                } else {
-                    CompactButton(
-                        caption = confirmLabel,
-                        onClick = onConfirm,
-                        modifier = Modifier.weight(1f),
-                    )
+                    if (isDestructive) {
+                        NegativeButton(
+                            caption = confirmLabel,
+                            isFilled = true,
+                            onClick = onConfirm,
+                            modifier = Modifier.weight(1f),
+                        )
+                    } else {
+                        CompactButton(
+                            caption = confirmLabel,
+                            onClick = onConfirm,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             }
         }

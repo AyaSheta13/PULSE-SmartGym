@@ -1,0 +1,40 @@
+package com.ayasheta.pulsesmartgym.navigation.route
+
+import androidx.navigation3.runtime.NavKey
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class WorkoutSession(
+    val planId: String,
+    val sessionId: String? = null,
+) : NavKey
+
+@Serializable
+data class ReadyStartSet(
+    val sessionId: String,
+    val exerciseId: String,
+    val setIndex: Int,
+) : NavKey
+
+@Serializable
+data class ManualRepCounter(
+    val sessionId: String,
+    val exerciseId: String,
+    val setIndex: Int,
+) : NavKey
+
+@Serializable
+data class DeviceAssistedRepCounter(
+    val sessionId: String,
+    val exerciseId: String,
+    val setIndex: Int,
+) : NavKey
+
+@Serializable
+data class WorkoutComplete(val sessionId: String) : NavKey
+
+@Serializable
+data class PartialWorkoutSummary(val sessionId: String) : NavKey
+
+@Serializable
+data class SessionDetails(val sessionId: String) : NavKey

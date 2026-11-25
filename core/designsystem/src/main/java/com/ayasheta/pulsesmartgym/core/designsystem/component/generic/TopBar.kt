@@ -97,9 +97,10 @@ fun PulseTopAppBar(
     style: PulseTopAppBarStyle,
     modifier: Modifier = Modifier,
 ) {
-    Column(
+    Box(
         modifier = modifier
             .fillMaxWidth()
+            .height(PulseTheme.size.giant)
             .background(PulseTheme.color.container),
     ) {
         Row(
@@ -307,6 +308,7 @@ fun PulseTopAppBar(
         }
         Box(
             modifier = Modifier
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .height(1.dp)
                 .background(PulseTheme.color.divider),
