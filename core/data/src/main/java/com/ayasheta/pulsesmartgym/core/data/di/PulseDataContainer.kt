@@ -8,15 +8,17 @@ import com.ayasheta.pulsesmartgym.core.data.local.database.PulseTransactionRunne
 import com.ayasheta.pulsesmartgym.core.data.local.database.RoomTransactionRunner
 import com.ayasheta.pulsesmartgym.core.data.local.preferences.PulsePreferencesDataSource
 import com.ayasheta.pulsesmartgym.core.data.local.preferences.pulsePreferencesDataStore
-import com.ayasheta.pulsesmartgym.core.data.repository.auth.FakeAuthRepository
+import com.ayasheta.pulsesmartgym.core.data.repository.auth.LocalAuthRepository
 import com.ayasheta.pulsesmartgym.core.data.repository.exercise.RoomExerciseRepository
 import com.ayasheta.pulsesmartgym.core.data.repository.history.RoomWorkoutHistoryRepository
 import com.ayasheta.pulsesmartgym.core.data.repository.profile.DataStoreUserPreferencesRepository
+import com.ayasheta.pulsesmartgym.core.data.repository.profile.RoomUserProfileRepository
 import com.ayasheta.pulsesmartgym.core.data.repository.session.RoomWorkoutSessionRepository
 import com.ayasheta.pulsesmartgym.core.data.repository.workout.RoomWorkoutPlanRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.AuthRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.ExerciseRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.UserPreferencesRepository
+import com.ayasheta.pulsesmartgym.core.model.repository.UserProfileRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.WorkoutHistoryRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.WorkoutPlanRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.WorkoutSessionRepository
@@ -32,7 +34,8 @@ class PulseDataContainer(
             appContext,
             PulseDatabase::class.java,
             "pulse_smart_gym.db",
-        ).build()
+        ).addMigrations(PulseDatabase.MIGRATION_1_2)
+            .build()
     }
 
     private val transactionRunner: PulseTransactionRunner by lazy {
@@ -72,7 +75,19 @@ class PulseDataContainer(
         DataStoreUserPreferencesRepository(preferencesDataSource)
     }
 
+    val userProfileRepository: UserProfileRepository by lazy {
+        RoomUserProfileRepository(
+            userProfileDao = database.userProfileDao(),
+            transactionRunner = transactionRunner,
+        )
+    }
+
     val authRepository: AuthRepository by lazy {
-        FakeAuthRepository(allowDemoSignIn = isDebuggable)
+        LocalAuthRepository(
+            accountDao = database.localAccountDao(),
+            preferencesDataSource = preferencesDataSource,
+            transactionRunner = transactionRunner,
+            allowDemoSignIn = isDebuggable,
+        )
     }
 }

@@ -8,6 +8,7 @@ import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberDecoratedNavEntries
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
+import com.ayasheta.pulsesmartgym.core.data.di.PulseDataContainer
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTab
 
 @Composable
@@ -15,11 +16,13 @@ fun PulseNavDisplay(
     navigationState: PulseNavigationState,
     navigator: PulseNavigator,
     isDebugEntryEnabled: Boolean,
+    dataContainer: PulseDataContainer,
     modifier: Modifier = Modifier,
 ) {
     val entryProvider = rememberPulseEntryProvider(
         navigator = navigator,
         isDebugEntryEnabled = isDebugEntryEnabled,
+        dataContainer = dataContainer,
     )
 
     val authEntries = rememberStackEntries(

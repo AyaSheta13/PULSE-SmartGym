@@ -11,7 +11,10 @@ import com.ayasheta.pulsesmartgym.core.model.history.HistoryAggregateMetrics
 import com.ayasheta.pulsesmartgym.core.model.history.SessionSummary
 import com.ayasheta.pulsesmartgym.core.model.profile.AuthState
 import com.ayasheta.pulsesmartgym.core.model.profile.AuthUser
+import com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoalsDraft
+import com.ayasheta.pulsesmartgym.core.model.profile.PersonalInfoDraft
 import com.ayasheta.pulsesmartgym.core.model.profile.UserPreferences
+import com.ayasheta.pulsesmartgym.core.model.profile.UserProfile
 import com.ayasheta.pulsesmartgym.core.model.session.PerformedSet
 import com.ayasheta.pulsesmartgym.core.model.session.RecordSetRequest
 import com.ayasheta.pulsesmartgym.core.model.session.SessionStatus
@@ -66,6 +69,30 @@ interface UserPreferencesRepository {
 
 interface AuthRepository {
     fun observeAuthState(): Flow<AuthState>
+    suspend fun restoreSession(): AuthState
+    suspend fun continueAsGuest(): DomainResult<AuthUser>
+    suspend fun registerLocalAccount(
+        fullName: String,
+        email: String,
+        password: String,
+    ): DomainResult<AuthUser>
+    suspend fun signInWithEmail(
+        email: String,
+        password: String,
+        rememberMe: Boolean,
+    ): DomainResult<AuthUser>
+    suspend fun resetPassword(newPassword: String): DomainResult<Unit>
     suspend fun signInDemo(displayName: String, email: String): DomainResult<AuthUser>
     suspend fun signOut()
+}
+
+interface UserProfileRepository {
+    fun observeProfile(ownerId: String): Flow<UserProfile?>
+    suspend fun getProfile(ownerId: String): UserProfile?
+    suspend fun saveCompletedProfile(
+        ownerId: String,
+        personalInfo: PersonalInfoDraft,
+        goals: FitnessGoalsDraft,
+    ): DomainResult<UserProfile>
+    suspend fun isProfileSetupCompleted(ownerId: String): Boolean
 }

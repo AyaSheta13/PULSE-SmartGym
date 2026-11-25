@@ -18,6 +18,11 @@ class PulseNavigator(
         stack.add(route)
     }
 
+    fun replaceAuthRoot(route: NavKey) {
+        state.authBackStack.clear()
+        state.authBackStack.add(route)
+    }
+
     fun navigateBack(): Boolean {
         val stack = state.activeBackStack
         return when (state.activeFlow) {

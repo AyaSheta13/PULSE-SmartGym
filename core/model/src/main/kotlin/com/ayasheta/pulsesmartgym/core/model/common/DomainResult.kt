@@ -41,6 +41,15 @@ sealed interface DataError {
     data class InvalidSessionState(val message: String) : DataError
     data class StorageError(val message: String) : DataError
     data class Unauthorized(val message: String) : DataError
+
+    fun userMessage(): String = when (this) {
+        is ValidationError -> message
+        is NotFound -> message
+        is DuplicateSet -> "Set $setIndex has already been recorded."
+        is InvalidSessionState -> message
+        is StorageError -> message
+        is Unauthorized -> message
+    }
 }
 
 sealed interface DomainResult<out T> {

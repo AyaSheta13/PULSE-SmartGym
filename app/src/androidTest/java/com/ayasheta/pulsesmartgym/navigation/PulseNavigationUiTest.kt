@@ -3,8 +3,11 @@ package com.ayasheta.pulsesmartgym.navigation
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.ayasheta.pulsesmartgym.MainActivity
@@ -98,20 +101,35 @@ class PulseNavigationUiTest {
 
     @Test
     fun releaseMode_hidesDebugAuthBypassAcrossAuthFlow() {
-        composeRule.setContent {
-            PulseApp(isDebugEntryEnabled = false, initialFlow = AppEntryFlow.AUTH)
+        val context = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val container = com.ayasheta.pulsesmartgym.core.data.di.PulseDataContainer(context)
+        kotlinx.coroutines.runBlocking {
+            container.userPreferencesRepository.setOnboardingCompleted(false)
+            container.authRepository.signOut()
         }
 
-        composeRule.onNodeWithText("Route: Splash").assertIsDisplayed()
-        composeRule.onNodeWithText("Debug: Enter Main App Shell").assertDoesNotExist()
+        composeRule.setContent {
+            PulseApp(
+                isDebugEntryEnabled = false,
+                initialFlow = AppEntryFlow.AUTH,
+                dataContainer = container,
+            )
+        }
 
-        composeRule.onNodeWithText("Go to Auth Entry").performClick()
-        composeRule.onNodeWithText("Route: AuthEntry").assertIsDisplayed()
-        composeRule.onNodeWithText("Debug: Enter Main App Shell").assertDoesNotExist()
+        // Splash resolves to Onboarding (first launch) -> Skip to AuthEntry
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithText("Welcome to PULSE").assertExists()
+                true
+            }.getOrDefault(false)
+        }
+        composeRule.onNodeWithText("Skip").performClick()
+        composeRule.onNodeWithText("Elevate Every Rep").assertIsDisplayed()
 
+        // Navigate to Log In and verify debug error-simulation button is hidden in release mode
         composeRule.onNodeWithText("Log In").performClick()
-        composeRule.onNodeWithText("Route: Login").assertIsDisplayed()
-        composeRule.onNodeWithText("Debug: Simulate Login -> Home").assertDoesNotExist()
+        composeRule.onNodeWithText("Welcome Back").assertIsDisplayed()
+        composeRule.onNodeWithText("⚠ Test Invalid Login & Error Feedback").assertDoesNotExist()
     }
 
     @Test
@@ -143,7 +161,56 @@ class PulseActivityRecreationUiTest {
 
     @Test
     fun activityRecreation_preservesSelectedTabAndSaveableState() {
-        activityRule.onNodeWithText("Debug: Enter Main App Shell").performClick()
+        // Enter Main via Guest -> Profile Setup (or directly if already completed from prior tests)
+        activityRule.waitUntil(timeoutMillis = 5_000) {
+            val onOnboarding = runCatching {
+                activityRule.onNodeWithText("Skip").assertExists()
+                true
+            }.getOrDefault(false)
+            val onAuthEntry = runCatching {
+                activityRule.onNodeWithText("Elevate Every Rep").assertExists()
+                true
+            }.getOrDefault(false)
+            val onPersonalInfo = runCatching {
+                activityRule.onNodeWithText("About You").assertExists()
+                true
+            }.getOrDefault(false)
+            val onHome = runCatching {
+                activityRule.onNodeWithText("Route: HomeTab").assertExists()
+                true
+            }.getOrDefault(false)
+            onOnboarding || onAuthEntry || onPersonalInfo || onHome
+        }
+
+        if (runCatching { activityRule.onNodeWithText("Skip").assertExists(); true }.getOrDefault(false)) {
+            activityRule.onNodeWithText("Skip").performClick()
+        }
+        if (runCatching { activityRule.onNodeWithText("Elevate Every Rep").assertExists(); true }.getOrDefault(false)) {
+            activityRule.onNodeWithText("Continue as Guest (Offline Mode) →").performClick()
+        }
+        if (runCatching { activityRule.onNodeWithText("About You").assertExists(); true }.getOrDefault(false)) {
+            if (runCatching { activityRule.onNodeWithTag("field_YOUR NAME").assertExists(); true }.getOrDefault(false)) {
+                activityRule.onNodeWithTag("field_YOUR NAME").performTextInput("Guest Athlete")
+            }
+            if (runCatching { activityRule.onNodeWithTag("metric_AGE").assertExists(); true }.getOrDefault(false)) {
+                activityRule.onNodeWithTag("metric_AGE").performTextInput("28")
+            }
+            if (runCatching { activityRule.onNodeWithTag("metric_HEIGHT").assertExists(); true }.getOrDefault(false)) {
+                activityRule.onNodeWithTag("metric_HEIGHT").performTextInput("182")
+            }
+            if (runCatching { activityRule.onNodeWithTag("metric_WEIGHT").assertExists(); true }.getOrDefault(false)) {
+                activityRule.onNodeWithTag("metric_WEIGHT").performTextInput("78")
+            }
+            activityRule.onNodeWithText("Continue to Goals →").performScrollTo().performClick()
+            activityRule.onNodeWithText("Complete Setup & Start →").performScrollTo().performClick()
+        }
+
+        activityRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                activityRule.onNodeWithText("Route: HomeTab").assertExists()
+                true
+            }.getOrDefault(false)
+        }
         activityRule.onNodeWithText(PulseTab.WORKOUTS.label).performClick()
         activityRule.onNodeWithText("Increment Local State").performClick()
         activityRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()

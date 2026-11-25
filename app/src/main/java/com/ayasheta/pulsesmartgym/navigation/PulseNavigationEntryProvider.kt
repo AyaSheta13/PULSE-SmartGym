@@ -1,14 +1,36 @@
 package com.ayasheta.pulsesmartgym.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
+import com.ayasheta.pulsesmartgym.core.data.di.PulseDataContainer
 import com.ayasheta.pulsesmartgym.core.designsystem.component.chips.PulseBluetoothChipStatus
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTab
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTopAppBarStyle
+import com.ayasheta.pulsesmartgym.feature.auth.entry.AuthEntryScreen
+import com.ayasheta.pulsesmartgym.feature.auth.entry.AuthEntryViewModel
+import com.ayasheta.pulsesmartgym.feature.auth.login.LoginScreen
+import com.ayasheta.pulsesmartgym.feature.auth.login.LoginViewModel
+import com.ayasheta.pulsesmartgym.feature.auth.recovery.ForgotPasswordScreen
+import com.ayasheta.pulsesmartgym.feature.auth.recovery.ForgotPasswordViewModel
+import com.ayasheta.pulsesmartgym.feature.auth.signup.SignUpScreen
+import com.ayasheta.pulsesmartgym.feature.auth.signup.SignUpViewModel
 import com.ayasheta.pulsesmartgym.feature.navigationdemo.NavigationDemoAction
 import com.ayasheta.pulsesmartgym.feature.navigationdemo.NavigationPlaceholderScreen
+import com.ayasheta.pulsesmartgym.feature.onboarding.OnboardingScreen
+import com.ayasheta.pulsesmartgym.feature.onboarding.OnboardingViewModel
+import com.ayasheta.pulsesmartgym.feature.profilesetup.ProfileSetupDraftHolder
+import com.ayasheta.pulsesmartgym.feature.profilesetup.goals.FitnessGoalsScreen
+import com.ayasheta.pulsesmartgym.feature.profilesetup.goals.FitnessGoalsViewModel
+import com.ayasheta.pulsesmartgym.feature.profilesetup.personalinfo.PersonalInfoScreen
+import com.ayasheta.pulsesmartgym.feature.profilesetup.personalinfo.PersonalInfoViewModel
+import com.ayasheta.pulsesmartgym.feature.splash.SplashDestination
+import com.ayasheta.pulsesmartgym.feature.splash.SplashScreen
+import com.ayasheta.pulsesmartgym.feature.splash.SplashViewModel
+import kotlinx.coroutines.launch
 import com.ayasheta.pulsesmartgym.navigation.route.AuthEntry
 import com.ayasheta.pulsesmartgym.navigation.route.CreateWorkoutPlan
 import com.ayasheta.pulsesmartgym.navigation.route.DeviceAssistedRepCounter
@@ -41,140 +63,137 @@ import com.ayasheta.pulsesmartgym.navigation.route.WorkoutsTab
 fun rememberPulseEntryProvider(
     navigator: PulseNavigator,
     isDebugEntryEnabled: Boolean,
-): (NavKey) -> NavEntry<NavKey> = entryProvider {
-    // --- Auth & Onboarding ---
-    entry<Splash> {
-        NavigationPlaceholderScreen(
-            title = "Splash",
-            routeLabel = "Splash",
-            actions = listOf(
-                NavigationDemoAction("Continue to Onboarding", isPrimary = true) {
-                    navigator.navigate(Onboarding)
-                },
-                NavigationDemoAction("Go to Auth Entry") {
-                    navigator.navigate(AuthEntry)
-                },
-            ),
-            onDebugSkipToMain = if (isDebugEntryEnabled) {
-                { navigator.completeDebugAuthBypass(isDebugEntryEnabled = true) }
-            } else {
-                null
-            },
-        )
-    }
+    dataContainer: PulseDataContainer,
+): (NavKey) -> NavEntry<NavKey> {
+    val profileDraftHolder = remember(dataContainer) { ProfileSetupDraftHolder() }
+    val coroutineScope = rememberCoroutineScope()
 
-    entry<Onboarding> {
-        NavigationPlaceholderScreen(
-            title = "Onboarding",
-            routeLabel = "Onboarding",
-            topBarStyle = PulseTopAppBarStyle.BackWithTitle("Welcome", onBackClick = { navigator.navigateBack() }),
-            actions = listOf(
-                NavigationDemoAction("Finish Onboarding -> Auth Entry", isPrimary = true) {
-                    navigator.navigate(AuthEntry)
-                },
-            ),
-            onBackClick = { navigator.navigateBack() },
-        )
-    }
-
-    entry<AuthEntry> {
-        NavigationPlaceholderScreen(
-            title = "Welcome / Auth Entry",
-            routeLabel = "AuthEntry",
-            actions = listOf(
-                NavigationDemoAction("Log In", isPrimary = true) {
-                    navigator.navigate(Login)
-                },
-                NavigationDemoAction("Create Account") {
-                    navigator.navigate(SignUp)
-                },
-            ),
-            onBackClick = { navigator.navigateBack() },
-            onDebugSkipToMain = if (isDebugEntryEnabled) {
-                { navigator.completeDebugAuthBypass(isDebugEntryEnabled = true) }
-            } else {
-                null
-            },
-        )
-    }
-
-    entry<Login> {
-        NavigationPlaceholderScreen(
-            title = "Log In",
-            routeLabel = "Login",
-            topBarStyle = PulseTopAppBarStyle.BackWithTitle("Log In", onBackClick = { navigator.navigateBack() }),
-            actions = buildList {
-                if (isDebugEntryEnabled) {
-                    add(
-                        NavigationDemoAction("Debug: Simulate Login -> Home", isPrimary = true) {
-                            navigator.completeDebugAuthBypass(isDebugEntryEnabled = true)
-                        },
-                    )
-                }
-                add(
-                    NavigationDemoAction("Forgot Password") {
-                        navigator.navigate(ForgotPassword)
-                    },
+    return entryProvider {
+        // --- Auth & Onboarding (P4) ---
+        entry<Splash> {
+            val viewModel = remember(dataContainer) {
+                SplashViewModel(
+                    preferencesRepository = dataContainer.userPreferencesRepository,
+                    authRepository = dataContainer.authRepository,
+                    userProfileRepository = dataContainer.userProfileRepository,
                 )
-            },
-            onBackClick = { navigator.navigateBack() },
-        )
-    }
-
-    entry<SignUp> {
-        NavigationPlaceholderScreen(
-            title = "Sign Up",
-            routeLabel = "SignUp",
-            topBarStyle = PulseTopAppBarStyle.BackWithTitle("Create Account", onBackClick = { navigator.navigateBack() }),
-            actions = listOf(
-                NavigationDemoAction("Continue -> Personal Info", isPrimary = true) {
-                    navigator.navigate(ProfileSetupPersonalInfo)
+            }
+            SplashScreen(
+                viewModel = viewModel,
+                onResolved = { destination ->
+                    when (destination) {
+                        SplashDestination.Onboarding -> navigator.replaceAuthRoot(Onboarding)
+                        SplashDestination.AuthEntry -> navigator.replaceAuthRoot(AuthEntry)
+                        SplashDestination.ProfileSetup -> navigator.replaceAuthRoot(ProfileSetupPersonalInfo)
+                        SplashDestination.MainHome -> navigator.completeAuthAndEnterMain()
+                    }
                 },
-            ),
-            onBackClick = { navigator.navigateBack() },
-        )
-    }
+            )
+        }
 
-    entry<ForgotPassword> {
-        NavigationPlaceholderScreen(
-            title = "Forgot Password",
-            routeLabel = "ForgotPassword",
-            topBarStyle = PulseTopAppBarStyle.BackWithTitle("Reset Password", onBackClick = { navigator.navigateBack() }),
-            onBackClick = { navigator.navigateBack() },
-        )
-    }
+        entry<Onboarding> {
+            val viewModel = remember(dataContainer) {
+                OnboardingViewModel(
+                    preferencesRepository = dataContainer.userPreferencesRepository,
+                )
+            }
+            OnboardingScreen(
+                viewModel = viewModel,
+                onCompleted = { navigator.replaceAuthRoot(AuthEntry) },
+                onExitAppBack = { navigator.navigateBack() },
+            )
+        }
 
-    entry<ProfileSetupPersonalInfo> {
-        NavigationPlaceholderScreen(
-            title = "Personal Info Setup",
-            routeLabel = "ProfileSetupPersonalInfo",
-            topBarStyle = PulseTopAppBarStyle.BackWithTitle("Personal Info", onBackClick = { navigator.navigateBack() }),
-            actions = listOf(
-                NavigationDemoAction("Next -> Fitness Goals", isPrimary = true) {
-                    navigator.navigate(ProfileSetupFitnessGoals)
-                },
-            ),
-            onBackClick = { navigator.navigateBack() },
-        )
-    }
+        entry<AuthEntry> {
+            val viewModel = remember(dataContainer) {
+                AuthEntryViewModel(
+                    authRepository = dataContainer.authRepository,
+                    userProfileRepository = dataContainer.userProfileRepository,
+                )
+            }
+            AuthEntryScreen(
+                viewModel = viewModel,
+                onCreateAccountClick = { navigator.navigate(SignUp) },
+                onLogInClick = { navigator.navigate(Login) },
+                onNavigateToProfileSetup = { navigator.navigate(ProfileSetupPersonalInfo) },
+                onNavigateToMain = { navigator.completeAuthAndEnterMain() },
+            )
+        }
 
-    entry<ProfileSetupFitnessGoals> {
-        NavigationPlaceholderScreen(
-            title = "Fitness Goals Setup",
-            routeLabel = "ProfileSetupFitnessGoals",
-            topBarStyle = PulseTopAppBarStyle.BackWithTitle("Fitness Goals", onBackClick = { navigator.navigateBack() }),
-            actions = buildList {
-                if (isDebugEntryEnabled) {
-                    add(
-                        NavigationDemoAction("Debug: Finish Setup -> Home", isPrimary = true) {
-                            navigator.completeDebugAuthBypass(isDebugEntryEnabled = true)
-                        },
-                    )
-                }
-            },
-            onBackClick = { navigator.navigateBack() },
-        )
-    }
+        entry<Login> {
+            val viewModel = remember(dataContainer) {
+                LoginViewModel(
+                    authRepository = dataContainer.authRepository,
+                    userProfileRepository = dataContainer.userProfileRepository,
+                )
+            }
+            LoginScreen(
+                viewModel = viewModel,
+                isDebugEntryEnabled = isDebugEntryEnabled,
+                onBackClick = { navigator.navigateBack() },
+                onForgotPasswordClick = { navigator.navigate(ForgotPassword) },
+                onSignUpClick = { navigator.navigate(SignUp) },
+                onNavigateToProfileSetup = { navigator.navigate(ProfileSetupPersonalInfo) },
+                onNavigateToMain = { navigator.completeAuthAndEnterMain() },
+            )
+        }
+
+        entry<SignUp> {
+            val viewModel = remember(dataContainer) {
+                SignUpViewModel(
+                    authRepository = dataContainer.authRepository,
+                )
+            }
+            SignUpScreen(
+                viewModel = viewModel,
+                isDebugEntryEnabled = isDebugEntryEnabled,
+                onBackClick = { navigator.navigateBack() },
+                onLogInClick = { navigator.navigate(Login) },
+                onNavigateToPersonalInfo = { navigator.navigate(ProfileSetupPersonalInfo) },
+            )
+        }
+
+        entry<ForgotPassword> {
+            val viewModel = remember(dataContainer) {
+                ForgotPasswordViewModel(
+                    authRepository = dataContainer.authRepository,
+                )
+            }
+            ForgotPasswordScreen(
+                viewModel = viewModel,
+                onBackClick = { navigator.navigateBack() },
+            )
+        }
+
+        entry<ProfileSetupPersonalInfo> {
+            val viewModel = remember(dataContainer, profileDraftHolder) {
+                PersonalInfoViewModel(
+                    draftHolder = profileDraftHolder,
+                    authRepository = dataContainer.authRepository,
+                    userProfileRepository = dataContainer.userProfileRepository,
+                )
+            }
+            PersonalInfoScreen(
+                viewModel = viewModel,
+                onBackClick = { navigator.navigateBack() },
+                onContinueToGoals = { navigator.navigate(ProfileSetupFitnessGoals) },
+            )
+        }
+
+        entry<ProfileSetupFitnessGoals> {
+            val viewModel = remember(dataContainer, profileDraftHolder) {
+                FitnessGoalsViewModel(
+                    draftHolder = profileDraftHolder,
+                    authRepository = dataContainer.authRepository,
+                    userProfileRepository = dataContainer.userProfileRepository,
+                )
+            }
+            FitnessGoalsScreen(
+                viewModel = viewModel,
+                onBackClick = { navigator.navigateBack() },
+                onSetupCompleted = { navigator.completeAuthAndEnterMain() },
+            )
+        }
 
     // --- Five Main Tab Roots ---
     entry<HomeTab> {
@@ -258,7 +277,10 @@ fun rememberPulseEntryProvider(
                     navigator.navigate(MyDevice)
                 },
                 NavigationDemoAction("Return to Auth Entry") {
-                    navigator.resetToAuth(AuthEntry)
+                    coroutineScope.launch {
+                        dataContainer.authRepository.signOut()
+                        navigator.resetToAuth(AuthEntry)
+                    }
                 },
             ),
             supportsSheetDemo = true,
@@ -497,12 +519,13 @@ fun rememberPulseEntryProvider(
         )
     }
 
-    entry<EditProfile> {
-        NavigationPlaceholderScreen(
-            title = "Edit Profile",
-            routeLabel = "EditProfile",
-            topBarStyle = PulseTopAppBarStyle.BackWithTitle("Edit Profile", onBackClick = { navigator.navigateBack() }),
-            onBackClick = { navigator.navigateBack() },
-        )
+        entry<EditProfile> {
+            NavigationPlaceholderScreen(
+                title = "Edit Profile",
+                routeLabel = "EditProfile",
+                topBarStyle = PulseTopAppBarStyle.BackWithTitle("Edit Profile", onBackClick = { navigator.navigateBack() }),
+                onBackClick = { navigator.navigateBack() },
+            )
+        }
     }
 }

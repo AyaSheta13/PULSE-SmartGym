@@ -13,11 +13,25 @@ import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
 import com.ayasheta.pulsesmartgym.core.model.profile.UserPreferences
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.IOException
+import java.util.UUID
 
 val Context.pulsePreferencesDataStore: DataStore<Preferences> by preferencesDataStore(
     name = "pulse_user_preferences",
+)
+
+enum class PersistedSessionKind {
+    NONE,
+    GUEST,
+    LOCAL_ACCOUNT,
+}
+
+data class PersistedSessionSnapshot(
+    val kind: PersistedSessionKind = PersistedSessionKind.NONE,
+    val ownerId: String? = null,
+    val rememberMe: Boolean = false,
 )
 
 class PulsePreferencesDataSource(
@@ -61,9 +75,75 @@ class PulsePreferencesDataSource(
         }
     }
 
+    suspend fun getOrCreateGuestOwnerId(): String {
+        val current = dataStore.data
+            .catch { exception ->
+                if (exception is IOException) emit(emptyPreferences()) else throw exception
+            }
+            .first()[KEY_GUEST_OWNER_ID]
+        if (!current.isNullOrBlank()) return current
+
+        val generated = "guest_${UUID.randomUUID()}"
+        var resolved = generated
+        dataStore.edit { prefs ->
+            val existing = prefs[KEY_GUEST_OWNER_ID]
+            if (existing.isNullOrBlank()) {
+                prefs[KEY_GUEST_OWNER_ID] = generated
+                resolved = generated
+            } else {
+                resolved = existing
+            }
+        }
+        return resolved
+    }
+
+    suspend fun readPersistedSession(): PersistedSessionSnapshot {
+        val prefs = dataStore.data
+            .catch { exception ->
+                if (exception is IOException) emit(emptyPreferences()) else throw exception
+            }
+            .first()
+        val kind = prefs[KEY_SESSION_KIND]?.let { raw ->
+            runCatching { PersistedSessionKind.valueOf(raw) }.getOrNull()
+        } ?: PersistedSessionKind.NONE
+        return PersistedSessionSnapshot(
+            kind = kind,
+            ownerId = prefs[KEY_SESSION_OWNER_ID],
+            rememberMe = prefs[KEY_REMEMBER_ME] ?: false,
+        )
+    }
+
+    suspend fun setActiveSession(
+        kind: PersistedSessionKind,
+        ownerId: String?,
+        rememberMe: Boolean,
+    ) {
+        dataStore.edit { prefs ->
+            prefs[KEY_SESSION_KIND] = kind.name
+            if (ownerId != null) {
+                prefs[KEY_SESSION_OWNER_ID] = ownerId
+            } else {
+                prefs.remove(KEY_SESSION_OWNER_ID)
+            }
+            prefs[KEY_REMEMBER_ME] = rememberMe
+        }
+    }
+
+    suspend fun clearActiveSession() {
+        dataStore.edit { prefs ->
+            prefs[KEY_SESSION_KIND] = PersistedSessionKind.NONE.name
+            prefs.remove(KEY_SESSION_OWNER_ID)
+            prefs[KEY_REMEMBER_ME] = false
+        }
+    }
+
     private companion object {
         val KEY_WEIGHT_UNIT = stringPreferencesKey("preferred_weight_unit")
         val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
         val KEY_DEFAULT_REST_SECONDS = intPreferencesKey("default_rest_seconds")
+        val KEY_GUEST_OWNER_ID = stringPreferencesKey("guest_owner_id")
+        val KEY_SESSION_KIND = stringPreferencesKey("active_session_kind")
+        val KEY_SESSION_OWNER_ID = stringPreferencesKey("active_session_owner_id")
+        val KEY_REMEMBER_ME = booleanPreferencesKey("remember_me")
     }
 }

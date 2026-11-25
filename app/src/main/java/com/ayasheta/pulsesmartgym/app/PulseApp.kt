@@ -3,19 +3,36 @@ package com.ayasheta.pulsesmartgym.app
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import com.ayasheta.pulsesmartgym.PulseApplication
+import com.ayasheta.pulsesmartgym.core.data.di.PulseDataContainer
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTab
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
+import com.ayasheta.pulsesmartgym.core.model.profile.AuthState
 import com.ayasheta.pulsesmartgym.navigation.AppEntryFlow
 import com.ayasheta.pulsesmartgym.navigation.PulseNavigator
 import com.ayasheta.pulsesmartgym.navigation.rememberPulseNavigationState
+import com.ayasheta.pulsesmartgym.navigation.route.AuthEntry
 
 @Composable
 fun PulseApp(
     isDebugEntryEnabled: Boolean = false,
     initialFlow: AppEntryFlow = AppEntryFlow.AUTH,
     initialTab: PulseTab = PulseTab.HOME,
+    dataContainer: PulseDataContainer? = null,
+    enforceAuthGuard: Boolean = initialFlow == AppEntryFlow.AUTH,
 ) {
+    val context = LocalContext.current
+    val resolvedDataContainer = remember(context, dataContainer) {
+        dataContainer
+            ?: (context.applicationContext as? PulseApplication)?.dataContainer
+            ?: PulseDataContainer(context)
+    }
+
     PulseTheme {
         PulseMaterialThemeBridge {
             val navigationState = rememberPulseNavigationState(
@@ -25,10 +42,23 @@ fun PulseApp(
             val navigator = remember(navigationState) {
                 PulseNavigator(navigationState)
             }
+            val authState by resolvedDataContainer.authRepository.observeAuthState()
+                .collectAsState(initial = AuthState.Unauthenticated)
+
+            LaunchedEffect(enforceAuthGuard, navigationState.activeFlow, authState) {
+                if (enforceAuthGuard &&
+                    navigationState.activeFlow == AppEntryFlow.MAIN &&
+                    authState is AuthState.Unauthenticated
+                ) {
+                    navigator.resetToAuth(AuthEntry)
+                }
+            }
+
             PulseAppShell(
                 navigationState = navigationState,
                 navigator = navigator,
                 isDebugEntryEnabled = isDebugEntryEnabled,
+                dataContainer = resolvedDataContainer,
             )
         }
     }

@@ -1,12 +1,16 @@
 package com.ayasheta.pulsesmartgym.core.data.local.database.converter
 
 import androidx.room.TypeConverter
+import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
 import com.ayasheta.pulsesmartgym.core.model.device.MeasurementOrigin
 import com.ayasheta.pulsesmartgym.core.model.device.RepClassification
 import com.ayasheta.pulsesmartgym.core.model.device.TrackingMode
 import com.ayasheta.pulsesmartgym.core.model.exercise.EquipmentCategory
 import com.ayasheta.pulsesmartgym.core.model.exercise.MuscleGroup
 import com.ayasheta.pulsesmartgym.core.model.exercise.TrackingCategory
+import com.ayasheta.pulsesmartgym.core.model.profile.ExperienceLevel
+import com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoal
+import com.ayasheta.pulsesmartgym.core.model.profile.GenderIdentity
 import com.ayasheta.pulsesmartgym.core.model.session.SessionStatus
 
 class PulseTypeConverters {
@@ -52,4 +56,28 @@ class PulseTypeConverters {
 
     @TypeConverter
     fun toRepClassification(value: String): RepClassification = RepClassification.valueOf(value)
+
+    @TypeConverter
+    fun fromGenderIdentity(value: GenderIdentity): String = value.name
+
+    @TypeConverter
+    fun toGenderIdentity(value: String): GenderIdentity = GenderIdentity.valueOf(value)
+
+    @TypeConverter
+    fun fromFitnessGoal(value: FitnessGoal): String = value.name
+
+    @TypeConverter
+    fun toFitnessGoal(value: String): FitnessGoal = FitnessGoal.valueOf(value)
+
+    @TypeConverter
+    fun fromExperienceLevel(value: ExperienceLevel): String = value.name
+
+    @TypeConverter
+    fun toExperienceLevel(value: String): ExperienceLevel = ExperienceLevel.valueOf(value)
+
+    @TypeConverter
+    fun fromWeightUnit(value: WeightUnit): String = value.name
+
+    @TypeConverter
+    fun toWeightUnit(value: String): WeightUnit = WeightUnit.valueOf(value)
 }

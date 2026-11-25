@@ -12,7 +12,11 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import com.ayasheta.pulsesmartgym.PulseApplication
+import com.ayasheta.pulsesmartgym.core.data.di.PulseDataContainer
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseBottomNavigationBar
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTab
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
@@ -27,7 +31,14 @@ fun PulseAppShell(
     navigator: PulseNavigator,
     isDebugEntryEnabled: Boolean,
     modifier: Modifier = Modifier,
+    dataContainer: PulseDataContainer? = null,
 ) {
+    val context = LocalContext.current
+    val resolvedDataContainer = remember(context, dataContainer) {
+        dataContainer
+            ?: (context.applicationContext as? PulseApplication)?.dataContainer
+            ?: PulseDataContainer(context)
+    }
     val canHandleBack = when (navigationState.activeFlow) {
         AppEntryFlow.AUTH -> navigationState.authBackStack.size > 1
         AppEntryFlow.MAIN ->
@@ -62,6 +73,7 @@ fun PulseAppShell(
                 navigationState = navigationState,
                 navigator = navigator,
                 isDebugEntryEnabled = isDebugEntryEnabled,
+                dataContainer = resolvedDataContainer,
                 modifier = Modifier.fillMaxSize(),
             )
         }

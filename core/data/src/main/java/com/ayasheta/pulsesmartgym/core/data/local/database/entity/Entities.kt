@@ -4,12 +4,16 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
 import com.ayasheta.pulsesmartgym.core.model.device.MeasurementOrigin
 import com.ayasheta.pulsesmartgym.core.model.device.RepClassification
 import com.ayasheta.pulsesmartgym.core.model.device.TrackingMode
 import com.ayasheta.pulsesmartgym.core.model.exercise.EquipmentCategory
 import com.ayasheta.pulsesmartgym.core.model.exercise.MuscleGroup
 import com.ayasheta.pulsesmartgym.core.model.exercise.TrackingCategory
+import com.ayasheta.pulsesmartgym.core.model.profile.ExperienceLevel
+import com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoal
+import com.ayasheta.pulsesmartgym.core.model.profile.GenderIdentity
 import com.ayasheta.pulsesmartgym.core.model.session.SessionStatus
 
 @Entity(tableName = "exercises")
@@ -231,4 +235,37 @@ data class RepRecordEntity(
     val angularRomDegrees: Double?,
     val linearRomCm: Double?,
     val origin: MeasurementOrigin,
+)
+
+@Entity(
+    tableName = "local_accounts",
+    indices = [
+        Index(value = ["email"], unique = true),
+    ],
+)
+data class LocalAccountEntity(
+    @PrimaryKey val id: String,
+    val displayName: String,
+    val email: String,
+    val passwordSalt: String,
+    val passwordHash: String,
+    val createdAtEpochMs: Long,
+)
+
+@Entity(
+    tableName = "user_profiles",
+)
+data class UserProfileEntity(
+    @PrimaryKey val ownerId: String,
+    val fullName: String,
+    val gender: GenderIdentity,
+    val age: Int,
+    val heightCm: Int,
+    val weightKg: Double,
+    val measurementUnit: WeightUnit,
+    val fitnessGoal: FitnessGoal,
+    val experienceLevel: ExperienceLevel,
+    val weeklyWorkouts: Int,
+    val setupCompleted: Boolean,
+    val updatedAtEpochMs: Long,
 )
