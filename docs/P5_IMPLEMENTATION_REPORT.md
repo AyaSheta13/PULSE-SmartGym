@@ -40,13 +40,34 @@
 ## 3. Profile, Edit Profile, Settings & Logout
 
 - **Profile Header:** Shows real `UserProfile.fullName`, derived initials, account email or `"Offline Guest Profile"` for guests, and real `Member since MMM yyyy` from `LocalAccountEntity.createdAtEpochMs` (or `"Guest Session • On-Device Only"`).
-- **Edit Profile:** Supports editing `fullName`, `weightKg`, `heightCm`, `gender`, `fitnessGoal`, and `experienceLevel` with validation (`fullName` non-blank, `weightKg` finite in `(0, 500]`, `heightCm` in `[80, 260]`), read-only email, honest `"Change Avatar"` notice, `Cancel / Discard Changes`, and atomic Room persistence via `UserProfileRepository.saveCompletedProfile` preserving `age` and `weeklyWorkouts`.
+- **Edit Profile:** Supports editing `fullName`, `weightKg`, `heightCm`, `gender`, `fitnessGoal`, and `experienceLevel` with validation (`fullName` non-blank, `weightKg` finite in `(0, 500]`, `heightCm` in `[80, 260]`), read-only email, honest `"Change Avatar"` notice, and `Cancel / Discard Changes`.
+  - Uses dedicated `UserProfileRepository.updateExistingProfile(ownerId, EditProfileDraft)` inside a Room transaction (`RoomUserProfileRepository`), which requires an existing completed profile and never fabricates `age`, `weeklyWorkouts`, or a new completed profile.
+  - `EditProfileViewModel` tracks `hasExistingProfile`, `canSave`, `missingProfileError`, and `activeAuthOwnerId` so missing profiles block saving cleanly and mid-edit account switches never save under the wrong owner.
 - **Settings Sheets:** `Account Preferences` (`528:328`), `Units & Measurements` (`316:530` — Metric persisted via `UserPreferencesRepository`, Imperial disabled `"Coming in future release"`), `Privacy & Local Storage` (`316:515`), and honest `"Workout Reminders"` (`Coming Soon`).
 - **Logout:** Calls `AuthRepository.signOut()`, resets navigation to `AuthEntry`, clears all Main tab `ViewModelStore`s and saveable state, and preserves Room workout/profile data.
 
 ---
 
-## 4. Deferred Work (P6 / P7 / P9 / P10)
+## 4. Verification Results
+
+- **Gradle Build, Release & Test Command:**
+  ```powershell
+  .\gradlew.bat :core:model:build :core:data:testDebugUnitTest :core:designsystem:testDebugUnitTest :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :core:data:connectedDebugAndroidTest :app:connectedDebugAndroidTest --no-daemon
+  ```
+- **Build & Test Outcomes (`BUILD SUCCESSFUL in 3m 32s`):**
+  - `:core:model:build` (`DomainModelsAndAnalyticsTest`: `3/3` passed, `0` skipped, `0` failed) — **PASSED**
+  - `:core:data:testDebugUnitTest` (`FakeAuthRepositoryTest`: `2/2`, `P4ValidatorsUnitTest`: `2/2`; total `4/4` passed, `0` skipped, `0` failed) — **PASSED**
+  - `:core:designsystem:testDebugUnitTest` (`PulseDesignSystemContractTest`: `4/4` passed, `0` skipped, `0` failed) — **PASSED**
+  - `:app:testDebugUnitTest` (`ExampleUnitTest`: `1/1`, `P4LifecycleAndDraftUnitTest`: `3/3`, `P5HomeAndProfileUnitTest`: `6/6`, `PulseNavigatorTest`: `10/10`; total `20/20` passed, `0` skipped, `0` failed) — **PASSED**
+  - `:app:assembleDebug` & `:app:assembleRelease` — **PASSED**
+  - `:core:data:connectedDebugAndroidTest` (`PulseRoomIntegrationTest` + `Migration1To2Test`: `15/15` passed, `0` skipped, `0` failed on emulator) — **PASSED**
+  - `:app:connectedDebugAndroidTest` (`PulseNavigationUiTest`, `PulseActivityRecreationUiTest`, `P4AuthAndProfileUiTest`, `P4ScreenshotCaptureTest`, `P5HomeAndProfileUiTest`, `P5ScreenshotCaptureTest`, `ExampleInstrumentedTest`: `20/20` passed, `0` skipped, `0` failed on emulator) — **PASSED**
+  - **P1–P4 Regressions:** All P1 design system contract, P2 Navigation 3 multiple-back-stack & activity-recreation, P3 Room transaction/migration/owner-isolation, and P4 auth/profile-setup tests executed and passed in the runs above.
+  - **Tests Not Executed:** None within P1–P5 scope (P6–P10 feature UIs remain unimplemented placeholders).
+
+---
+
+## 5. Deferred Work (P6 / P7 / P9 / P10)
 
 - **P6:** Workout Plan Creation/Editing UI, Exercise Picker, Workout Details UI, full My Workouts tab.
 - **P7:** Live Workout Session runner, Rep Counter, Rest Timer, Workout Completion UI.

@@ -6,6 +6,7 @@ import com.ayasheta.pulsesmartgym.core.data.local.database.entity.UserProfileEnt
 import com.ayasheta.pulsesmartgym.core.model.common.DataError
 import com.ayasheta.pulsesmartgym.core.model.common.DomainResult
 import com.ayasheta.pulsesmartgym.core.model.common.PulseValidators
+import com.ayasheta.pulsesmartgym.core.model.profile.EditProfileDraft
 import com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoalsDraft
 import com.ayasheta.pulsesmartgym.core.model.profile.PersonalInfoDraft
 import com.ayasheta.pulsesmartgym.core.model.profile.UserProfile
@@ -70,6 +71,46 @@ class RoomUserProfileRepository(
             userProfileDao.upsertProfile(entity)
         }
         return DomainResult.Success(entity.toDomain())
+    }
+
+    override suspend fun updateExistingProfile(
+        ownerId: String,
+        draft: EditProfileDraft,
+    ): DomainResult<UserProfile> {
+        PulseValidators.validateOwnerId(ownerId)?.let {
+            return DomainResult.Failure(DataError.ValidationError(it))
+        }
+
+        val trimmedName = draft.fullName.trim()
+        if (trimmedName.isEmpty()) {
+            return DomainResult.Failure(DataError.ValidationError("Your name is required"))
+        }
+        if (draft.heightCm !in 80..260) {
+            return DomainResult.Failure(DataError.ValidationError("Height must be between 80 and 260 cm"))
+        }
+        if (!draft.weightKg.isFinite() || draft.weightKg <= 0.0 || draft.weightKg > 500.0) {
+            return DomainResult.Failure(DataError.ValidationError("Weight must be greater than 0 kg"))
+        }
+
+        return transactionRunner.runInTransaction {
+            val existing = userProfileDao.getByOwner(ownerId)
+            if (existing == null || !existing.setupCompleted) {
+                return@runInTransaction DomainResult.Failure(
+                    DataError.NotFound("No completed profile exists for this account. Complete Profile Setup first."),
+                )
+            }
+            val updated = existing.copy(
+                fullName = trimmedName,
+                gender = draft.gender,
+                heightCm = draft.heightCm,
+                weightKg = draft.weightKg,
+                fitnessGoal = draft.fitnessGoal,
+                experienceLevel = draft.experienceLevel,
+                updatedAtEpochMs = System.currentTimeMillis(),
+            )
+            userProfileDao.upsertProfile(updated)
+            DomainResult.Success(updated.toDomain())
+        }
     }
 
     override suspend fun isProfileSetupCompleted(ownerId: String): Boolean {

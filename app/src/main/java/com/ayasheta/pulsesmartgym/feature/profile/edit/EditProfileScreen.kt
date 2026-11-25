@@ -122,6 +122,55 @@ fun EditProfileScreenContent(
             return
         }
 
+        val missingError = uiState.missingProfileError
+        if (!uiState.hasExistingProfile && missingError != null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(PulseTheme.color.errorVariant)
+                        .border(1.dp, PulseTheme.color.error.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                        .padding(16.dp)
+                        .testTag("edit_profile_missing_error"),
+                ) {
+                    BasicText(
+                        text = missingError,
+                        style = PulseTheme.typography.contentPrimary.copy(
+                            fontSize = 14.sp,
+                            color = PulseTheme.color.error,
+                        ),
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(EditOrange)
+                        .clickable(onClick = onBackClick)
+                        .testTag("edit_profile_missing_back_button"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    BasicText(
+                        text = "Go Back",
+                        style = PulseTheme.typography.ctaPrimary.copy(
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                        ),
+                    )
+                }
+            }
+            return
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -346,8 +395,8 @@ fun EditProfileScreenContent(
                     .fillMaxWidth()
                     .height(52.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(if (uiState.isSaving) EditOrange.copy(alpha = 0.6f) else EditOrange)
-                    .clickable(enabled = !uiState.isSaving, onClick = onSaveClick)
+                    .background(if (uiState.canSave) EditOrange else EditOrange.copy(alpha = 0.55f))
+                    .clickable(enabled = uiState.canSave, onClick = onSaveClick)
                     .testTag("edit_profile_save_button"),
                 contentAlignment = Alignment.Center,
             ) {

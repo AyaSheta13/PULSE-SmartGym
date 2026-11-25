@@ -11,6 +11,7 @@ import com.ayasheta.pulsesmartgym.core.model.history.HistoryAggregateMetrics
 import com.ayasheta.pulsesmartgym.core.model.history.SessionSummary
 import com.ayasheta.pulsesmartgym.core.model.profile.AuthState
 import com.ayasheta.pulsesmartgym.core.model.profile.AuthUser
+import com.ayasheta.pulsesmartgym.core.model.profile.EditProfileDraft
 import com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoalsDraft
 import com.ayasheta.pulsesmartgym.core.model.profile.PersonalInfoDraft
 import com.ayasheta.pulsesmartgym.core.model.profile.UserPreferences
@@ -93,6 +94,10 @@ interface UserProfileRepository {
         ownerId: String,
         personalInfo: PersonalInfoDraft,
         goals: FitnessGoalsDraft,
+    ): DomainResult<UserProfile>
+    suspend fun updateExistingProfile(
+        ownerId: String,
+        draft: EditProfileDraft,
     ): DomainResult<UserProfile>
     suspend fun isProfileSetupCompleted(ownerId: String): Boolean
 }

@@ -380,6 +380,10 @@ class P4AuthAndProfileUiTest {
                     personalInfo: PersonalInfoDraft,
                     goals: FitnessGoalsDraft,
                 ): DomainResult<UserProfile> = error("unused")
+                override suspend fun updateExistingProfile(
+                    ownerId: String,
+                    draft: com.ayasheta.pulsesmartgym.core.model.profile.EditProfileDraft,
+                ): DomainResult<UserProfile> = error("unused")
                 override suspend fun isProfileSetupCompleted(ownerId: String): Boolean {
                     delay(350)
                     return false

@@ -1,12 +1,13 @@
 package com.ayasheta.pulsesmartgym.feature.profile.edit
 
-import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
 import com.ayasheta.pulsesmartgym.core.model.profile.ExperienceLevel
 import com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoal
 import com.ayasheta.pulsesmartgym.core.model.profile.GenderIdentity
 
 data class EditProfileUiState(
     val isLoading: Boolean = true,
+    val hasExistingProfile: Boolean = false,
+    val missingProfileError: String? = null,
     val ownerId: String = "",
     val isGuest: Boolean = false,
     val emailDisplay: String = "",
@@ -16,9 +17,6 @@ data class EditProfileUiState(
     val gender: GenderIdentity = GenderIdentity.MALE,
     val fitnessGoal: FitnessGoal = FitnessGoal.HYPERTROPHY,
     val experienceLevel: ExperienceLevel = ExperienceLevel.INTERMEDIATE,
-    val preservedAge: Int = 25,
-    val preservedWeeklyWorkouts: Int = 4,
-    val preservedUnit: WeightUnit = WeightUnit.KG,
     val initialFullName: String = "",
     val initialWeightInput: String = "",
     val initialHeightInput: String = "",
@@ -30,6 +28,9 @@ data class EditProfileUiState(
     val saveError: String? = null,
     val isSaving: Boolean = false,
 ) {
+    val canSave: Boolean
+        get() = hasExistingProfile && !isLoading && !isSaving
+
     val initials: String
         get() {
             val parts = fullName.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
@@ -41,7 +42,7 @@ data class EditProfileUiState(
         }
 
     val hasUnsavedChanges: Boolean
-        get() = !isLoading && (
+        get() = hasExistingProfile && !isLoading && (
             fullName != initialFullName ||
                 weightInput != initialWeightInput ||
                 heightInput != initialHeightInput ||

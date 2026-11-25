@@ -462,4 +462,65 @@ class PulseRoomIntegrationTest {
         assertEquals(120, prefs.defaultRestSeconds)
         prefsFile.delete()
     }
+
+    @Test
+    fun updateExistingProfile_rejectsMissingProfile_andPreservesUneditedFieldsAndOwnership() = runTest {
+        val profileRepo = com.ayasheta.pulsesmartgym.core.data.repository.profile.RoomUserProfileRepository(
+            db.userProfileDao(),
+            RoomTransactionRunner(db),
+        )
+
+        // Missing profile must fail and never create a row
+        val missingResult = profileRepo.updateExistingProfile(
+            ownerId = ownerA,
+            draft = com.ayasheta.pulsesmartgym.core.model.profile.EditProfileDraft(
+                fullName = "Ghost User",
+                gender = com.ayasheta.pulsesmartgym.core.model.profile.GenderIdentity.MALE,
+                heightCm = 180,
+                weightKg = 75.0,
+                fitnessGoal = com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoal.STRENGTH,
+                experienceLevel = com.ayasheta.pulsesmartgym.core.model.profile.ExperienceLevel.BEGINNER,
+            ),
+        )
+        assertTrue(missingResult is DomainResult.Failure)
+        assertTrue((missingResult as DomainResult.Failure).error is DataError.NotFound)
+        assertNull(profileRepo.getProfile(ownerA))
+
+        // Seed completed profile for ownerA with age=34 and weeklyWorkouts=5
+        profileRepo.saveCompletedProfile(
+            ownerId = ownerA,
+            personalInfo = com.ayasheta.pulsesmartgym.core.model.profile.PersonalInfoDraft(
+                fullName = "Owner A",
+                gender = com.ayasheta.pulsesmartgym.core.model.profile.GenderIdentity.FEMALE,
+                age = 34,
+                heightCm = 168,
+                weightKg = 62.0,
+            ),
+            goals = com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoalsDraft(
+                fitnessGoal = com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoal.FITNESS,
+                experienceLevel = com.ayasheta.pulsesmartgym.core.model.profile.ExperienceLevel.INTERMEDIATE,
+                weeklyWorkouts = 5,
+            ),
+        )
+
+        val updateResult = profileRepo.updateExistingProfile(
+            ownerId = ownerA,
+            draft = com.ayasheta.pulsesmartgym.core.model.profile.EditProfileDraft(
+                fullName = "Owner A Updated",
+                gender = com.ayasheta.pulsesmartgym.core.model.profile.GenderIdentity.FEMALE,
+                heightCm = 170,
+                weightKg = 63.5,
+                fitnessGoal = com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoal.STRENGTH,
+                experienceLevel = com.ayasheta.pulsesmartgym.core.model.profile.ExperienceLevel.ADVANCED,
+            ),
+        )
+        assertTrue(updateResult is DomainResult.Success)
+        val persisted = profileRepo.getProfile(ownerA)!!
+        assertEquals("Owner A Updated", persisted.fullName)
+        assertEquals(34, persisted.age)
+        assertEquals(5, persisted.weeklyWorkouts)
+        assertEquals(170, persisted.heightCm)
+        assertEquals(63.5, persisted.weightKg, 0.01)
+        assertNull(profileRepo.getProfile(ownerB))
+    }
 }

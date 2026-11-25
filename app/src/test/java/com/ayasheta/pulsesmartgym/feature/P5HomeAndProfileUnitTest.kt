@@ -12,6 +12,7 @@ import com.ayasheta.pulsesmartgym.core.model.history.SessionSummary
 import com.ayasheta.pulsesmartgym.core.model.history.WorkoutAnalytics
 import com.ayasheta.pulsesmartgym.core.model.profile.AuthState
 import com.ayasheta.pulsesmartgym.core.model.profile.AuthUser
+import com.ayasheta.pulsesmartgym.core.model.profile.EditProfileDraft
 import com.ayasheta.pulsesmartgym.core.model.profile.ExperienceLevel
 import com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoal
 import com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoalsDraft
@@ -296,6 +297,49 @@ class P5HomeAndProfileUnitTest {
         pJob.cancel()
     }
 
+    @Test
+    fun editProfileViewModel_missingProfileBlocksSaveAndNeverInventsDefaults() = runBlocking {
+        val user = AuthUser("user_missing", "No Profile", "noprofile@pulse.test", false, false, 1_700_000_000_000L)
+        val auth = FakeAuthRepo(AuthState.Authenticated(user))
+        val profiles = FakeProfileRepo()
+
+        val editVm = EditProfileViewModel(auth, profiles)
+        withTimeout(2_000) { editVm.uiState.first { !it.isLoading } }
+
+        val state = editVm.uiState.value
+        assertFalse(state.hasExistingProfile)
+        assertFalse(state.canSave)
+        assertNotNull(state.missingProfileError)
+
+        var saved = false
+        editVm.saveChanges { saved = true }
+        assertFalse(saved)
+        assertNotNull(editVm.uiState.value.saveError)
+        assertNull(profiles.getProfile("user_missing"))
+    }
+
+    @Test
+    fun editProfileViewModel_ownerSwitchMidEditReloadsTargetAndNeverCrossContaminates() = runBlocking {
+        val userA = AuthUser("user_a", "Alice", "alice@pulse.test", false, false, 1_700_000_000_000L)
+        val userB = AuthUser("user_b", "Bob", "bob@pulse.test", false, false, 1_700_000_000_000L)
+        val auth = FakeAuthRepo(AuthState.Authenticated(userA))
+        val profiles = FakeProfileRepo()
+        profiles.seed(sampleProfile("user_a", "Alice", weeklyWorkouts = 3, age = 26))
+        profiles.seed(sampleProfile("user_b", "Bob", weeklyWorkouts = 6, age = 35))
+
+        val editVm = EditProfileViewModel(auth, profiles)
+        withTimeout(2_000) { editVm.uiState.first { !it.isLoading && it.ownerId == "user_a" } }
+        editVm.onFullNameChanged("Alice Edited")
+
+        // Account switches mid-edit to userB -> ViewModel must reload Bob's profile and never overwrite Bob with Alice's draft
+        auth.state.value = AuthState.Authenticated(userB)
+        withTimeout(2_000) { editVm.uiState.first { !it.isLoading && it.ownerId == "user_b" } }
+
+        assertEquals("Bob", editVm.uiState.value.fullName)
+        assertEquals("Alice", profiles.getProfile("user_a")!!.fullName)
+        assertEquals("Bob", profiles.getProfile("user_b")!!.fullName)
+    }
+
     private suspend fun awaitHomeLoaded(
         vm: HomeViewModel,
         predicate: (HomeUiState.Loaded) -> Boolean,
@@ -386,6 +430,27 @@ class P5HomeAndProfileUnitTest {
                 experienceLevel = goals.experienceLevel,
                 weeklyWorkouts = goals.weeklyWorkouts,
                 setupCompleted = true,
+                updatedAtEpochMs = System.currentTimeMillis(),
+            )
+            seed(updated)
+            return DomainResult.Success(updated)
+        }
+        override suspend fun updateExistingProfile(ownerId: String, draft: EditProfileDraft): DomainResult<UserProfile> {
+            if (failNextSave) {
+                failNextSave = false
+                return DomainResult.Failure(DataError.StorageError("Disk write failed"))
+            }
+            val existing = map.value[ownerId]
+            if (existing == null || !existing.setupCompleted) {
+                return DomainResult.Failure(DataError.NotFound("No completed profile exists"))
+            }
+            val updated = existing.copy(
+                fullName = draft.fullName.trim(),
+                gender = draft.gender,
+                heightCm = draft.heightCm,
+                weightKg = draft.weightKg,
+                fitnessGoal = draft.fitnessGoal,
+                experienceLevel = draft.experienceLevel,
                 updatedAtEpochMs = System.currentTimeMillis(),
             )
             seed(updated)
