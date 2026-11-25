@@ -15,14 +15,17 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -37,6 +40,7 @@ import androidx.compose.ui.semantics.dialog
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -87,6 +91,7 @@ fun ProfileModalHost(
 private fun ProfileModalFrame(
     onDismiss: () -> Unit,
     testTag: String,
+    minHeight: Dp = 364.dp,
     inWindow: Boolean = false,
     content: @Composable () -> Unit,
 ) {
@@ -108,6 +113,7 @@ private fun ProfileModalFrame(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
+                    .heightIn(min = minHeight)
                     .clip(shape)
                     .background(Color.White)
                     .clickable(
@@ -115,12 +121,13 @@ private fun ProfileModalFrame(
                         indication = null,
                         onClick = {},
                     )
+                    .verticalScroll(rememberScrollState())
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .imePadding()
-                    .padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 32.dp)
+                    .padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 16.dp)
                     .testTag(testTag),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
             ) {
                 Box(
                     modifier = Modifier
@@ -185,6 +192,7 @@ private fun AccountPreferencesSheet(
     ProfileModalFrame(
         onDismiss = onDismiss,
         testTag = "sheet_account_preferences",
+        minHeight = 404.dp,
         inWindow = inWindow,
     ) {
         BasicText(
@@ -227,6 +235,7 @@ private fun UnitsMeasurementsSheet(
     ProfileModalFrame(
         onDismiss = onDismiss,
         testTag = "sheet_units",
+        minHeight = 364.dp,
         inWindow = inWindow,
     ) {
         BasicText(
@@ -326,6 +335,7 @@ private fun PrivacyLocalDataSheet(
     ProfileModalFrame(
         onDismiss = onDismiss,
         testTag = "sheet_privacy",
+        minHeight = 404.dp,
         inWindow = inWindow,
     ) {
         Image(

@@ -173,7 +173,12 @@ class P5HomeAndProfileUiTest {
         composeRule.onNodeWithTag("sheet_units").assertIsDisplayed()
         composeRule.onNodeWithText("Coming in future release").assertIsDisplayed()
         composeRule.onNodeWithText("Confirm").performClick()
-        composeRule.onNodeWithTag("sheet_units").assertDoesNotExist()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            runCatching {
+                composeRule.onNodeWithTag("sheet_units").assertDoesNotExist()
+                true
+            }.getOrDefault(false)
+        }
 
         // Privacy sheet: open & dismiss via scrim
         composeRule.onNodeWithTag("settings_row_privacy").performClick()

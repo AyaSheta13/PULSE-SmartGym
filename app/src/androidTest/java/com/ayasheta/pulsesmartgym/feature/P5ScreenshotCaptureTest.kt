@@ -360,12 +360,16 @@ class P5ScreenshotCaptureTest {
             composeRule.onNodeWithTag(sheetTag).assertIsDisplayed()
             composeRule.waitForIdle()
             Thread.sleep(300)
-            val bitmap = uiAutomation.takeScreenshot()
-            if (bitmap != null) {
-                FileOutputStream(File(outDir, filename)).use { stream ->
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
-                }
-                bitmap.recycle()
+            val bitmap = requireNotNull(uiAutomation.takeScreenshot()) {
+                "uiAutomation.takeScreenshot() returned null for $filename"
+            }
+            val outFile = File(outDir, filename)
+            FileOutputStream(outFile).use { stream ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+            }
+            bitmap.recycle()
+            require(outFile.exists() && outFile.length() > 0L) {
+                "Screenshot file was not written or is empty: ${outFile.absolutePath}"
             }
             composeRule.onNodeWithText(
                 if (sheetTag == "sheet_units") "Confirm" else "Got It",
