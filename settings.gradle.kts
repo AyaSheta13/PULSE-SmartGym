@@ -24,3 +24,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "PULSE"
 include(":app")
+include(":core:designsystem")
