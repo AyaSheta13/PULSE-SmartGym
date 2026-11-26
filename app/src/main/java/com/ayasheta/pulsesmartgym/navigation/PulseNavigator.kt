@@ -126,8 +126,13 @@ class PulseNavigator(
         }
     }
 
-    fun startWorkoutSession(planId: String, sessionId: String? = null) {
-        navigate(WorkoutSession(planId = planId, sessionId = sessionId))
+    fun startWorkoutSession(
+        planId: String,
+        sessionId: String? = null,
+        environment: com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind =
+            com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind.GENUINE,
+    ) {
+        navigate(WorkoutSession(planId = planId, sessionId = sessionId, environment = environment))
     }
 
     fun completeWorkoutFlow(summaryRoute: NavKey) {
@@ -145,6 +150,8 @@ class PulseNavigator(
         nextExerciseId: String? = null,
         nextSetIndex: Int? = null,
         openNextSetImmediately: Boolean = false,
+        environment: com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind =
+            com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind.GENUINE,
     ) {
         val stack = state.activeBackStack
         while (stack.size > 1) {
@@ -156,7 +163,14 @@ class PulseNavigator(
             }
         }
         if (openNextSetImmediately && nextExerciseId != null && nextSetIndex != null) {
-            navigate(ReadyStartSet(sessionId = sessionId, exerciseId = nextExerciseId, setIndex = nextSetIndex))
+            navigate(
+                ReadyStartSet(
+                    sessionId = sessionId,
+                    exerciseId = nextExerciseId,
+                    setIndex = nextSetIndex,
+                    environment = environment,
+                ),
+            )
         }
     }
 
@@ -164,12 +178,21 @@ class PulseNavigator(
         sessionId: String,
         exerciseId: String,
         setIndex: Int,
+        environment: com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind =
+            com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind.GENUINE,
     ) {
         val stack = state.activeBackStack
         while (stack.size > 1 && stack.lastOrNull() is DeviceAssistedRepCounter) {
             stack.removeAt(stack.lastIndex)
         }
-        navigate(ManualRepCounter(sessionId = sessionId, exerciseId = exerciseId, setIndex = setIndex))
+        navigate(
+            ManualRepCounter(
+                sessionId = sessionId,
+                exerciseId = exerciseId,
+                setIndex = setIndex,
+                environment = environment,
+            ),
+        )
     }
 
     fun exitWorkoutSummaryToHome() {

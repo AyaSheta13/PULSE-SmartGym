@@ -9,6 +9,11 @@ enum class DeviceConnectionState {
     FAILED,
 }
 
+enum class ExecutionEnvironmentKind {
+    GENUINE,
+    DEMO,
+}
+
 enum class TrackingMode {
     MANUAL,
     DEVICE_ASSISTED,

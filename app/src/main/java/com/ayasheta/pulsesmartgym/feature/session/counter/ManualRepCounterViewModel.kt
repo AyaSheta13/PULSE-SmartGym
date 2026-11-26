@@ -4,9 +4,9 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ayasheta.pulsesmartgym.core.model.common.DomainResult
-import com.ayasheta.pulsesmartgym.core.model.common.RecordSetResult
 import com.ayasheta.pulsesmartgym.core.model.common.WeightLoad
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
+import com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind
 import com.ayasheta.pulsesmartgym.core.model.device.MeasurementOrigin
 import com.ayasheta.pulsesmartgym.core.model.device.RepClassification
 import com.ayasheta.pulsesmartgym.core.model.device.RepMeasurement
@@ -16,7 +16,6 @@ import com.ayasheta.pulsesmartgym.core.model.repository.AuthRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.UserPreferencesRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.WorkoutSessionRepository
 import com.ayasheta.pulsesmartgym.core.model.session.RecordSetRequest
-import com.ayasheta.pulsesmartgym.core.model.session.SessionProgression
 import com.ayasheta.pulsesmartgym.core.model.session.SessionStatus
 import com.ayasheta.pulsesmartgym.core.model.session.WorkoutSession
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -44,13 +43,15 @@ class ManualRepCounterViewModel(
     private val savedStateHandle: SavedStateHandle = SavedStateHandle(),
     private val elapsedRealtimeMs: () -> Long = { android.os.SystemClock.elapsedRealtime() },
     private val setDraftStore: SetDraftStore? = null,
+    private val executionEnvironment: ExecutionEnvironmentKind = ExecutionEnvironmentKind.GENUINE,
 ) : ViewModel() {
 
-    private val stateKeyPrefix = "counter_${sessionId}_${exerciseId}_${setIndex}"
+    private val stateKeyPrefix = "counter_${executionEnvironment.name}_${sessionId}_${exerciseId}_${setIndex}"
     private val repsKey = "${stateKeyPrefix}_reps"
     private val loadGramsKey = "${stateKeyPrefix}_load_grams"
     private val loadInitKey = "${stateKeyPrefix}_load_init"
     private val startElapsedKey = "${stateKeyPrefix}_start_elapsed"
+    private val draftJsonKey = "${stateKeyPrefix}_draft_json"
     private val completedKey = "${stateKeyPrefix}_completed"
     private val completedRestStartedKey = "${stateKeyPrefix}_completed_rest"
     private val completedRestErrorKey = "${stateKeyPrefix}_completed_rest_err"
@@ -81,13 +82,23 @@ class ManualRepCounterViewModel(
         },
     )
 
+    @Volatile
     private var activeOwnerId: String? = null
+
+    @Volatile
+    private var restoredForOwnerId: String? = null
+
     private var hasInitializedLoad = savedStateHandle.get<Boolean>(loadInitKey) ?: false
     private var latestSession: WorkoutSession? = null
-    private var setStartedAtElapsedMs: Long = savedStateHandle.get<Long>(startElapsedKey)
-        ?: elapsedRealtimeMs().also { savedStateHandle[startElapsedKey] = it }
+    private var setStartedAtElapsedMs: Long = (savedStateHandle.get<Long>(startElapsedKey) ?: elapsedRealtimeMs()).let { saved ->
+        val now = elapsedRealtimeMs()
+        val safe = if (saved in 0L..now) saved else now
+        savedStateHandle[startElapsedKey] = safe
+        safe
+    }
     private var partialRepsCount: Int = 0
     private var preservedLedger: MutableList<RepMeasurement> = mutableListOf()
+    private var preservedEventIds: Set<String> = emptySet()
     private var hadDeviceTracking: Boolean = false
 
     init {
@@ -104,30 +115,18 @@ class ManualRepCounterViewModel(
                     }
                     AuthState.Unauthenticated -> {
                         activeOwnerId = null
+                        restoredForOwnerId = null
                         clearTransient()
                         flowOf(ManualRepCounterUiState.SignedOut)
                     }
                     is AuthState.Authenticated -> {
                         val ownerId = authState.user.id
                         if (activeOwnerId != null && activeOwnerId != ownerId) {
+                            restoredForOwnerId = null
                             clearTransient()
                         }
                         activeOwnerId = ownerId
-                        setDraftStore?.consume(ownerId, sessionId, exerciseId, setIndex)?.let { draft ->
-                            currentRepsFlow.value = draft.fullReps
-                            savedStateHandle[repsKey] = draft.fullReps
-                            partialRepsCount = draft.partialReps
-                            preservedLedger = draft.repRecords.toMutableList()
-                            hadDeviceTracking = draft.hadDeviceTracking
-                            setStartedAtElapsedMs = draft.setStartedAtElapsedMs
-                            savedStateHandle[startElapsedKey] = draft.setStartedAtElapsedMs
-                            if (draft.actualLoad != null) {
-                                actualLoadFlow.value = draft.actualLoad
-                                savedStateHandle[loadGramsKey] = draft.actualLoad.grams
-                                savedStateHandle[loadInitKey] = true
-                                hasInitializedLoad = true
-                            }
-                        }
+                        restoreDraftIfNeeded(ownerId)
                         combine(
                             workoutSessionRepository.observeSession(ownerId, sessionId),
                             userPreferencesRepository.observePreferences(),
@@ -217,6 +216,77 @@ class ManualRepCounterViewModel(
         }
     }
 
+    private fun restoreDraftIfNeeded(ownerId: String) {
+        if (restoredForOwnerId == ownerId) return
+        restoredForOwnerId = ownerId
+        val fromStore = setDraftStore?.consume(ownerId, executionEnvironment, sessionId, exerciseId, setIndex)
+        val fromSaved = SetDraftSavedStateCodec.decodeAndValidate(
+            raw = savedStateHandle.get<String>(draftJsonKey),
+            expectedOwnerId = ownerId,
+            expectedEnvironment = executionEnvironment,
+            expectedSessionId = sessionId,
+            expectedExerciseId = exerciseId,
+            expectedSetIndex = setIndex,
+            currentElapsedMs = elapsedRealtimeMs(),
+        )
+        val draft = fromStore ?: fromSaved ?: return
+        applyRestoredDraft(draft)
+    }
+
+    private fun applyRestoredDraft(draft: SetExecutionDraft) {
+        hadDeviceTracking = draft.hadDeviceTracking
+        preservedLedger = draft.repRecords.toMutableList()
+        preservedEventIds = draft.acceptedEventIds
+        partialRepsCount = if (draft.hadDeviceTracking) {
+            draft.repRecords.count { it.classification == RepClassification.PARTIAL }
+        } else {
+            draft.partialReps
+        }
+        val restoredFull = if (draft.hadDeviceTracking) {
+            draft.repRecords.count { it.classification == RepClassification.FULL }
+        } else {
+            draft.fullReps
+        }
+        currentRepsFlow.value = restoredFull
+        savedStateHandle[repsKey] = restoredFull
+        setStartedAtElapsedMs = draft.setStartedAtElapsedMs
+        savedStateHandle[startElapsedKey] = draft.setStartedAtElapsedMs
+        if (draft.hasInitializedLoad) {
+            actualLoadFlow.value = draft.actualLoad
+            savedStateHandle[loadGramsKey] = draft.actualLoad?.grams
+            savedStateHandle[loadInitKey] = true
+            hasInitializedLoad = true
+        }
+        if (draft.hadDeviceTracking) {
+            persistFallbackDraftToSavedState()
+        }
+    }
+
+    private fun persistFallbackDraftToSavedState() {
+        val ownerId = activeOwnerId ?: return
+        if (!hadDeviceTracking) return
+        val normalized = preservedLedger.mapIndexed { idx, rep -> rep.copy(repIndex = idx + 1) }
+        val draft = SetExecutionDraft(
+            ownerId = ownerId,
+            environment = executionEnvironment,
+            sessionId = sessionId,
+            exerciseId = exerciseId,
+            setIndex = setIndex,
+            fullReps = currentRepsFlow.value,
+            partialReps = partialRepsCount,
+            repRecords = normalized,
+            acceptedEventIds = preservedEventIds,
+            origin = deriveSetOrigin(normalized),
+            actualLoad = actualLoadFlow.value,
+            hasInitializedLoad = hasInitializedLoad,
+            setStartedAtElapsedMs = setStartedAtElapsedMs,
+            trackingMode = TrackingMode.DEVICE_ASSISTED,
+            hadDeviceTracking = true,
+            isManualFallback = true,
+        )
+        savedStateHandle[draftJsonKey] = SetDraftSavedStateCodec.encode(draft)
+    }
+
     private fun applyTransient(base: ManualRepCounterUiState): ManualRepCounterUiState {
         if (base !is ManualRepCounterUiState.Active) return base
         return base.copy(
@@ -233,6 +303,10 @@ class ManualRepCounterViewModel(
         currentRepsFlow.value = 0
         actualLoadFlow.value = null
         hasInitializedLoad = false
+        partialRepsCount = 0
+        preservedLedger.clear()
+        preservedEventIds = emptySet()
+        hadDeviceTracking = false
         isSubmittingFlow.value = false
         errorMessageFlow.value = null
         showEndEarlyFlow.value = false
@@ -241,6 +315,7 @@ class ManualRepCounterViewModel(
         savedStateHandle[repsKey] = 0
         savedStateHandle[loadGramsKey] = null
         savedStateHandle[loadInitKey] = false
+        savedStateHandle.remove<String>(draftJsonKey)
         savedStateHandle[completedKey] = false
         savedStateHandle[completedRestStartedKey] = false
         savedStateHandle[completedRestErrorKey] = null
@@ -260,6 +335,7 @@ class ManualRepCounterViewModel(
                     origin = MeasurementOrigin.MANUAL_INPUT,
                 ),
             )
+            persistFallbackDraftToSavedState()
         }
     }
 
@@ -274,6 +350,7 @@ class ManualRepCounterViewModel(
             if (lastFullIdx >= 0) {
                 preservedLedger.removeAt(lastFullIdx)
             }
+            persistFallbackDraftToSavedState()
         }
     }
 
@@ -285,6 +362,8 @@ class ManualRepCounterViewModel(
         actualLoadFlow.value = next
         savedStateHandle[loadGramsKey] = next.grams
         savedStateHandle[loadInitKey] = true
+        hasInitializedLoad = true
+        persistFallbackDraftToSavedState()
     }
 
     fun decrementWeight() {
@@ -295,6 +374,8 @@ class ManualRepCounterViewModel(
         actualLoadFlow.value = next
         savedStateHandle[loadGramsKey] = next.grams
         savedStateHandle[loadInitKey] = true
+        hasInitializedLoad = true
+        persistFallbackDraftToSavedState()
     }
 
     fun finishSet() {
@@ -309,19 +390,25 @@ class ManualRepCounterViewModel(
             emptyList()
         }
         val trackingMode = if (hadDeviceTracking) TrackingMode.DEVICE_ASSISTED else TrackingMode.MANUAL
-        val setOrigin = when {
-            normalizedRecords.any { it.origin == MeasurementOrigin.SENSOR_TELEMETRY } ->
-                MeasurementOrigin.SENSOR_TELEMETRY
-            normalizedRecords.any { it.origin == MeasurementOrigin.SIMULATED_TELEMETRY } ->
-                MeasurementOrigin.SIMULATED_TELEMETRY
-            else -> MeasurementOrigin.MANUAL_INPUT
+        val setOrigin = deriveSetOrigin(normalizedRecords)
+        val fullReps = if (hadDeviceTracking && normalizedRecords.isNotEmpty()) {
+            normalizedRecords.count { it.classification == RepClassification.FULL }
+        } else {
+            active.currentReps
+        }
+        val partialReps = if (hadDeviceTracking && normalizedRecords.isNotEmpty()) {
+            normalizedRecords.count { it.classification == RepClassification.PARTIAL }
+        } else if (hadDeviceTracking) {
+            partialRepsCount
+        } else {
+            0
         }
         val request = RecordSetRequest(
             sessionId = active.sessionId,
             sessionExerciseId = active.exerciseId,
             setIndex = active.setIndex,
-            fullReps = active.currentReps,
-            partialReps = if (hadDeviceTracking) partialRepsCount else 0,
+            fullReps = fullReps,
+            partialReps = partialReps,
             actualLoad = active.actualLoad,
             trackingMode = trackingMode,
             origin = setOrigin,
@@ -345,6 +432,7 @@ class ManualRepCounterViewModel(
                 )
             ) {
                 is SetSubmissionOutcome.Success -> {
+                    savedStateHandle.remove<String>(draftJsonKey)
                     val completedState = ManualRepCounterUiState.Completed(
                         sessionId = outcome.sessionId,
                         hasRestStarted = outcome.hasRestStarted,
@@ -362,6 +450,14 @@ class ManualRepCounterViewModel(
                             nextTarget = outcome.nextTarget,
                             restErrorMessage = outcome.restErrorMessage,
                         ),
+                    )
+                }
+                is SetSubmissionOutcome.AlreadyCompleted -> {
+                    isSubmittingFlow.value = false
+                    savedStateHandle.remove<String>(draftJsonKey)
+                    _uiState.value = ManualRepCounterUiState.AlreadyCompleted(
+                        exerciseName = active.exerciseName,
+                        setIndex = outcome.setIndex,
                     )
                 }
                 is SetSubmissionOutcome.Failure -> {
@@ -403,6 +499,12 @@ class ManualRepCounterViewModel(
             }
             isEndingEarlyFlow.value = false
         }
+    }
+
+    private fun deriveSetOrigin(records: List<RepMeasurement>): MeasurementOrigin = when {
+        records.any { it.origin == MeasurementOrigin.SENSOR_TELEMETRY } -> MeasurementOrigin.SENSOR_TELEMETRY
+        records.any { it.origin == MeasurementOrigin.SIMULATED_TELEMETRY } -> MeasurementOrigin.SIMULATED_TELEMETRY
+        else -> MeasurementOrigin.MANUAL_INPUT
     }
 
     private fun stepWeight(

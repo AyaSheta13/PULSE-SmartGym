@@ -3,6 +3,7 @@ package com.ayasheta.pulsesmartgym.core.data.device
 import com.ayasheta.pulsesmartgym.core.model.device.DeviceCapabilities
 import com.ayasheta.pulsesmartgym.core.model.device.DeviceProviderType
 import com.ayasheta.pulsesmartgym.core.model.device.DeviceRepEvent
+import com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind
 import com.ayasheta.pulsesmartgym.core.model.device.MeasurementOrigin
 import com.ayasheta.pulsesmartgym.core.model.device.RepMeasurement
 
@@ -12,6 +13,9 @@ sealed interface NormalizedRepResult {
 }
 
 object DeviceEventNormalizer {
+
+    const val MAX_ACCEPTED_EVENTS_PER_SET: Int = 100
+    const val MAX_RETAINED_EVENT_IDS: Int = 120
 
     fun normalizeAndValidate(
         event: DeviceRepEvent,
@@ -23,15 +27,33 @@ object DeviceEventNormalizer {
         capabilities: DeviceCapabilities,
         seenEventIds: Set<String>,
         nextRepIndex: Int,
+        isOwnerAuthenticated: Boolean = true,
+        isSessionActive: Boolean = true,
+        isSetValidAndUnrecorded: Boolean = true,
+        isAcceptingEvents: Boolean = true,
+        expectedEnvironment: ExecutionEnvironmentKind = ExecutionEnvironmentKind.DEMO,
+        maxAcceptedEvents: Int = MAX_ACCEPTED_EVENTS_PER_SET,
     ): NormalizedRepResult {
+        if (!isOwnerAuthenticated) {
+            return NormalizedRepResult.Rejected("Owner is not authenticated")
+        }
+        if (!isSessionActive || !isSetValidAndUnrecorded) {
+            return NormalizedRepResult.Rejected("Session or set is not active/unrecorded")
+        }
+        if (!isAcceptingEvents || isSubmitting) {
+            return NormalizedRepResult.Rejected("Counter is not accepting device events")
+        }
         if (!isConnected) {
             return NormalizedRepResult.Rejected("Provider is not connected")
         }
-        if (isSubmitting) {
-            return NormalizedRepResult.Rejected("Set submission already in progress")
+        if (expectedProviderType == DeviceProviderType.SIMULATED && expectedEnvironment != ExecutionEnvironmentKind.DEMO) {
+            return NormalizedRepResult.Rejected("Simulated provider cannot emit events in GENUINE environment")
         }
         if (!capabilities.automaticRepEvents) {
             return NormalizedRepResult.Rejected("Provider does not support automatic rep events")
+        }
+        if (nextRepIndex > maxAcceptedEvents) {
+            return NormalizedRepResult.Rejected("Exceeded maximum accepted events ($maxAcceptedEvents) for set")
         }
         if (event.providerType != expectedProviderType) {
             return NormalizedRepResult.Rejected("Provider mismatch")
@@ -45,8 +67,11 @@ object DeviceEventNormalizer {
         if (event.eventId.isBlank() || event.eventId in seenEventIds) {
             return NormalizedRepResult.Rejected("Duplicate or blank eventId")
         }
-        if (expectedProviderType == DeviceProviderType.SIMULATED && event.origin == MeasurementOrigin.SENSOR_TELEMETRY) {
-            return NormalizedRepResult.Rejected("Simulated provider cannot emit SENSOR_TELEMETRY origin")
+        if (expectedProviderType == DeviceProviderType.SIMULATED && event.origin != MeasurementOrigin.SIMULATED_TELEMETRY) {
+            return NormalizedRepResult.Rejected("Simulated provider requires SIMULATED_TELEMETRY origin")
+        }
+        if (expectedProviderType == DeviceProviderType.REAL_BLE && event.origin != MeasurementOrigin.SENSOR_TELEMETRY) {
+            return NormalizedRepResult.Rejected("Real BLE provider requires SENSOR_TELEMETRY origin")
         }
         val totalDurationMs = event.totalDurationMs
         if (totalDurationMs != null && totalDurationMs < 0L) {

@@ -2,34 +2,47 @@
 
 ## Branch & Scope
 - **Branch:** `feat/p10-device-connection-and-simulator`
-- **Scope:** P10 only (Device Center, Discovery/Connecting/Failed/Connected flows, Connection-Lost Recovery + Manual Fallback, Device-Assisted Rep Counter, BLE-ready `DeviceDataSource`/`DeviceRepository` boundary, `FakeDeviceDataSource` simulator, `RealBleDeviceDataSource` fail-honest stub, API-aware Bluetooth permissions, isolated demo container).
+- **Scope:** P10 only (Device Center, Discovery/Connecting/Failed/Connected flows, Connection-Lost Recovery + Manual Fallback, Device-Assisted Rep Counter, BLE-ready `DeviceDataSource`/`DeviceRepository` boundary, `FakeDeviceDataSource` simulator, `RealBleDeviceDataSource` fail-honest stub, API-aware Bluetooth permissions, explicit `DemoEnvironmentController` isolation, and full repetition ledger restoration).
 
-## Architecture & Key Changes
-1. **Domain Contracts (`:core:model`)**:
-   - Added `MeasurementOrigin.SIMULATED_TELEMETRY` in `DeviceContracts.kt` (`PulseTypeConverters` uses `.name`/`Enum.valueOf()`, keeping Room schema at version 3).
-   - Added `DeviceCapabilities.kt`, `DeviceDescriptor.kt`, `DeviceEvent.kt`, `DeviceDataSource.kt`, `DeviceRepository.kt`.
-2. **Data & Simulation (`:core:data`)**:
-   - Implemented `FakeDeviceDataSource.kt`, `DeviceSimulationScenario.kt`, `RealBleDeviceDataSource.kt`, `DefaultDeviceRepository.kt`, `DeviceEventNormalizer.kt`.
-   - Updated `WorkoutSessionDao.kt` (`getRepRecordsForSet`) and `RoomWorkoutSessionRepository.kt` (`validateRepRecords`, weight-only correction preserves `repRecords`, count change clears contradictory `repRecords`).
-   - Wired `fakeDeviceDataSource` and `deviceRepository` into `PulseDataContainer.kt`.
-3. **Android App (`:app`)**:
-   - Updated `AndroidManifest.xml` with API-split Bluetooth permissions (`maxSdkVersion="30"` legacy permissions + API 31+ `BLUETOOTH_SCAN` `neverForLocation` / `BLUETOOTH_CONNECT`, `bluetooth_le required="false"`).
-   - Added `BluetoothPermissionPolicy.kt`, `DeviceViewModel.kt`, `PulsePodIllustration.kt`, `MyDeviceScreen.kt`, `DeviceDiscoveryScreen.kt`.
-   - Added `SetDraftStore.kt`, `SetFinishHelper.kt`, `ConnectionLostRecoverySheet.kt`, `DeviceAssistedRepCounterUiState.kt`, `DeviceAssistedRepCounterViewModel.kt`, `DeviceAssistedRepCounterScreen.kt`.
-   - Updated `ManualRepCounterViewModel.kt`, `ReadyStartSetUiState.kt`/`ViewModel`/`Screen`, `HomeScreen.kt`, `ProfileScreen.kt`, `TopBar.kt` (`home_bluetooth_chip` tag), `PulseNavigator.kt`, and `PulseNavigationEntryProvider.kt` (isolated `demoIsolated` `PulseDataContainer.createIsolatedForTesting` for Demo Mode).
+## Architecture & Reliability Policies
+
+### 1. Complete Repetition Ledger Restoration
+- `SetExecutionDraft` (`SetDraftStore.kt`) is scoped by `(ownerId, environment, sessionId, exerciseId, setIndex)` and includes `trackingWindowId`, `fullReps`, `partialReps`, `repRecords`, `acceptedEventIds`, `origin`, `actualLoad` (preserving explicit `null` via `hasInitializedLoad`), `setStartedAtElapsedMs`, `trackingMode`, `hadDeviceTracking`, and `isManualFallback`.
+- `SetDraftSavedStateCodec` serializes a bounded draft (`MAX_SAVED_LEDGER_RECORDS = 100`, `MAX_SAVED_EVENT_IDS = 120`) into `SavedStateHandle` without placing unbounded data in navigation arguments.
+- On restoration, `DeviceAssistedRepCounterViewModel` and `ManualRepCounterViewModel` validate all fields, derive aggregate counts from the ledger for device-tracked sets, preserve `acceptedEventIds` to reject replayed events after restoration, and handle device reboots safely (`savedElapsed > currentElapsed` resets the monotonic baseline).
+- Ordinary manual sets (`hadDeviceTracking == false`) retain their aggregate-only representation.
+
+### 2. Explicit Demo Environment Isolation
+- `DemoEnvironmentController` (hosted in `authFlowViewModelStoreOwner`, surviving Activity recreation) manages `ExecutionEnvironmentState`: `Genuine`, `DemoInitializing`, `DemoReady`, `DemoClosing`, and `DemoFailed`.
+- Workout/summary routes carry `ExecutionEnvironmentKind` (`GENUINE` or `DEMO`), enforced by `DemoEnvironmentGate`: demo routes never fall back to genuine storage during initialization, closing, failure, or process restart.
+- `DemoEnvironmentController` cancels active init jobs before closing `IsolatedTestContainer`, clears `SetDraftStore` for `DEMO` on exit or owner change, and hosts `SetDraftStore` so fallback drafts survive Activity recreation.
+- `ReadyStartSetViewModel` and `DeviceEventNormalizer` ensure a `SIMULATED` provider never authorizes automatic tracking or events on a `GENUINE` session.
+
+### 3. Event Acceptance Boundaries & Set Completion
+- `DeviceEventNormalizer.normalizeAndValidate()` enforces owner authentication, active session, unrecorded planned set, active accepting state (stopped on submission/end/fallback/disposal), environment-provider match, connection generation, tracking window, bounded event count (`100`) and retained IDs (`120`), and strict origin provenance (`SIMULATED_TELEMETRY` for `SIMULATED`, `SENSOR_TELEMETRY` for `REAL_BLE`).
+- Manual fallback navigation uses durable `pendingManualFallback` UI state in addition to the event flow.
+- `SetFinishHelper` catches storage exceptions (rethrowing `CancellationException`), returns `AlreadyCompleted` for duplicate sets, isolates rest-timer failures from saved sets, and invalidates callbacks on owner change.
+
+### 4. Measurement Correction Semantics
+- `RecordSetRequest.repCorrectionPolicy` (`RepCorrectionPolicy`: `PRESERVE_IF_COUNTS_MATCH`, `REPLACE_WITH_LEDGER`, `INVALIDATE_LEDGER`) governs `RoomWorkoutSessionRepository.correctPerformedSet()`.
+- Weight-only corrections (`PRESERVE_IF_COUNTS_MATCH` with matching counts and empty `repRecords`) preserve existing `trackingMode`, `origin`, `durationMs`, and `repRecords`.
+- `INVALIDATE_LEDGER` explicitly clears detailed records; `REPLACE_WITH_LEDGER` requires non-empty validated `repRecords`.
+
+### 5. Permission & Provider Lifecycle
+- `DeviceDiscovery` uses `ActivityCompat.shouldShowRequestPermissionRationale` to distinguish `PERMISSION_DENIED` from `PERMISSION_PERMANENTLY_DENIED`, and refreshes readiness on `Lifecycle.Event.ON_RESUME`.
+- `DefaultDeviceRepository.onOwnerChanged()` and `selectProvider()` synchronously cancel active scan/connection jobs via `resetToDisconnected()`.
 
 ## Verification Results
 
-| Suite | Total | Passed | Failed | Errors | Skipped |
-| --- | --- | --- | --- | --- | --- |
-| `:core:model:test` | 6 | 6 | 0 | 0 | 0 |
-| `:core:data:testDebugUnitTest` | 4 | 4 | 0 | 0 | 0 |
-| `:core:designsystem:testDebugUnitTest` | 4 | 4 | 0 | 0 | 0 |
-| `:app:testDebugUnitTest` | 54 | 54 | 0 | 0 | 0 |
-| `:core:data:connectedDebugAndroidTest` | 26 | 26 | 0 | 0 | 0 |
-| `:app:connectedDebugAndroidTest` | 40 | 40 | 0 | 0 | 0 |
-| **Total** | **134** | **134** | **0** | **0** | **0** |
+| Suite | Total | Passed | Failed | Errors | Skipped | Not Run |
+| --- | --- | --- | --- | --- | --- | --- |
+| `:core:model:test` | 6 | 6 | 0 | 0 | 0 | 0 |
+| `:core:data:testDebugUnitTest` | 4 | 4 | 0 | 0 | 0 | 0 |
+| `:core:designsystem:testDebugUnitTest` | 4 | 4 | 0 | 0 | 0 | 0 |
+| `:app:testDebugUnitTest` | 56 | 56 | 0 | 0 | 0 | 0 |
+| `:core:data:connectedDebugAndroidTest` | 27 | 27 | 0 | 0 | 0 | 0 |
+| `:app:connectedDebugAndroidTest` | 42 | 42 | 0 | 0 | 0 | 0 |
+| **Total** | **139** | **139** | **0** | **0** | **0** | **0** |
 
 - `:app:assembleDebug` — BUILD SUCCESSFUL
 - `:app:assembleRelease` — BUILD SUCCESSFUL
-- Visual QA (`P10ScreenshotCaptureTest`): All 10 Figma comparison screenshots verified in `docs/P10_VISUAL_QA_REPORT.md`.

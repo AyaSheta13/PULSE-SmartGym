@@ -19,6 +19,7 @@ import com.ayasheta.pulsesmartgym.core.model.device.RepClassification
 import com.ayasheta.pulsesmartgym.core.model.repository.WorkoutSessionRepository
 import com.ayasheta.pulsesmartgym.core.model.session.PerformedSet
 import com.ayasheta.pulsesmartgym.core.model.session.RecordSetRequest
+import com.ayasheta.pulsesmartgym.core.model.session.RepCorrectionPolicy
 import com.ayasheta.pulsesmartgym.core.model.session.SessionRestState
 import com.ayasheta.pulsesmartgym.core.model.session.SessionStatus
 import com.ayasheta.pulsesmartgym.core.model.session.WorkoutSession
@@ -355,39 +356,71 @@ class RoomWorkoutSessionRepository(
                 DataError.NotFound("No recorded set found for (${request.sessionId}, ${request.sessionExerciseId}, ${request.setIndex})"),
             )
 
+            val isWeightOnlyPreservingEdit = request.repCorrectionPolicy == RepCorrectionPolicy.PRESERVE_IF_COUNTS_MATCH &&
+                request.repRecords.isEmpty() &&
+                request.fullReps == existing.fullReps &&
+                request.partialReps == existing.partialReps
+
             val updatedSet = existing.copy(
                 fullReps = request.fullReps,
                 partialReps = request.partialReps,
                 actualLoadGrams = request.actualLoad?.grams,
                 completedAtEpochMs = existing.completedAtEpochMs,
-                trackingMode = request.trackingMode,
-                origin = request.origin,
+                trackingMode = if (isWeightOnlyPreservingEdit) existing.trackingMode else request.trackingMode,
+                origin = if (isWeightOnlyPreservingEdit) existing.origin else request.origin,
                 durationMs = request.durationMs ?: existing.durationMs,
             )
             sessionDao.updatePerformedSet(updatedSet)
-            val resultRepRecords = if (request.repRecords.isNotEmpty()) {
-                val repEntities = request.repRecords.map { rep ->
-                    RepRecordEntity(
-                        id = UUID.randomUUID().toString(),
-                        performedSetId = existing.id,
-                        repIndex = rep.repIndex,
-                        classification = rep.classification,
-                        totalDurationMs = rep.totalDurationMs,
-                        concentricDurationMs = rep.concentricDurationMs,
-                        eccentricDurationMs = rep.eccentricDurationMs,
-                        angularRomDegrees = rep.angularRomDegrees,
-                        linearRomCm = rep.linearRomCm,
-                        origin = rep.origin,
-                    )
+            val resultRepRecords = when (request.repCorrectionPolicy) {
+                RepCorrectionPolicy.REPLACE_WITH_LEDGER -> {
+                    val repEntities = request.repRecords.map { rep ->
+                        RepRecordEntity(
+                            id = UUID.randomUUID().toString(),
+                            performedSetId = existing.id,
+                            repIndex = rep.repIndex,
+                            classification = rep.classification,
+                            totalDurationMs = rep.totalDurationMs,
+                            concentricDurationMs = rep.concentricDurationMs,
+                            eccentricDurationMs = rep.eccentricDurationMs,
+                            angularRomDegrees = rep.angularRomDegrees,
+                            linearRomCm = rep.linearRomCm,
+                            origin = rep.origin,
+                        )
+                    }
+                    sessionDao.deleteRepRecordsForSet(updatedSet.id)
+                    sessionDao.insertRepRecords(repEntities)
+                    request.repRecords
                 }
-                sessionDao.deleteRepRecordsForSet(updatedSet.id)
-                sessionDao.insertRepRecords(repEntities)
-                request.repRecords
-            } else if (request.fullReps == existing.fullReps && request.partialReps == existing.partialReps) {
-                sessionDao.getRepRecordsForSet(existing.id).map { it.toDomain() }
-            } else {
-                sessionDao.deleteRepRecordsForSet(updatedSet.id)
-                emptyList()
+                RepCorrectionPolicy.INVALIDATE_LEDGER -> {
+                    sessionDao.deleteRepRecordsForSet(updatedSet.id)
+                    emptyList()
+                }
+                RepCorrectionPolicy.PRESERVE_IF_COUNTS_MATCH -> {
+                    if (request.repRecords.isNotEmpty()) {
+                        val repEntities = request.repRecords.map { rep ->
+                            RepRecordEntity(
+                                id = UUID.randomUUID().toString(),
+                                performedSetId = existing.id,
+                                repIndex = rep.repIndex,
+                                classification = rep.classification,
+                                totalDurationMs = rep.totalDurationMs,
+                                concentricDurationMs = rep.concentricDurationMs,
+                                eccentricDurationMs = rep.eccentricDurationMs,
+                                angularRomDegrees = rep.angularRomDegrees,
+                                linearRomCm = rep.linearRomCm,
+                                origin = rep.origin,
+                            )
+                        }
+                        sessionDao.deleteRepRecordsForSet(updatedSet.id)
+                        sessionDao.insertRepRecords(repEntities)
+                        request.repRecords
+                    } else if (isWeightOnlyPreservingEdit) {
+                        sessionDao.getRepRecordsForSet(existing.id).map { it.toDomain() }
+                    } else {
+                        sessionDao.deleteRepRecordsForSet(updatedSet.id)
+                        emptyList()
+                    }
+                }
             }
             DomainResult.Success(updatedSet.toDomain(resultRepRecords))
         }
@@ -395,6 +428,9 @@ class RoomWorkoutSessionRepository(
 
     private fun validateRepRecords(request: RecordSetRequest): String? {
         val records = request.repRecords
+        if (request.repCorrectionPolicy == RepCorrectionPolicy.REPLACE_WITH_LEDGER && records.isEmpty()) {
+            return "REPLACE_WITH_LEDGER requires non-empty repRecords"
+        }
         if (records.isEmpty()) return null
         val seenIndexes = HashSet<Int>(records.size)
         var fullCount = 0

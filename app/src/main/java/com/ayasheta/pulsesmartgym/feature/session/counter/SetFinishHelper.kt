@@ -7,6 +7,7 @@ import com.ayasheta.pulsesmartgym.core.model.session.RecordSetRequest
 import com.ayasheta.pulsesmartgym.core.model.session.SessionProgression
 import com.ayasheta.pulsesmartgym.core.model.session.SessionSetTarget
 import com.ayasheta.pulsesmartgym.core.model.session.WorkoutSession
+import kotlinx.coroutines.CancellationException
 
 sealed interface SetSubmissionOutcome {
     data class Success(
@@ -16,6 +17,7 @@ sealed interface SetSubmissionOutcome {
         val restErrorMessage: String?,
     ) : SetSubmissionOutcome
 
+    data class AlreadyCompleted(val setIndex: Int) : SetSubmissionOutcome
     data class Failure(val message: String) : SetSubmissionOutcome
     data object OwnerChanged : SetSubmissionOutcome
 }
@@ -30,13 +32,32 @@ object SetFinishHelper {
         workoutSessionRepository: WorkoutSessionRepository,
         currentOwnerProvider: () -> String?,
     ): SetSubmissionOutcome {
-        return when (val result = workoutSessionRepository.recordPerformedSet(ownerId, request)) {
+        if (currentOwnerProvider() != ownerId) {
+            return SetSubmissionOutcome.OwnerChanged
+        }
+        val recordResult = try {
+            workoutSessionRepository.recordPerformedSet(ownerId, request)
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (e: Exception) {
+            return SetSubmissionOutcome.Failure(e.message ?: "Failed to save set to local storage.")
+        }
+
+        return when (recordResult) {
             is RecordSetResult.Recorded -> {
                 if (currentOwnerProvider() != ownerId) {
                     return SetSubmissionOutcome.OwnerChanged
                 }
-                val refreshedSession = workoutSessionRepository.getSession(ownerId, request.sessionId)
-                    ?: fallbackSession
+                val refreshedSession = try {
+                    workoutSessionRepository.getSession(ownerId, request.sessionId) ?: fallbackSession
+                } catch (ce: CancellationException) {
+                    throw ce
+                } catch (_: Exception) {
+                    fallbackSession
+                }
+                if (currentOwnerProvider() != ownerId) {
+                    return SetSubmissionOutcome.OwnerChanged
+                }
                 val nextTarget = refreshedSession?.let {
                     SessionProgression.findNextUncompletedSet(
                         session = it,
@@ -47,8 +68,8 @@ object SetFinishHelper {
                 val restSeconds = targetRestSeconds ?: 0
                 val shouldStartRest = restSeconds > 0 && nextTarget != null
                 val (hasRestStarted, restErrorMessage) = if (shouldStartRest) {
-                    when (
-                        val restResult = workoutSessionRepository.startRestTimer(
+                    val restResult = try {
+                        workoutSessionRepository.startRestTimer(
                             ownerId = ownerId,
                             sessionId = request.sessionId,
                             exerciseId = request.sessionExerciseId,
@@ -58,13 +79,23 @@ object SetFinishHelper {
                             nextExerciseId = nextTarget?.exerciseId,
                             nextSetIndex = nextTarget?.setIndex,
                         )
-                    ) {
+                    } catch (ce: CancellationException) {
+                        throw ce
+                    } catch (e: Exception) {
+                        null
+                    }
+                    when (restResult) {
                         is DomainResult.Success -> true to null
                         is DomainResult.Failure ->
                             false to "Set saved, but rest timer could not be started: ${restResult.error.userMessage()}"
+                        null ->
+                            false to "Set saved, but rest timer could not be started."
                     }
                 } else {
                     false to null
+                }
+                if (currentOwnerProvider() != ownerId) {
+                    return SetSubmissionOutcome.OwnerChanged
                 }
                 SetSubmissionOutcome.Success(
                     sessionId = request.sessionId,
@@ -74,13 +105,13 @@ object SetFinishHelper {
                 )
             }
             is RecordSetResult.AlreadyRecorded ->
-                SetSubmissionOutcome.Failure("Set ${result.setIndex} was already recorded.")
+                SetSubmissionOutcome.AlreadyCompleted(recordResult.setIndex)
             is RecordSetResult.ValidationError ->
-                SetSubmissionOutcome.Failure(result.message)
+                SetSubmissionOutcome.Failure(recordResult.message)
             is RecordSetResult.NotFound ->
-                SetSubmissionOutcome.Failure(result.message)
+                SetSubmissionOutcome.Failure(recordResult.message)
             is RecordSetResult.InvalidState ->
-                SetSubmissionOutcome.Failure(result.message)
+                SetSubmissionOutcome.Failure(recordResult.message)
         }
     }
 }

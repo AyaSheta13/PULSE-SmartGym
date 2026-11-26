@@ -1,19 +1,37 @@
 package com.ayasheta.pulsesmartgym.navigation
 
+import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -24,23 +42,25 @@ import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import com.ayasheta.pulsesmartgym.core.data.di.PulseDataContainer
+import com.ayasheta.pulsesmartgym.core.designsystem.component.button.Button as PulsePrimaryButton
 import com.ayasheta.pulsesmartgym.core.designsystem.component.chips.PulseBluetoothChipStatus
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTab
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTopAppBarStyle
-import com.ayasheta.pulsesmartgym.core.model.common.DomainResult
-import com.ayasheta.pulsesmartgym.core.model.common.WeightLoad
+import com.ayasheta.pulsesmartgym.core.designsystem.component.progress.PulseLoadingIndicator
+import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
 import com.ayasheta.pulsesmartgym.core.model.device.DeviceConnectionState
+import com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind
 import com.ayasheta.pulsesmartgym.core.model.profile.AuthState
-import com.ayasheta.pulsesmartgym.core.model.workout.PlanExerciseDraft
-import com.ayasheta.pulsesmartgym.core.model.workout.PlannedSetDraft
-import com.ayasheta.pulsesmartgym.core.model.workout.WorkoutPlanDraft
 import com.ayasheta.pulsesmartgym.feature.device.DeviceViewModel
 import com.ayasheta.pulsesmartgym.feature.device.center.MyDeviceScreen
 import com.ayasheta.pulsesmartgym.feature.device.discovery.DeviceDiscoveryScreen
+import com.ayasheta.pulsesmartgym.feature.device.env.DemoEnvironmentController
+import com.ayasheta.pulsesmartgym.feature.device.env.ExecutionEnvironmentState
 import com.ayasheta.pulsesmartgym.feature.device.permissions.BluetoothPermissionPolicy
 import com.ayasheta.pulsesmartgym.feature.session.counter.SetDraftStore
 import com.ayasheta.pulsesmartgym.feature.session.devicecounter.DeviceAssistedRepCounterScreen
 import com.ayasheta.pulsesmartgym.feature.session.devicecounter.DeviceAssistedRepCounterViewModel
+import com.ayasheta.pulsesmartgym.feature.workout.components.WorkoutPalette
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import com.ayasheta.pulsesmartgym.feature.auth.entry.AuthEntryScreen
@@ -141,7 +161,6 @@ fun rememberPulseEntryProvider(
     }
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val setDraftStore = remember { SetDraftStore() }
 
     val deviceViewModel: DeviceViewModel = viewModel(
         viewModelStoreOwner = authFlowViewModelStoreOwner,
@@ -155,58 +174,18 @@ fun rememberPulseEntryProvider(
     }
     val deviceUiState by deviceViewModel.uiState.collectAsStateWithLifecycle()
 
-    // Isolated simulator container so demo workouts never contaminate genuine History/PRs/Analytics
-    var demoIsolated by remember { mutableStateOf<PulseDataContainer.IsolatedTestContainer?>(null) }
-    var demoSeededOwnerId by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(deviceUiState.isDemoSessionActive) {
-        if (deviceUiState.isDemoSessionActive) {
-            if (demoIsolated == null) {
-                val created = PulseDataContainer.createIsolatedForTesting(context)
-                demoIsolated = created
-                val user = (created.container.authRepository.continueAsGuest() as? DomainResult.Success)?.data
-                if (user != null) {
-                    demoSeededOwnerId = user.id
-                    val bench = created.container.exerciseRepository.observeAll().first()
-                        .firstOrNull { it.name.contains("Bench", ignoreCase = true) }
-                    if (bench != null) {
-                        created.container.workoutPlanRepository.createPlan(
-                            ownerId = user.id,
-                            draft = WorkoutPlanDraft(
-                                name = "Upper Body Power (Demo)",
-                                description = "Isolated device simulation workout",
-                                exercises = listOf(
-                                    PlanExerciseDraft(
-                                        exerciseId = bench.id,
-                                        orderIndex = 0,
-                                        plannedSets = listOf(
-                                            PlannedSetDraft(1, 10, WeightLoad.fromKilograms(80.0), 60),
-                                            PlannedSetDraft(2, 10, WeightLoad.fromKilograms(80.0), 60),
-                                        ),
-                                    ),
-                                ),
-                            ),
-                        )
-                    }
-                }
-            }
-        } else {
-            demoIsolated?.close()
-            demoIsolated = null
-            demoSeededOwnerId = null
-        }
+    val demoController: DemoEnvironmentController = viewModel(
+        viewModelStoreOwner = authFlowViewModelStoreOwner,
+        key = "global_demo_environment_controller",
+    ) {
+        DemoEnvironmentController(
+            appContext = context.applicationContext,
+            authRepository = dataContainer.authRepository,
+            deviceRepository = dataContainer.deviceRepository,
+        )
     }
-    DisposableEffect(Unit) {
-        onDispose {
-            demoIsolated?.close()
-            demoIsolated = null
-        }
-    }
-
-    val workoutDataContainer = if (deviceUiState.isDemoSessionActive && demoIsolated != null) {
-        demoIsolated!!.container
-    } else {
-        dataContainer
-    }
+    val setDraftStore = demoController.setDraftStore
+    val envState by demoController.state.collectAsStateWithLifecycle()
 
     val globalBluetoothChipStatus = when (deviceUiState.linkState.phase) {
         DeviceConnectionState.CONNECTED -> PulseBluetoothChipStatus.CONNECTED
@@ -219,17 +198,42 @@ fun rememberPulseEntryProvider(
         DeviceConnectionState.DISCONNECTED -> PulseBluetoothChipStatus.DISCONNECTED
     }
 
-    val sessionLaunchCoordinator = remember(navigator, workoutDataContainer, coroutineScope) {
+    val sessionLaunchCoordinator = remember(navigator, dataContainer, coroutineScope) {
         WorkoutSessionLaunchCoordinator(
             scope = coroutineScope,
-            authRepository = workoutDataContainer.authRepository,
-            workoutSessionRepository = workoutDataContainer.workoutSessionRepository,
+            authRepository = dataContainer.authRepository,
+            workoutSessionRepository = dataContainer.workoutSessionRepository,
             onNavigateToSession = { planId, sessionId ->
-                navigator.startWorkoutSession(planId = planId, sessionId = sessionId)
+                navigator.startWorkoutSession(
+                    planId = planId,
+                    sessionId = sessionId,
+                    environment = ExecutionEnvironmentKind.GENUINE,
+                )
             },
         )
     }
     WorkoutSessionLaunchOverlays(coordinator = sessionLaunchCoordinator)
+
+    val demoLaunchCoordinator = remember(navigator, envState, coroutineScope) {
+        val ready = envState as? ExecutionEnvironmentState.DemoReady
+        ready?.let {
+            WorkoutSessionLaunchCoordinator(
+                scope = coroutineScope,
+                authRepository = it.isolatedContainer.container.authRepository,
+                workoutSessionRepository = it.isolatedContainer.container.workoutSessionRepository,
+                onNavigateToSession = { planId, sessionId ->
+                    navigator.startWorkoutSession(
+                        planId = planId,
+                        sessionId = sessionId,
+                        environment = ExecutionEnvironmentKind.DEMO,
+                    )
+                },
+            )
+        }
+    }
+    if (demoLaunchCoordinator != null) {
+        WorkoutSessionLaunchOverlays(coordinator = demoLaunchCoordinator)
+    }
 
     return entryProvider {
         // --- Auth & Onboarding (P4) ---
@@ -558,211 +562,313 @@ fun rememberPulseEntryProvider(
     var pendingSessionError by rememberSaveable { mutableStateOf<String?>(null) }
 
     entry<WorkoutSession> { key ->
-        val viewModel: WorkoutSessionViewModel = viewModel {
-            WorkoutSessionViewModel(
-                sessionId = key.sessionId,
-                authRepository = workoutDataContainer.authRepository,
-                workoutSessionRepository = workoutDataContainer.workoutSessionRepository,
-                userPreferencesRepository = workoutDataContainer.userPreferencesRepository,
+        DemoEnvironmentGate(
+            environment = key.environment,
+            envState = envState,
+            genuineContainer = dataContainer,
+            onExitDemoToHome = {
+                deviceViewModel.exitDemoMode()
+                navigator.exitWorkoutSummaryToHome()
+            },
+        ) { scopedContainer ->
+            val viewModel: WorkoutSessionViewModel = viewModel(
+                key = "ws_${key.environment.name}_${key.planId}_${key.sessionId}",
+            ) {
+                WorkoutSessionViewModel(
+                    sessionId = key.sessionId,
+                    authRepository = scopedContainer.authRepository,
+                    workoutSessionRepository = scopedContainer.workoutSessionRepository,
+                    userPreferencesRepository = scopedContainer.userPreferencesRepository,
+                )
+            }
+            WorkoutSessionScreen(
+                viewModel = viewModel,
+                onBackClick = { navigator.navigateBack() },
+                onStartSet = { sessionId, exerciseId, setIndex ->
+                    navigator.navigate(
+                        ReadyStartSet(
+                            sessionId = sessionId,
+                            exerciseId = exerciseId,
+                            setIndex = setIndex,
+                            environment = key.environment,
+                        ),
+                    )
+                },
+                onNavigateToNextSet = { sessionId, exerciseId, setIndex ->
+                    navigator.navigate(
+                        ReadyStartSet(
+                            sessionId = sessionId,
+                            exerciseId = exerciseId,
+                            setIndex = setIndex,
+                            environment = key.environment,
+                        ),
+                    )
+                },
+                pendingActionError = pendingSessionError,
+                onConsumePendingActionError = { pendingSessionError = null },
+                onSessionCompleted = { completedSessionId ->
+                    navigator.completeWorkoutFlow(
+                        WorkoutComplete(sessionId = completedSessionId, environment = key.environment),
+                    )
+                },
+                onSessionEndedEarly = { endedSessionId ->
+                    navigator.completeWorkoutFlow(
+                        PartialWorkoutSummary(sessionId = endedSessionId, environment = key.environment),
+                    )
+                },
             )
         }
-        WorkoutSessionScreen(
-            viewModel = viewModel,
-            onBackClick = { navigator.navigateBack() },
-            onStartSet = { sessionId, exerciseId, setIndex ->
-                navigator.navigate(
-                    ReadyStartSet(
-                        sessionId = sessionId,
-                        exerciseId = exerciseId,
-                        setIndex = setIndex,
-                    ),
-                )
-            },
-            onNavigateToNextSet = { sessionId, exerciseId, setIndex ->
-                navigator.navigate(
-                    ReadyStartSet(
-                        sessionId = sessionId,
-                        exerciseId = exerciseId,
-                        setIndex = setIndex,
-                    ),
-                )
-            },
-            pendingActionError = pendingSessionError,
-            onConsumePendingActionError = { pendingSessionError = null },
-            onSessionCompleted = { completedSessionId ->
-                navigator.completeWorkoutFlow(WorkoutComplete(sessionId = completedSessionId))
-            },
-            onSessionEndedEarly = { endedSessionId ->
-                navigator.completeWorkoutFlow(PartialWorkoutSummary(sessionId = endedSessionId))
-            },
-        )
     }
 
     entry<ReadyStartSet> { key ->
-        val viewModel: com.ayasheta.pulsesmartgym.feature.session.ready.ReadyStartSetViewModel = viewModel {
-            com.ayasheta.pulsesmartgym.feature.session.ready.ReadyStartSetViewModel(
-                sessionId = key.sessionId,
-                exerciseId = key.exerciseId,
-                setIndex = key.setIndex,
-                authRepository = workoutDataContainer.authRepository,
-                workoutSessionRepository = workoutDataContainer.workoutSessionRepository,
-                userPreferencesRepository = workoutDataContainer.userPreferencesRepository,
-                deviceRepository = dataContainer.deviceRepository,
+        DemoEnvironmentGate(
+            environment = key.environment,
+            envState = envState,
+            genuineContainer = dataContainer,
+            onExitDemoToHome = {
+                deviceViewModel.exitDemoMode()
+                navigator.exitWorkoutSummaryToHome()
+            },
+        ) { scopedContainer ->
+            val viewModel: com.ayasheta.pulsesmartgym.feature.session.ready.ReadyStartSetViewModel = viewModel(
+                key = "rss_${key.environment.name}_${key.sessionId}_${key.exerciseId}_${key.setIndex}",
+            ) {
+                com.ayasheta.pulsesmartgym.feature.session.ready.ReadyStartSetViewModel(
+                    sessionId = key.sessionId,
+                    exerciseId = key.exerciseId,
+                    setIndex = key.setIndex,
+                    authRepository = scopedContainer.authRepository,
+                    workoutSessionRepository = scopedContainer.workoutSessionRepository,
+                    userPreferencesRepository = scopedContainer.userPreferencesRepository,
+                    deviceRepository = dataContainer.deviceRepository,
+                    executionEnvironment = key.environment,
+                )
+            }
+            com.ayasheta.pulsesmartgym.feature.session.ready.ReadyStartSetScreen(
+                viewModel = viewModel,
+                onBackClick = { navigator.navigateBack() },
+                onStartSetClick = { sessionId, exerciseId, setIndex ->
+                    navigator.navigate(
+                        ManualRepCounter(
+                            sessionId = sessionId,
+                            exerciseId = exerciseId,
+                            setIndex = setIndex,
+                            environment = key.environment,
+                        ),
+                    )
+                },
+                onStartDeviceAssistedClick = { sessionId, exerciseId, setIndex ->
+                    navigator.navigate(
+                        DeviceAssistedRepCounter(
+                            sessionId = sessionId,
+                            exerciseId = exerciseId,
+                            setIndex = setIndex,
+                            environment = key.environment,
+                        ),
+                    )
+                },
+                onSessionCompleted = { completedSessionId ->
+                    navigator.completeWorkoutFlow(
+                        WorkoutComplete(sessionId = completedSessionId, environment = key.environment),
+                    )
+                },
+                onSessionEndedEarly = { endedSessionId ->
+                    navigator.completeWorkoutFlow(
+                        PartialWorkoutSummary(sessionId = endedSessionId, environment = key.environment),
+                    )
+                },
             )
         }
-        com.ayasheta.pulsesmartgym.feature.session.ready.ReadyStartSetScreen(
-            viewModel = viewModel,
-            onBackClick = { navigator.navigateBack() },
-            onStartSetClick = { sessionId, exerciseId, setIndex ->
-                navigator.navigate(
-                    ManualRepCounter(
-                        sessionId = sessionId,
-                        exerciseId = exerciseId,
-                        setIndex = setIndex,
-                    ),
-                )
-            },
-            onStartDeviceAssistedClick = { sessionId, exerciseId, setIndex ->
-                navigator.navigate(
-                    DeviceAssistedRepCounter(
-                        sessionId = sessionId,
-                        exerciseId = exerciseId,
-                        setIndex = setIndex,
-                    ),
-                )
-            },
-            onSessionCompleted = { completedSessionId ->
-                navigator.completeWorkoutFlow(WorkoutComplete(sessionId = completedSessionId))
-            },
-            onSessionEndedEarly = { endedSessionId ->
-                navigator.completeWorkoutFlow(PartialWorkoutSummary(sessionId = endedSessionId))
-            },
-        )
     }
 
     entry<ManualRepCounter> { key ->
-        val viewModel: com.ayasheta.pulsesmartgym.feature.session.counter.ManualRepCounterViewModel = viewModel {
-            com.ayasheta.pulsesmartgym.feature.session.counter.ManualRepCounterViewModel(
-                sessionId = key.sessionId,
-                exerciseId = key.exerciseId,
-                setIndex = key.setIndex,
-                authRepository = workoutDataContainer.authRepository,
-                workoutSessionRepository = workoutDataContainer.workoutSessionRepository,
-                userPreferencesRepository = workoutDataContainer.userPreferencesRepository,
-                savedStateHandle = createSavedStateHandle(),
-                setDraftStore = setDraftStore,
+        DemoEnvironmentGate(
+            environment = key.environment,
+            envState = envState,
+            genuineContainer = dataContainer,
+            onExitDemoToHome = {
+                deviceViewModel.exitDemoMode()
+                navigator.exitWorkoutSummaryToHome()
+            },
+        ) { scopedContainer ->
+            val viewModel: com.ayasheta.pulsesmartgym.feature.session.counter.ManualRepCounterViewModel = viewModel(
+                key = "mrc_${key.environment.name}_${key.sessionId}_${key.exerciseId}_${key.setIndex}",
+            ) {
+                com.ayasheta.pulsesmartgym.feature.session.counter.ManualRepCounterViewModel(
+                    sessionId = key.sessionId,
+                    exerciseId = key.exerciseId,
+                    setIndex = key.setIndex,
+                    authRepository = scopedContainer.authRepository,
+                    workoutSessionRepository = scopedContainer.workoutSessionRepository,
+                    userPreferencesRepository = scopedContainer.userPreferencesRepository,
+                    savedStateHandle = createSavedStateHandle(),
+                    setDraftStore = setDraftStore,
+                    executionEnvironment = key.environment,
+                )
+            }
+            com.ayasheta.pulsesmartgym.feature.session.counter.ManualRepCounterScreen(
+                viewModel = viewModel,
+                onBackClick = { navigator.navigateBack() },
+                onSetFinished = { sessionId, _, nextTarget, restErrorMessage ->
+                    if (restErrorMessage != null) {
+                        pendingSessionError = restErrorMessage
+                    }
+                    navigator.finishSetAndReturnToSession(
+                        sessionId = sessionId,
+                        nextExerciseId = nextTarget?.exerciseId,
+                        nextSetIndex = nextTarget?.setIndex,
+                        openNextSetImmediately = false,
+                        environment = key.environment,
+                    )
+                },
+                onSessionCompleted = { completedSessionId ->
+                    navigator.completeWorkoutFlow(
+                        WorkoutComplete(sessionId = completedSessionId, environment = key.environment),
+                    )
+                },
+                onSessionEndedEarly = { endedSessionId ->
+                    navigator.completeWorkoutFlow(
+                        PartialWorkoutSummary(sessionId = endedSessionId, environment = key.environment),
+                    )
+                },
             )
         }
-        com.ayasheta.pulsesmartgym.feature.session.counter.ManualRepCounterScreen(
-            viewModel = viewModel,
-            onBackClick = { navigator.navigateBack() },
-            onSetFinished = { sessionId, hasRestStarted, nextTarget, restErrorMessage ->
-                if (restErrorMessage != null) {
-                    pendingSessionError = restErrorMessage
-                }
-                navigator.finishSetAndReturnToSession(
-                    sessionId = sessionId,
-                    nextExerciseId = nextTarget?.exerciseId,
-                    nextSetIndex = nextTarget?.setIndex,
-                    openNextSetImmediately = false,
-                )
-            },
-            onSessionCompleted = { completedSessionId ->
-                navigator.completeWorkoutFlow(WorkoutComplete(sessionId = completedSessionId))
-            },
-            onSessionEndedEarly = { endedSessionId ->
-                navigator.completeWorkoutFlow(PartialWorkoutSummary(sessionId = endedSessionId))
-            },
-        )
     }
 
     entry<DeviceAssistedRepCounter> { key ->
-        val viewModel: DeviceAssistedRepCounterViewModel = viewModel {
-            DeviceAssistedRepCounterViewModel(
-                sessionId = key.sessionId,
-                exerciseId = key.exerciseId,
-                setIndex = key.setIndex,
-                authRepository = workoutDataContainer.authRepository,
-                workoutSessionRepository = workoutDataContainer.workoutSessionRepository,
-                userPreferencesRepository = workoutDataContainer.userPreferencesRepository,
-                deviceRepository = dataContainer.deviceRepository,
-                fakeDeviceDataSource = dataContainer.fakeDeviceDataSource,
-                setDraftStore = setDraftStore,
-                savedStateHandle = createSavedStateHandle(),
+        DemoEnvironmentGate(
+            environment = key.environment,
+            envState = envState,
+            genuineContainer = dataContainer,
+            onExitDemoToHome = {
+                deviceViewModel.exitDemoMode()
+                navigator.exitWorkoutSummaryToHome()
+            },
+        ) { scopedContainer ->
+            val viewModel: DeviceAssistedRepCounterViewModel = viewModel(
+                key = "darc_${key.environment.name}_${key.sessionId}_${key.exerciseId}_${key.setIndex}",
+            ) {
+                DeviceAssistedRepCounterViewModel(
+                    sessionId = key.sessionId,
+                    exerciseId = key.exerciseId,
+                    setIndex = key.setIndex,
+                    authRepository = scopedContainer.authRepository,
+                    workoutSessionRepository = scopedContainer.workoutSessionRepository,
+                    userPreferencesRepository = scopedContainer.userPreferencesRepository,
+                    deviceRepository = dataContainer.deviceRepository,
+                    fakeDeviceDataSource = dataContainer.fakeDeviceDataSource,
+                    setDraftStore = setDraftStore,
+                    savedStateHandle = createSavedStateHandle(),
+                    executionEnvironment = key.environment,
+                )
+            }
+            DeviceAssistedRepCounterScreen(
+                viewModel = viewModel,
+                onBackClick = { navigator.navigateBack() },
+                onSetFinished = { sessionId, _, nextTarget: com.ayasheta.pulsesmartgym.core.model.session.SessionSetTarget?, restErrorMessage ->
+                    if (restErrorMessage != null) {
+                        pendingSessionError = restErrorMessage
+                    }
+                    navigator.finishSetAndReturnToSession(
+                        sessionId = sessionId,
+                        nextExerciseId = nextTarget?.exerciseId,
+                        nextSetIndex = nextTarget?.setIndex,
+                        openNextSetImmediately = false,
+                        environment = key.environment,
+                    )
+                },
+                onFallbackToManual = { sessionId, exerciseId, setIndex ->
+                    navigator.switchDeviceCounterToManual(
+                        sessionId = sessionId,
+                        exerciseId = exerciseId,
+                        setIndex = setIndex,
+                        environment = key.environment,
+                    )
+                },
+                onSessionEnded = { endedSessionId, status ->
+                    val route = if (status == com.ayasheta.pulsesmartgym.core.model.session.SessionStatus.COMPLETED) {
+                        WorkoutComplete(sessionId = endedSessionId, environment = key.environment)
+                    } else {
+                        PartialWorkoutSummary(sessionId = endedSessionId, environment = key.environment)
+                    }
+                    navigator.completeWorkoutFlow(route)
+                },
             )
         }
-        DeviceAssistedRepCounterScreen(
-            viewModel = viewModel,
-            onBackClick = { navigator.navigateBack() },
-            onSetFinished = { sessionId, _, nextTarget: com.ayasheta.pulsesmartgym.core.model.session.SessionSetTarget?, restErrorMessage ->
-                if (restErrorMessage != null) {
-                    pendingSessionError = restErrorMessage
-                }
-                navigator.finishSetAndReturnToSession(
-                    sessionId = sessionId,
-                    nextExerciseId = nextTarget?.exerciseId,
-                    nextSetIndex = nextTarget?.setIndex,
-                    openNextSetImmediately = false,
-                )
-            },
-            onFallbackToManual = { sessionId, exerciseId, setIndex ->
-                navigator.switchDeviceCounterToManual(sessionId, exerciseId, setIndex)
-            },
-            onSessionEnded = { endedSessionId, status ->
-                val route = if (status == com.ayasheta.pulsesmartgym.core.model.session.SessionStatus.COMPLETED) {
-                    WorkoutComplete(sessionId = endedSessionId)
-                } else {
-                    PartialWorkoutSummary(sessionId = endedSessionId)
-                }
-                navigator.completeWorkoutFlow(route)
-            },
-        )
     }
 
     entry<WorkoutComplete> { key ->
-        val viewModel: WorkoutResultViewModel = viewModel {
-            WorkoutResultViewModel(
-                sessionId = key.sessionId,
-                authRepository = workoutDataContainer.authRepository,
-                workoutSessionRepository = workoutDataContainer.workoutSessionRepository,
-                userPreferencesRepository = workoutDataContainer.userPreferencesRepository,
-            )
-        }
-        WorkoutResultScreen(
-            viewModel = viewModel,
-            onBackToHome = {
+        DemoEnvironmentGate(
+            environment = key.environment,
+            envState = envState,
+            genuineContainer = dataContainer,
+            onExitDemoToHome = {
                 deviceViewModel.exitDemoMode()
                 navigator.exitWorkoutSummaryToHome()
             },
-            onViewHistory = if (deviceUiState.isDemoSessionActive) {
-                null
-            } else {
-                { navigator.exitWorkoutSummaryToHistory() }
-            },
-        )
+        ) { scopedContainer ->
+            val viewModel: WorkoutResultViewModel = viewModel(
+                key = "wc_${key.environment.name}_${key.sessionId}",
+            ) {
+                WorkoutResultViewModel(
+                    sessionId = key.sessionId,
+                    authRepository = scopedContainer.authRepository,
+                    workoutSessionRepository = scopedContainer.workoutSessionRepository,
+                    userPreferencesRepository = scopedContainer.userPreferencesRepository,
+                )
+            }
+            WorkoutResultScreen(
+                viewModel = viewModel,
+                onBackToHome = {
+                    if (key.environment == ExecutionEnvironmentKind.DEMO) {
+                        deviceViewModel.exitDemoMode()
+                    }
+                    navigator.exitWorkoutSummaryToHome()
+                },
+                onViewHistory = if (key.environment == ExecutionEnvironmentKind.DEMO) {
+                    null
+                } else {
+                    { navigator.exitWorkoutSummaryToHistory() }
+                },
+            )
+        }
     }
 
     entry<PartialWorkoutSummary> { key ->
-        val viewModel: WorkoutResultViewModel = viewModel {
-            WorkoutResultViewModel(
-                sessionId = key.sessionId,
-                authRepository = workoutDataContainer.authRepository,
-                workoutSessionRepository = workoutDataContainer.workoutSessionRepository,
-                userPreferencesRepository = workoutDataContainer.userPreferencesRepository,
-            )
-        }
-        WorkoutResultScreen(
-            viewModel = viewModel,
-            onBackToHome = {
+        DemoEnvironmentGate(
+            environment = key.environment,
+            envState = envState,
+            genuineContainer = dataContainer,
+            onExitDemoToHome = {
                 deviceViewModel.exitDemoMode()
                 navigator.exitWorkoutSummaryToHome()
             },
-            onViewHistory = if (deviceUiState.isDemoSessionActive) {
-                null
-            } else {
-                { navigator.exitWorkoutSummaryToHistory() }
-            },
-        )
+        ) { scopedContainer ->
+            val viewModel: WorkoutResultViewModel = viewModel(
+                key = "pws_${key.environment.name}_${key.sessionId}",
+            ) {
+                WorkoutResultViewModel(
+                    sessionId = key.sessionId,
+                    authRepository = scopedContainer.authRepository,
+                    workoutSessionRepository = scopedContainer.workoutSessionRepository,
+                    userPreferencesRepository = scopedContainer.userPreferencesRepository,
+                )
+            }
+            WorkoutResultScreen(
+                viewModel = viewModel,
+                onBackToHome = {
+                    if (key.environment == ExecutionEnvironmentKind.DEMO) {
+                        deviceViewModel.exitDemoMode()
+                    }
+                    navigator.exitWorkoutSummaryToHome()
+                },
+                onViewHistory = if (key.environment == ExecutionEnvironmentKind.DEMO) {
+                    null
+                } else {
+                    { navigator.exitWorkoutSummaryToHistory() }
+                },
+            )
+        }
     }
 
     entry<SessionDetails> { key ->
@@ -792,17 +898,11 @@ fun rememberPulseEntryProvider(
             onBackClick = { navigator.navigateBack() },
             onSearchAndConnectClick = { navigator.navigate(DeviceDiscovery) },
             onStartWorkoutWithAutoTracking = {
-                coroutineScope.launch {
-                    val targetContainer = demoIsolated?.container ?: dataContainer
-                    val ownerId = (targetContainer.authRepository.restoreSession() as? AuthState.Authenticated)?.user?.id
-                        ?: demoSeededOwnerId
-                    if (ownerId != null) {
-                        val firstPlan = targetContainer.workoutPlanRepository.observePlans(ownerId).first().firstOrNull()
-                        if (firstPlan != null) {
-                            sessionLaunchCoordinator.startOrResumePlan(firstPlan.id)
-                            return@launch
-                        }
-                    }
+                val ready = envState as? ExecutionEnvironmentState.DemoReady
+                val coordinator = demoLaunchCoordinator
+                if (ready != null && coordinator != null && ready.demoPlanId != null) {
+                    coordinator.startOrResumePlan(ready.demoPlanId)
+                } else if (!deviceUiState.isDemoSessionActive) {
                     navigator.selectTab(PulseTab.WORKOUTS)
                 }
             },
@@ -811,44 +911,46 @@ fun rememberPulseEntryProvider(
 
     entry<DeviceDiscovery> {
         var hasRequestedBtPermissions by rememberSaveable { mutableStateOf(false) }
-        val permissionLauncher = rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.RequestMultiplePermissions(),
-        ) {
-            hasRequestedBtPermissions = true
-            deviceViewModel.updateBluetoothReadiness(
-                BluetoothPermissionPolicy.inspectDeviceReadiness(
-                    context = context,
-                    hasRequestedBefore = true,
-                    shouldShowRationale = false,
-                ),
-            )
-        }
-        val enableBtLauncher = rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.StartActivityForResult(),
-        ) {
+        val refreshBtReadiness = {
+            val activity = context as? Activity
+            val rationale = if (activity != null) {
+                BluetoothPermissionPolicy.runtimePermissionsForApi().any { perm ->
+                    ActivityCompat.shouldShowRequestPermissionRationale(activity, perm)
+                }
+            } else {
+                false
+            }
             deviceViewModel.updateBluetoothReadiness(
                 BluetoothPermissionPolicy.inspectDeviceReadiness(
                     context = context,
                     hasRequestedBefore = hasRequestedBtPermissions,
-                    shouldShowRationale = false,
+                    shouldShowRationale = rationale,
                 ),
             )
+        }
+        LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+            refreshBtReadiness()
+        }
+        val permissionLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestMultiplePermissions(),
+        ) {
+            hasRequestedBtPermissions = true
+            refreshBtReadiness()
+        }
+        val enableBtLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.StartActivityForResult(),
+        ) {
+            refreshBtReadiness()
         }
         DeviceDiscoveryScreen(
             viewModel = deviceViewModel,
             onBackClick = { navigator.navigateBack() },
             onContinueToWorkout = {
-                coroutineScope.launch {
-                    val targetContainer = demoIsolated?.container ?: dataContainer
-                    val ownerId = (targetContainer.authRepository.restoreSession() as? AuthState.Authenticated)?.user?.id
-                        ?: demoSeededOwnerId
-                    if (ownerId != null) {
-                        val active = targetContainer.workoutSessionRepository.observeActiveSession(ownerId).first()
-                        if (active != null) {
-                            navigator.startWorkoutSession(active.sourcePlanId ?: "", active.id)
-                            return@launch
-                        }
-                    }
+                val ready = envState as? ExecutionEnvironmentState.DemoReady
+                val coordinator = demoLaunchCoordinator
+                if (ready != null && coordinator != null && ready.demoPlanId != null) {
+                    coordinator.startOrResumePlan(ready.demoPlanId)
+                } else if (!deviceUiState.isDemoSessionActive) {
                     navigator.selectTab(PulseTab.WORKOUTS)
                 }
             },
@@ -878,6 +980,74 @@ fun rememberPulseEntryProvider(
                 onBackClick = { navigator.navigateBack() },
                 onSaveSuccess = { navigator.navigateBack() },
             )
+        }
+    }
+}
+
+@Composable
+private fun DemoEnvironmentGate(
+    environment: ExecutionEnvironmentKind,
+    envState: ExecutionEnvironmentState,
+    genuineContainer: PulseDataContainer,
+    onExitDemoToHome: () -> Unit,
+    content: @Composable (PulseDataContainer) -> Unit,
+) {
+    if (environment == ExecutionEnvironmentKind.GENUINE) {
+        content(genuineContainer)
+        return
+    }
+    when (envState) {
+        is ExecutionEnvironmentState.DemoReady -> content(envState.isolatedContainer.container)
+        is ExecutionEnvironmentState.DemoInitializing,
+        is ExecutionEnvironmentState.DemoClosing,
+        -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFFFAF8F7))
+                    .testTag("demo_environment_initializing"),
+                contentAlignment = Alignment.Center,
+            ) {
+                PulseLoadingIndicator()
+            }
+        }
+        is ExecutionEnvironmentState.DemoFailed,
+        ExecutionEnvironmentState.Genuine,
+        -> {
+            val message = (envState as? ExecutionEnvironmentState.DemoFailed)?.message
+                ?: "The isolated demo environment is no longer active."
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFFFAF8F7))
+                    .padding(24.dp)
+                    .testTag("demo_environment_unavailable"),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                BasicText(
+                    text = "Demo Environment Unavailable",
+                    style = PulseTheme.typography.sectionTitle.copy(
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = WorkoutPalette.TextPrimary,
+                    ),
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                BasicText(
+                    text = message,
+                    style = PulseTheme.typography.contentPrimary.copy(
+                        fontSize = 14.sp,
+                        color = Color(0xFF6B6560),
+                    ),
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                PulsePrimaryButton(
+                    caption = "Return to Home",
+                    onClick = onExitDemoToHome,
+                    modifier = Modifier.testTag("button_demo_unavailable_home"),
+                )
+            }
         }
     }
 }

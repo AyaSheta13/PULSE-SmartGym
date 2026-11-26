@@ -63,6 +63,15 @@ data class WorkoutSession(
     val exercises: List<SessionExercise>,
 )
 
+enum class RepCorrectionPolicy {
+    /** Preserve existing rep records when aggregate counts are unchanged (e.g. weight-only correction). */
+    PRESERVE_IF_COUNTS_MATCH,
+    /** Replace existing rep records with [RecordSetRequest.repRecords]. */
+    REPLACE_WITH_LEDGER,
+    /** Explicitly invalidate and clear detailed rep records (aggregate-only correction). */
+    INVALIDATE_LEDGER,
+}
+
 data class RecordSetRequest(
     val sessionId: String,
     val sessionExerciseId: String,
@@ -74,6 +83,7 @@ data class RecordSetRequest(
     val origin: MeasurementOrigin = MeasurementOrigin.MANUAL_INPUT,
     val durationMs: Long? = null,
     val repRecords: List<RepMeasurement> = emptyList(),
+    val repCorrectionPolicy: RepCorrectionPolicy = RepCorrectionPolicy.PRESERVE_IF_COUNTS_MATCH,
 )
 
 data class SessionSetTarget(

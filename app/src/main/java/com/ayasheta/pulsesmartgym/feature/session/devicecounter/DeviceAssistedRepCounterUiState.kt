@@ -49,6 +49,7 @@ sealed interface DeviceAssistedRepCounterUiState {
         val errorMessage: String? = null,
         val showEndEarlyConfirmation: Boolean = false,
         val isEndingEarly: Boolean = false,
+        val pendingManualFallback: DeviceAssistedCounterEvent.FallbackToManual? = null,
     ) : DeviceAssistedRepCounterUiState {
         val totalAcceptedReps: Int get() = fullReps + partialReps
     }

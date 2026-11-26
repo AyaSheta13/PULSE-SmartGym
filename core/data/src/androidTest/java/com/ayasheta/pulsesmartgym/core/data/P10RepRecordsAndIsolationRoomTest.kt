@@ -223,4 +223,74 @@ class P10RepRecordsAndIsolationRoomTest {
             genuine.close()
         }
     }
+
+    @Test
+    fun correctPerformedSet_preservesDeviceProvenanceOnWeightEdit_andHonorsExplicitCorrectionPolicies() = runTest {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val isolated = PulseDataContainer.createIsolatedForTesting(context)
+        try {
+            val user = (isolated.container.authRepository.continueAsGuest() as DomainResult.Success).data
+            val bench = isolated.container.exerciseRepository.observeAll().first().first { it.name.contains("Bench", ignoreCase = true) }
+            val plan = (isolated.container.workoutPlanRepository.createPlan(
+                user.id,
+                WorkoutPlanDraft("Bench", exercises = listOf(PlanExerciseDraft(bench.id, 0, plannedSets = listOf(PlannedSetDraft(1, 3, WeightLoad.fromKilograms(80.0), 60))))),
+            ) as DomainResult.Success).data
+            val session = (isolated.container.workoutSessionRepository.startSessionFromPlan(user.id, plan.id) as DomainResult.Success).data
+            val exId = session.exercises[0].id
+
+            val mixedReps = listOf(
+                RepMeasurement(1, RepClassification.FULL, totalDurationMs = 1_500L, origin = MeasurementOrigin.SIMULATED_TELEMETRY),
+                RepMeasurement(2, RepClassification.PARTIAL, totalDurationMs = null, origin = MeasurementOrigin.MANUAL_CORRECTION),
+            )
+            isolated.container.workoutSessionRepository.recordPerformedSet(
+                user.id,
+                RecordSetRequest(session.id, exId, 1, 1, 1, WeightLoad.fromKilograms(80.0), TrackingMode.DEVICE_ASSISTED, MeasurementOrigin.SIMULATED_TELEMETRY, 12_000L, mixedReps),
+            )
+
+            // Weight-only edit even with default MANUAL request fields MUST preserve DEVICE_ASSISTED, SIMULATED_TELEMETRY, durationMs, and mixed repRecords
+            val weightOnly = (isolated.container.workoutSessionRepository.correctPerformedSet(
+                user.id,
+                RecordSetRequest(
+                    sessionId = session.id,
+                    sessionExerciseId = exId,
+                    setIndex = 1,
+                    fullReps = 1,
+                    partialReps = 1,
+                    actualLoad = WeightLoad.fromKilograms(90.0),
+                    trackingMode = TrackingMode.MANUAL,
+                    origin = MeasurementOrigin.MANUAL_INPUT,
+                    repCorrectionPolicy = com.ayasheta.pulsesmartgym.core.model.session.RepCorrectionPolicy.PRESERVE_IF_COUNTS_MATCH,
+                ),
+            ) as DomainResult.Success).data
+            assertEquals(TrackingMode.DEVICE_ASSISTED, weightOnly.trackingMode)
+            assertEquals(MeasurementOrigin.SIMULATED_TELEMETRY, weightOnly.origin)
+            assertEquals(12_000L, weightOnly.durationMs)
+            assertEquals(2, weightOnly.repRecords.size)
+
+            // REPLACE_WITH_LEDGER with empty list is rejected
+            val badReplace = isolated.container.workoutSessionRepository.correctPerformedSet(
+                user.id,
+                RecordSetRequest(
+                    session.id, exId, 1, 2, 1, WeightLoad.fromKilograms(90.0),
+                    TrackingMode.DEVICE_ASSISTED, MeasurementOrigin.SIMULATED_TELEMETRY, null,
+                    emptyList(), com.ayasheta.pulsesmartgym.core.model.session.RepCorrectionPolicy.REPLACE_WITH_LEDGER,
+                ),
+            )
+            assertTrue(badReplace is DomainResult.Failure && badReplace.error is DataError.ValidationError)
+
+            // INVALIDATE_LEDGER explicitly clears repRecords
+            val invalidated = (isolated.container.workoutSessionRepository.correctPerformedSet(
+                user.id,
+                RecordSetRequest(
+                    session.id, exId, 1, 3, 0, WeightLoad.fromKilograms(90.0),
+                    TrackingMode.MANUAL, MeasurementOrigin.MANUAL_CORRECTION, null,
+                    emptyList(), com.ayasheta.pulsesmartgym.core.model.session.RepCorrectionPolicy.INVALIDATE_LEDGER,
+                ),
+            ) as DomainResult.Success).data
+            assertEquals(3, invalidated.fullReps)
+            assertTrue(invalidated.repRecords.isEmpty())
+        } finally {
+            isolated.close()
+        }
+    }
 }

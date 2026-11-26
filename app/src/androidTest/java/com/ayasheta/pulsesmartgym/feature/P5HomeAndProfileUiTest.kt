@@ -116,6 +116,12 @@ class P5HomeAndProfileUiTest {
         composeRule.onNodeWithTag("edit_profile_name_input", useUnmergedTree = true).performTextInput("Discarded Name")
         composeRule.onNodeWithTag("edit_profile_discard_button").performScrollTo().performClick()
 
+        composeRule.waitUntil(5_000) {
+            runCatching {
+                composeRule.onNodeWithText("Profile & Settings").assertExists()
+                true
+            }.getOrDefault(false)
+        }
         composeRule.onNodeWithText("Profile & Settings").assertIsDisplayed()
         composeRule.onNodeWithText("Alex Miller").assertIsDisplayed()
 

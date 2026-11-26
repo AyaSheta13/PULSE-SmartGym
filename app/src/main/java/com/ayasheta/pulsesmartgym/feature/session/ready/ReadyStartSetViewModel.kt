@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.ayasheta.pulsesmartgym.core.model.common.DomainResult
 import com.ayasheta.pulsesmartgym.core.model.device.DeviceConnectionState
 import com.ayasheta.pulsesmartgym.core.model.device.DeviceLinkState
+import com.ayasheta.pulsesmartgym.core.model.device.DeviceProviderType
 import com.ayasheta.pulsesmartgym.core.model.device.DeviceRepository
+import com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind
 import com.ayasheta.pulsesmartgym.core.model.profile.AuthState
 import com.ayasheta.pulsesmartgym.core.model.repository.AuthRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.UserPreferencesRepository
@@ -31,6 +33,7 @@ class ReadyStartSetViewModel(
     private val workoutSessionRepository: WorkoutSessionRepository,
     private val userPreferencesRepository: UserPreferencesRepository,
     private val deviceRepository: DeviceRepository? = null,
+    private val executionEnvironment: ExecutionEnvironmentKind = ExecutionEnvironmentKind.GENUINE,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<ReadyStartSetUiState>(ReadyStartSetUiState.Loading)
@@ -85,9 +88,14 @@ class ReadyStartSetViewModel(
                                     )
                                 } else {
                                     val isDeviceConnected = link.phase == DeviceConnectionState.CONNECTED
+                                    val providerAuthorized = link.providerType == DeviceProviderType.REAL_BLE ||
+                                        executionEnvironment == ExecutionEnvironmentKind.DEMO
                                     val supportsCategory = isDeviceConnected &&
+                                        providerAuthorized &&
                                         link.capabilities.supportsTrackingCategory(exercise.trackingCategorySnapshot)
                                     val notice = when {
+                                        isDeviceConnected && !providerAuthorized ->
+                                            "Simulated device cannot auto-track a genuine workout. Using manual mode."
                                         isDeviceConnected && !supportsCategory ->
                                             "Auto-tracking unavailable for ${exercise.trackingCategorySnapshot.name.lowercase()} exercises. Using manual mode."
                                         link.phase == DeviceConnectionState.CONNECTION_LOST ||

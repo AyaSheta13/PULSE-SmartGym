@@ -14,6 +14,7 @@ import com.ayasheta.pulsesmartgym.core.model.device.DeviceConnectionState
 import com.ayasheta.pulsesmartgym.core.model.device.DeviceEvent
 import com.ayasheta.pulsesmartgym.core.model.device.DeviceOperationResult
 import com.ayasheta.pulsesmartgym.core.model.device.DeviceRepository
+import com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind
 import com.ayasheta.pulsesmartgym.core.model.device.MeasurementOrigin
 import com.ayasheta.pulsesmartgym.core.model.device.RepClassification
 import com.ayasheta.pulsesmartgym.core.model.device.RepMeasurement
@@ -25,6 +26,7 @@ import com.ayasheta.pulsesmartgym.core.model.repository.WorkoutSessionRepository
 import com.ayasheta.pulsesmartgym.core.model.session.RecordSetRequest
 import com.ayasheta.pulsesmartgym.core.model.session.SessionStatus
 import com.ayasheta.pulsesmartgym.core.model.session.WorkoutSession
+import com.ayasheta.pulsesmartgym.feature.session.counter.SetDraftSavedStateCodec
 import com.ayasheta.pulsesmartgym.feature.session.counter.SetDraftStore
 import com.ayasheta.pulsesmartgym.feature.session.counter.SetExecutionDraft
 import com.ayasheta.pulsesmartgym.feature.session.counter.SetFinishHelper
@@ -56,14 +58,11 @@ class DeviceAssistedRepCounterViewModel(
     private val setDraftStore: SetDraftStore? = null,
     private val savedStateHandle: SavedStateHandle = SavedStateHandle(),
     private val elapsedRealtimeMs: () -> Long = { android.os.SystemClock.elapsedRealtime() },
+    private val executionEnvironment: ExecutionEnvironmentKind = ExecutionEnvironmentKind.DEMO,
 ) : ViewModel() {
 
-    private val stateKeyPrefix = "device_counter_${sessionId}_${exerciseId}_${setIndex}"
-    private val fullRepsKey = "${stateKeyPrefix}_full_reps"
-    private val partialRepsKey = "${stateKeyPrefix}_partial_reps"
-    private val loadGramsKey = "${stateKeyPrefix}_load_grams"
-    private val loadInitKey = "${stateKeyPrefix}_load_init"
-    private val startElapsedKey = "${stateKeyPrefix}_start_elapsed"
+    private val stateKeyPrefix = "device_counter_${executionEnvironment.name}_${sessionId}_${exerciseId}_${setIndex}"
+    private val draftJsonKey = "${stateKeyPrefix}_draft_json"
     private val completedKey = "${stateKeyPrefix}_completed"
     private val completedRestStartedKey = "${stateKeyPrefix}_completed_rest"
     private val completedRestErrorKey = "${stateKeyPrefix}_completed_rest_err"
@@ -76,20 +75,20 @@ class DeviceAssistedRepCounterViewModel(
     private val _events = MutableSharedFlow<DeviceAssistedCounterEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<DeviceAssistedCounterEvent> = _events.asSharedFlow()
 
-    private val fullRepsFlow = MutableStateFlow(savedStateHandle.get<Int>(fullRepsKey) ?: 0)
-    private val partialRepsFlow = MutableStateFlow(savedStateHandle.get<Int>(partialRepsKey) ?: 0)
+    private val fullRepsFlow = MutableStateFlow(0)
+    private val partialRepsFlow = MutableStateFlow(0)
     private val ledgerFlow = MutableStateFlow<List<RepMeasurement>>(emptyList())
-    private val seenEventIds = HashSet<String>()
+    private val seenEventIds = LinkedHashSet<String>()
 
-    private val actualLoadFlow = MutableStateFlow<WeightLoad?>(
-        savedStateHandle.get<Long>(loadGramsKey)?.let { WeightLoad(it) },
-    )
+    private val actualLoadFlow = MutableStateFlow<WeightLoad?>(null)
     private val isReconnectingFlow = MutableStateFlow(false)
     private val reconnectErrorFlow = MutableStateFlow<String?>(null)
     private val isSubmittingFlow = MutableStateFlow(false)
     private val errorMessageFlow = MutableStateFlow<String?>(null)
     private val showEndEarlyFlow = MutableStateFlow(false)
     private val isEndingEarlyFlow = MutableStateFlow(false)
+    private val isFallbackActiveFlow = MutableStateFlow(false)
+    private val pendingFallbackFlow = MutableStateFlow<DeviceAssistedCounterEvent.FallbackToManual?>(null)
 
     private val completionStateFlow = MutableStateFlow<DeviceAssistedRepCounterUiState.Completed?>(
         if (savedStateHandle.get<Boolean>(completedKey) == true) {
@@ -103,15 +102,27 @@ class DeviceAssistedRepCounterViewModel(
         },
     )
 
+    @Volatile
     private var activeOwnerId: String? = null
-    private var hasInitializedLoad = savedStateHandle.get<Boolean>(loadInitKey) ?: false
+
+    @Volatile
+    private var restoredForOwnerId: String? = null
+
+    @Volatile
+    private var isDisposed: Boolean = false
+
+    private var hasInitializedLoad = false
     private var latestSession: WorkoutSession? = null
-    private val setStartedAtElapsedMs: Long = savedStateHandle.get<Long>(startElapsedKey)
-        ?: elapsedRealtimeMs().also { savedStateHandle[startElapsedKey] = it }
+    private var setStartedAtElapsedMs: Long = elapsedRealtimeMs()
 
     init {
         observeState()
         collectDeviceEvents()
+    }
+
+    override fun onCleared() {
+        isDisposed = true
+        super.onCleared()
     }
 
     private fun observeState() {
@@ -124,15 +135,18 @@ class DeviceAssistedRepCounterViewModel(
                     }
                     AuthState.Unauthenticated -> {
                         activeOwnerId = null
+                        restoredForOwnerId = null
                         clearTransient()
                         flowOf(DeviceAssistedRepCounterUiState.SignedOut)
                     }
                     is AuthState.Authenticated -> {
                         val ownerId = authState.user.id
                         if (activeOwnerId != null && activeOwnerId != ownerId) {
+                            restoredForOwnerId = null
                             clearTransient()
                         }
                         activeOwnerId = ownerId
+                        restoreDraftIfNeeded(ownerId)
                         combine(
                             workoutSessionRepository.observeSession(ownerId, sessionId),
                             userPreferencesRepository.observePreferences(),
@@ -148,14 +162,13 @@ class DeviceAssistedRepCounterViewModel(
                                 val plannedSet = exercise?.plannedSets?.firstOrNull { it.setIndex == setIndex }
                                 if (exercise == null || plannedSet == null) {
                                     DeviceAssistedRepCounterUiState.Missing("Set $setIndex could not be found in this session.")
-                                } else if (exercise.performedSets.any { it.setIndex == setIndex }) {
+                                } else if (exercise.performedSets.any { it.setIndex == setIndex } && !isSubmittingFlow.value) {
                                     DeviceAssistedRepCounterUiState.AlreadyCompleted(exercise.exerciseNameSnapshot, setIndex)
                                 } else {
                                     if (!hasInitializedLoad) {
                                         hasInitializedLoad = true
-                                        savedStateHandle[loadInitKey] = true
                                         actualLoadFlow.value = plannedSet.targetLoad
-                                        plannedSet.targetLoad?.let { savedStateHandle[loadGramsKey] = it.grams }
+                                        persistDraft()
                                     }
                                     val btChip = when (link.phase) {
                                         DeviceConnectionState.CONNECTED -> PulseBluetoothChipStatus.CONNECTED
@@ -192,7 +205,7 @@ class DeviceAssistedRepCounterViewModel(
                                         connectionPhase = link.phase,
                                         bluetoothStatus = btChip,
                                         isSimulatedDevice = link.isSimulated,
-                                        showRecoverySheet = showRecovery && !isSubmittingFlow.value,
+                                        showRecoverySheet = showRecovery && !isSubmittingFlow.value && !isFallbackActiveFlow.value,
                                     )
                                 }
                             }
@@ -227,6 +240,7 @@ class DeviceAssistedRepCounterViewModel(
                             errorMessage = err,
                             showEndEarlyConfirmation = showEnd,
                             isEndingEarly = ending,
+                            pendingManualFallback = pendingFallbackFlow.value,
                         )
                     } else {
                         current
@@ -236,10 +250,82 @@ class DeviceAssistedRepCounterViewModel(
         }
     }
 
+    private fun restoreDraftIfNeeded(ownerId: String) {
+        if (restoredForOwnerId == ownerId) return
+        restoredForOwnerId = ownerId
+        val fromSaved = SetDraftSavedStateCodec.decodeAndValidate(
+            raw = savedStateHandle.get<String>(draftJsonKey),
+            expectedOwnerId = ownerId,
+            expectedEnvironment = executionEnvironment,
+            expectedSessionId = sessionId,
+            expectedExerciseId = exerciseId,
+            expectedSetIndex = setIndex,
+            currentElapsedMs = elapsedRealtimeMs(),
+        )
+        val fromStore = setDraftStore?.peek(ownerId, executionEnvironment, sessionId, exerciseId, setIndex)
+        val restored = when {
+            fromSaved != null && fromStore != null ->
+                if (fromStore.repRecords.size >= fromSaved.repRecords.size) fromStore else fromSaved
+            fromSaved != null -> fromSaved
+            else -> fromStore
+        }
+        if (restored != null) {
+            ledgerFlow.value = restored.repRecords
+            fullRepsFlow.value = restored.repRecords.count { it.classification == RepClassification.FULL }
+            partialRepsFlow.value = restored.repRecords.count { it.classification == RepClassification.PARTIAL }
+            seenEventIds.clear()
+            seenEventIds.addAll(restored.acceptedEventIds)
+            actualLoadFlow.value = restored.actualLoad
+            hasInitializedLoad = restored.hasInitializedLoad
+            setStartedAtElapsedMs = restored.setStartedAtElapsedMs
+            isFallbackActiveFlow.value = restored.isManualFallback
+            persistDraft()
+        }
+    }
+
+    private fun buildCurrentDraft(ownerId: String, isManualFallback: Boolean = isFallbackActiveFlow.value): SetExecutionDraft {
+        val ledger = ledgerFlow.value
+        val full = ledger.count { it.classification == RepClassification.FULL }
+        val partial = ledger.count { it.classification == RepClassification.PARTIAL }
+        val origin = deriveSetOrigin(ledger)
+        return SetExecutionDraft(
+            ownerId = ownerId,
+            environment = executionEnvironment,
+            sessionId = sessionId,
+            exerciseId = exerciseId,
+            setIndex = setIndex,
+            trackingWindowId = trackingWindowId,
+            fullReps = full,
+            partialReps = partial,
+            repRecords = ledger,
+            acceptedEventIds = seenEventIds.toSet(),
+            origin = origin,
+            actualLoad = actualLoadFlow.value,
+            hasInitializedLoad = hasInitializedLoad,
+            setStartedAtElapsedMs = setStartedAtElapsedMs,
+            trackingMode = TrackingMode.DEVICE_ASSISTED,
+            hadDeviceTracking = true,
+            isManualFallback = isManualFallback,
+        )
+    }
+
+    private fun persistDraft() {
+        val ownerId = activeOwnerId ?: return
+        val draft = buildCurrentDraft(ownerId)
+        savedStateHandle[draftJsonKey] = SetDraftSavedStateCodec.encode(draft)
+        setDraftStore?.put(draft)
+    }
+
     private fun collectDeviceEvents() {
         viewModelScope.launch {
             deviceRepository.events.collect { event ->
                 if (event !is DeviceEvent.RepRecorded) return@collect
+                val ownerId = activeOwnerId
+                val session = latestSession
+                val exercise = session?.exercises?.firstOrNull { it.id == exerciseId }
+                val hasPlannedSet = exercise?.plannedSets?.any { it.setIndex == setIndex } == true
+                val isAlreadyRecorded = exercise?.performedSets?.any { it.setIndex == setIndex } == true
+
                 val link = deviceRepository.linkState.value
                 val nextIndex = ledgerFlow.value.size + 1
                 val normalized = DeviceEventNormalizer.normalizeAndValidate(
@@ -252,25 +338,29 @@ class DeviceAssistedRepCounterViewModel(
                     capabilities = link.capabilities,
                     seenEventIds = seenEventIds,
                     nextRepIndex = nextIndex,
+                    isOwnerAuthenticated = ownerId != null,
+                    isSessionActive = session?.status == SessionStatus.ACTIVE,
+                    isSetValidAndUnrecorded = hasPlannedSet && !isAlreadyRecorded,
+                    isAcceptingEvents = !isDisposed && !isEndingEarlyFlow.value && !isFallbackActiveFlow.value,
+                    expectedEnvironment = executionEnvironment,
                 )
                 if (normalized is NormalizedRepResult.Accepted) {
-                    seenEventIds.add(event.rep.eventId)
-                    val measurement = normalized.measurement
-                    ledgerFlow.value = ledgerFlow.value + measurement
-                    when (measurement.classification) {
-                        RepClassification.FULL -> {
-                            val nextFull = fullRepsFlow.value + 1
-                            fullRepsFlow.value = nextFull
-                            savedStateHandle[fullRepsKey] = nextFull
-                        }
-                        RepClassification.PARTIAL -> {
-                            val nextPartial = partialRepsFlow.value + 1
-                            partialRepsFlow.value = nextPartial
-                            savedStateHandle[partialRepsKey] = nextPartial
-                        }
-                    }
+                    recordAcceptedEventId(event.rep.eventId)
+                    val updatedLedger = ledgerFlow.value + normalized.measurement
+                    ledgerFlow.value = updatedLedger
+                    fullRepsFlow.value = updatedLedger.count { it.classification == RepClassification.FULL }
+                    partialRepsFlow.value = updatedLedger.count { it.classification == RepClassification.PARTIAL }
+                    persistDraft()
                 }
             }
+        }
+    }
+
+    private fun recordAcceptedEventId(eventId: String) {
+        seenEventIds.add(eventId)
+        while (seenEventIds.size > DeviceEventNormalizer.MAX_RETAINED_EVENT_IDS) {
+            val first = seenEventIds.firstOrNull() ?: break
+            seenEventIds.remove(first)
         }
     }
 
@@ -291,6 +381,7 @@ class DeviceAssistedRepCounterViewModel(
                 errorMessage = errorMessageFlow.value,
                 showEndEarlyConfirmation = showEndEarlyFlow.value,
                 isEndingEarly = isEndingEarlyFlow.value,
+                pendingManualFallback = pendingFallbackFlow.value,
             )
         } else {
             base
@@ -303,70 +394,59 @@ class DeviceAssistedRepCounterViewModel(
         ledgerFlow.value = emptyList()
         seenEventIds.clear()
         actualLoadFlow.value = null
+        hasInitializedLoad = false
         isReconnectingFlow.value = false
         reconnectErrorFlow.value = null
         isSubmittingFlow.value = false
         errorMessageFlow.value = null
         showEndEarlyFlow.value = false
         isEndingEarlyFlow.value = false
+        isFallbackActiveFlow.value = false
+        pendingFallbackFlow.value = null
         completionStateFlow.value = null
     }
 
     fun incrementManualFullRep() {
-        if (isSubmittingFlow.value || completionStateFlow.value != null) return
+        if (isSubmittingFlow.value || completionStateFlow.value != null || isFallbackActiveFlow.value) return
+        if (ledgerFlow.value.size >= DeviceEventNormalizer.MAX_ACCEPTED_EVENTS_PER_SET) return
         errorMessageFlow.value = null
-        val nextFull = fullRepsFlow.value + 1
-        val nextIndex = ledgerFlow.value.size + 1
-        fullRepsFlow.value = nextFull
-        savedStateHandle[fullRepsKey] = nextFull
-        ledgerFlow.value = ledgerFlow.value + RepMeasurement(
-            repIndex = nextIndex,
+        val updatedLedger = ledgerFlow.value + RepMeasurement(
+            repIndex = ledgerFlow.value.size + 1,
             classification = RepClassification.FULL,
             origin = MeasurementOrigin.MANUAL_CORRECTION,
         )
+        ledgerFlow.value = updatedLedger
+        fullRepsFlow.value = updatedLedger.count { it.classification == RepClassification.FULL }
+        partialRepsFlow.value = updatedLedger.count { it.classification == RepClassification.PARTIAL }
+        persistDraft()
     }
 
     fun incrementManualPartialRep() {
-        if (isSubmittingFlow.value || completionStateFlow.value != null) return
+        if (isSubmittingFlow.value || completionStateFlow.value != null || isFallbackActiveFlow.value) return
+        if (ledgerFlow.value.size >= DeviceEventNormalizer.MAX_ACCEPTED_EVENTS_PER_SET) return
         errorMessageFlow.value = null
-        val nextPartial = partialRepsFlow.value + 1
-        val nextIndex = ledgerFlow.value.size + 1
-        partialRepsFlow.value = nextPartial
-        savedStateHandle[partialRepsKey] = nextPartial
-        ledgerFlow.value = ledgerFlow.value + RepMeasurement(
-            repIndex = nextIndex,
+        val updatedLedger = ledgerFlow.value + RepMeasurement(
+            repIndex = ledgerFlow.value.size + 1,
             classification = RepClassification.PARTIAL,
             origin = MeasurementOrigin.MANUAL_CORRECTION,
         )
+        ledgerFlow.value = updatedLedger
+        fullRepsFlow.value = updatedLedger.count { it.classification == RepClassification.FULL }
+        partialRepsFlow.value = updatedLedger.count { it.classification == RepClassification.PARTIAL }
+        persistDraft()
     }
 
     fun decrementManualRep() {
-        if (isSubmittingFlow.value || completionStateFlow.value != null) return
+        if (isSubmittingFlow.value || completionStateFlow.value != null || isFallbackActiveFlow.value) return
         errorMessageFlow.value = null
         val currentLedger = ledgerFlow.value
         if (currentLedger.isNotEmpty()) {
-            val last = currentLedger.last()
-            ledgerFlow.value = currentLedger.dropLast(1)
-            when (last.classification) {
-                RepClassification.FULL -> {
-                    val next = (fullRepsFlow.value - 1).coerceAtLeast(0)
-                    fullRepsFlow.value = next
-                    savedStateHandle[fullRepsKey] = next
-                }
-                RepClassification.PARTIAL -> {
-                    val next = (partialRepsFlow.value - 1).coerceAtLeast(0)
-                    partialRepsFlow.value = next
-                    savedStateHandle[partialRepsKey] = next
-                }
-            }
-        } else if (fullRepsFlow.value > 0) {
-            val next = fullRepsFlow.value - 1
-            fullRepsFlow.value = next
-            savedStateHandle[fullRepsKey] = next
-        } else if (partialRepsFlow.value > 0) {
-            val next = partialRepsFlow.value - 1
-            partialRepsFlow.value = next
-            savedStateHandle[partialRepsKey] = next
+            // Note: seenEventIds intentionally retains removed device eventIds to reject late replays.
+            val updatedLedger = currentLedger.dropLast(1).mapIndexed { idx, rep -> rep.copy(repIndex = idx + 1) }
+            ledgerFlow.value = updatedLedger
+            fullRepsFlow.value = updatedLedger.count { it.classification == RepClassification.FULL }
+            partialRepsFlow.value = updatedLedger.count { it.classification == RepClassification.PARTIAL }
+            persistDraft()
         }
     }
 
@@ -375,8 +455,8 @@ class DeviceAssistedRepCounterViewModel(
         if (isSubmittingFlow.value) return
         val next = stepWeight(active.actualLoad, active.preferredWeightUnit, +1)
         actualLoadFlow.value = next
-        savedStateHandle[loadGramsKey] = next.grams
-        savedStateHandle[loadInitKey] = true
+        hasInitializedLoad = true
+        persistDraft()
     }
 
     fun decrementWeight() {
@@ -384,11 +464,18 @@ class DeviceAssistedRepCounterViewModel(
         if (isSubmittingFlow.value) return
         val next = stepWeight(active.actualLoad, active.preferredWeightUnit, -1)
         actualLoadFlow.value = next
-        savedStateHandle[loadGramsKey] = next.grams
-        savedStateHandle[loadInitKey] = true
+        hasInitializedLoad = true
+        persistDraft()
+    }
+
+    fun setExplicitNullLoadForTesting() {
+        actualLoadFlow.value = null
+        hasInitializedLoad = true
+        persistDraft()
     }
 
     fun simulateAutoRep(classification: RepClassification = RepClassification.FULL) {
+        if (isFallbackActiveFlow.value || isSubmittingFlow.value || isEndingEarlyFlow.value) return
         viewModelScope.launch {
             fakeDeviceDataSource?.emitSimulatedRep(
                 trackingWindowId = trackingWindowId,
@@ -419,28 +506,36 @@ class DeviceAssistedRepCounterViewModel(
     fun continueManually() {
         val ownerId = activeOwnerId ?: return
         val active = _uiState.value as? DeviceAssistedRepCounterUiState.Active ?: return
-        if (isSubmittingFlow.value || isReconnectingFlow.value) return
-        setDraftStore?.put(
-            SetExecutionDraft(
-                ownerId = ownerId,
-                sessionId = active.sessionId,
-                exerciseId = active.exerciseId,
-                setIndex = active.setIndex,
-                fullReps = active.fullReps,
-                partialReps = active.partialReps,
-                repRecords = active.acceptedLedger,
-                actualLoad = active.actualLoad,
-                setStartedAtElapsedMs = setStartedAtElapsedMs,
-                hadDeviceTracking = true,
-            ),
+        if (isSubmittingFlow.value || isReconnectingFlow.value || isEndingEarlyFlow.value) return
+        isFallbackActiveFlow.value = true
+        val draft = buildCurrentDraft(ownerId = ownerId, isManualFallback = true)
+        savedStateHandle[draftJsonKey] = SetDraftSavedStateCodec.encode(draft)
+        setDraftStore?.put(draft)
+        val fallback = DeviceAssistedCounterEvent.FallbackToManual(
+            sessionId = active.sessionId,
+            exerciseId = active.exerciseId,
+            setIndex = active.setIndex,
         )
-        _events.tryEmit(
-            DeviceAssistedCounterEvent.FallbackToManual(
-                sessionId = active.sessionId,
-                exerciseId = active.exerciseId,
-                setIndex = active.setIndex,
-            ),
-        )
+        pendingFallbackFlow.value = fallback
+        _uiState.update { current ->
+            if (current is DeviceAssistedRepCounterUiState.Active) {
+                current.copy(pendingManualFallback = fallback, showRecoverySheet = false)
+            } else {
+                current
+            }
+        }
+        _events.tryEmit(fallback)
+    }
+
+    fun consumePendingManualFallback() {
+        pendingFallbackFlow.value = null
+        _uiState.update { current ->
+            if (current is DeviceAssistedRepCounterUiState.Active) {
+                current.copy(pendingManualFallback = null)
+            } else {
+                current
+            }
+        }
     }
 
     fun finishSet() {
@@ -452,19 +547,15 @@ class DeviceAssistedRepCounterViewModel(
         val normalizedRecords = active.acceptedLedger.mapIndexed { idx, rep ->
             rep.copy(repIndex = idx + 1)
         }
-        val setOrigin = when {
-            normalizedRecords.any { it.origin == MeasurementOrigin.SENSOR_TELEMETRY } ->
-                MeasurementOrigin.SENSOR_TELEMETRY
-            normalizedRecords.any { it.origin == MeasurementOrigin.SIMULATED_TELEMETRY } ->
-                MeasurementOrigin.SIMULATED_TELEMETRY
-            else -> MeasurementOrigin.MANUAL_INPUT
-        }
+        val derivedFull = normalizedRecords.count { it.classification == RepClassification.FULL }
+        val derivedPartial = normalizedRecords.count { it.classification == RepClassification.PARTIAL }
+        val setOrigin = deriveSetOrigin(normalizedRecords)
         val request = RecordSetRequest(
             sessionId = active.sessionId,
             sessionExerciseId = active.exerciseId,
             setIndex = active.setIndex,
-            fullReps = active.fullReps,
-            partialReps = active.partialReps,
+            fullReps = derivedFull,
+            partialReps = derivedPartial,
             actualLoad = active.actualLoad,
             trackingMode = TrackingMode.DEVICE_ASSISTED,
             origin = setOrigin,
@@ -488,6 +579,8 @@ class DeviceAssistedRepCounterViewModel(
                 )
             ) {
                 is SetSubmissionOutcome.Success -> {
+                    setDraftStore?.consume(ownerId, executionEnvironment, sessionId, exerciseId, setIndex)
+                    savedStateHandle.remove<String>(draftJsonKey)
                     val completedState = DeviceAssistedRepCounterUiState.Completed(
                         sessionId = outcome.sessionId,
                         hasRestStarted = outcome.hasRestStarted,
@@ -506,6 +599,10 @@ class DeviceAssistedRepCounterViewModel(
                             restErrorMessage = outcome.restErrorMessage,
                         ),
                     )
+                }
+                is SetSubmissionOutcome.AlreadyCompleted -> {
+                    isSubmittingFlow.value = false
+                    _uiState.value = DeviceAssistedRepCounterUiState.AlreadyCompleted(active.exerciseName, outcome.setIndex)
                 }
                 is SetSubmissionOutcome.Failure -> {
                     errorMessageFlow.value = outcome.message
@@ -550,6 +647,12 @@ class DeviceAssistedRepCounterViewModel(
                 }
             }
         }
+    }
+
+    private fun deriveSetOrigin(records: List<RepMeasurement>): MeasurementOrigin = when {
+        records.any { it.origin == MeasurementOrigin.SENSOR_TELEMETRY } -> MeasurementOrigin.SENSOR_TELEMETRY
+        records.any { it.origin == MeasurementOrigin.SIMULATED_TELEMETRY } -> MeasurementOrigin.SIMULATED_TELEMETRY
+        else -> MeasurementOrigin.MANUAL_INPUT
     }
 
     private data class Quad(

@@ -81,6 +81,14 @@ fun DeviceAssistedRepCounterScreen(
             is DeviceAssistedRepCounterUiState.Terminal -> onSessionEnded(s.sessionId, s.status)
             is DeviceAssistedRepCounterUiState.Completed ->
                 onSetFinished(s.sessionId, s.hasRestStarted, null, s.restErrorMessage)
+            is DeviceAssistedRepCounterUiState.AlreadyCompleted -> onBackClick()
+            is DeviceAssistedRepCounterUiState.Active -> {
+                val fallback = s.pendingManualFallback
+                if (fallback != null) {
+                    viewModel.consumePendingManualFallback()
+                    onFallbackToManual(fallback.sessionId, fallback.exerciseId, fallback.setIndex)
+                }
+            }
             else -> Unit
         }
     }

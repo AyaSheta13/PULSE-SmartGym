@@ -77,10 +77,6 @@ class DefaultDeviceRepository(
 
     override fun onOwnerChanged() {
         _isDemoSessionActive.value = false
-        scope.launch {
-            fakeDataSource.disconnect()
-            realBleDataSource.disconnect()
-        }
         fakeDataSource.resetToDisconnected()
         realBleDataSource.resetToDisconnected()
     }

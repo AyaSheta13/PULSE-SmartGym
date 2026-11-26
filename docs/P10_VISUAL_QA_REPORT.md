@@ -19,3 +19,7 @@
 | 08 | `08_connection_lost_recovery.png` | `84.95` | PASS | Diff is due to dimmed `DeviceAssistedRepCounterScreen` behind the modal scrim vs Figma's simplified blank background; sheet itself matches Figma tokens, copy, and buttons. |
 | 09 | `09_connection_failed.png` | `13.42` | PASS | Matches coral `!` badge, timeout explanation, `Retry Connection`, and `Continue Manually`. |
 | 10 | `10_device_assisted_counter.png` | `12.46` | PASS | Removed duplicate `Adjust count` row found during first Visual QA pass (`mean_rgb_diff` improved from `20.69` → `12.46`). |
+
+## Remaining Minor Visual Differences Recorded for Future Polish
+- `01_my_device_disconnected.png` / `07_my_device_connected.png`: Top-right `Demo Mode` badge and explicit `Demo Simulator` / `Physical BLE` selector are intentional P10 safety disclosures; any further header spacing polish can be addressed in a future UI polish pass.
+- `10_device_assisted_counter.png`: Compact `Demo Simulator` strip (`+ Sim Rep`, `+ Partial`, `Drop Link`) is an intentional P10 simulator control strip not present in the hardware-only Figma frame.
