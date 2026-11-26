@@ -167,4 +167,17 @@ class PulseNavigator(
         state.selectedTab = PulseTab.HOME
         state.activeFlow = AppEntryFlow.MAIN
     }
+
+    fun exitWorkoutSummaryToHistory() {
+        val stack = state.activeBackStack
+        while (stack.size > 1 && NavigationPolicy.isFullScreenWorkoutRoute(stack.lastOrNull())) {
+            stack.removeAt(stack.lastIndex)
+        }
+        val historyStack = state.tabBackStacks.getValue(PulseTab.HISTORY)
+        while (historyStack.size > 1) {
+            historyStack.removeAt(historyStack.lastIndex)
+        }
+        state.selectedTab = PulseTab.HISTORY
+        state.activeFlow = AppEntryFlow.MAIN
+    }
 }

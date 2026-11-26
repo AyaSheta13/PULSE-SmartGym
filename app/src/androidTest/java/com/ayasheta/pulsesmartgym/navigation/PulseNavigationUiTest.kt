@@ -24,7 +24,7 @@ import com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoal
 import com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoalsDraft
 import com.ayasheta.pulsesmartgym.core.model.profile.GenderIdentity
 import com.ayasheta.pulsesmartgym.core.model.profile.PersonalInfoDraft
-import com.ayasheta.pulsesmartgym.navigation.route.SessionDetails
+import com.ayasheta.pulsesmartgym.navigation.route.MyDevice
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
@@ -46,27 +46,19 @@ class PulseNavigationUiTest {
             )
         }
 
-        composeRule.onNodeWithText("Route: ProgressTab").assertIsDisplayed()
-        composeRule.onNodeWithText("Increment Local State").performClick()
-        composeRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
+        composeRule.onNodeWithText("Training Progress").assertIsDisplayed()
 
-        // Switch to HistoryTab and mutate its own state twice
+        // Switch to HistoryTab
         composeRule.onNodeWithText(PulseTab.HISTORY.label).performClick()
-        composeRule.onNodeWithText("Route: HistoryTab").assertIsDisplayed()
-        composeRule.onNodeWithText("Saved State Counter: 0").assertIsDisplayed()
-        composeRule.onNodeWithText("Increment Local State").performClick()
-        composeRule.onNodeWithText("Increment Local State").performClick()
-        composeRule.onNodeWithText("Saved State Counter: 2").assertIsDisplayed()
+        composeRule.onNodeWithText("Workout History").assertIsDisplayed()
 
-        // Switch back to ProgressTab -> state 1 is preserved
+        // Switch back to ProgressTab -> Training Progress is preserved
         composeRule.onNodeWithText(PulseTab.PROGRESS.label).performClick()
-        composeRule.onNodeWithText("Route: ProgressTab").assertIsDisplayed()
-        composeRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
+        composeRule.onNodeWithText("Training Progress").assertIsDisplayed()
 
-        // Switch back to HistoryTab -> state 2 is preserved
+        // Switch back to HistoryTab -> Workout History is preserved
         composeRule.onNodeWithText(PulseTab.HISTORY.label).performClick()
-        composeRule.onNodeWithText("Route: HistoryTab").assertIsDisplayed()
-        composeRule.onNodeWithText("Saved State Counter: 2").assertIsDisplayed()
+        composeRule.onNodeWithText("Workout History").assertIsDisplayed()
     }
 
     @Test
@@ -87,25 +79,25 @@ class PulseNavigationUiTest {
             }
         }
 
-        // Open SessionDetails("session_sample_1") under ProgressTab and increment to 1
-        composeRule.runOnIdle { navigator.navigate(SessionDetails("session_sample_1")) }
-        composeRule.onNodeWithText("Route: SessionDetails").assertIsDisplayed()
+        // Open MyDevice under ProgressTab and increment to 1
+        composeRule.runOnIdle { navigator.navigate(MyDevice) }
+        composeRule.onNodeWithText("Route: MyDevice").assertIsDisplayed()
         composeRule.onNodeWithText("Increment Local State").performClick()
         composeRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
 
-        // Switch to HistoryTab while ProgressTab keeps SessionDetails on its stack
+        // Switch to HistoryTab while ProgressTab keeps MyDevice on its stack
         composeRule.runOnIdle { navigator.selectTab(PulseTab.HISTORY) }
-        composeRule.onNodeWithText("Route: HistoryTab").assertIsDisplayed()
-        composeRule.runOnIdle { navigator.navigate(SessionDetails("session_sample_1")) }
-        composeRule.onNodeWithText("Route: SessionDetails").assertIsDisplayed()
+        composeRule.onNodeWithText("Workout History").assertIsDisplayed()
+        composeRule.runOnIdle { navigator.navigate(MyDevice) }
+        composeRule.onNodeWithText("Route: MyDevice").assertIsDisplayed()
         composeRule.onNodeWithText("Saved State Counter: 0").assertIsDisplayed()
         composeRule.onNodeWithText("Increment Local State").performClick()
         composeRule.onNodeWithText("Increment Local State").performClick()
         composeRule.onNodeWithText("Saved State Counter: 2").assertIsDisplayed()
 
-        // Switch back to ProgressTab -> restores ProgressTab's SessionDetails with counter 1
+        // Switch back to ProgressTab -> restores ProgressTab's MyDevice with counter 1
         composeRule.runOnIdle { navigator.selectTab(PulseTab.PROGRESS) }
-        composeRule.onNodeWithText("Route: SessionDetails").assertIsDisplayed()
+        composeRule.onNodeWithText("Route: MyDevice").assertIsDisplayed()
         composeRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
     }
 
@@ -246,13 +238,11 @@ class PulseActivityRecreationUiTest {
             }.getOrDefault(false)
         }
         activityRule.onNodeWithText(PulseTab.PROGRESS.label).performClick()
-        activityRule.onNodeWithText("Increment Local State").performClick()
-        activityRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
+        activityRule.onNodeWithText("Training Progress").assertIsDisplayed()
 
         activityRule.activityRule.scenario.recreate()
         activityRule.waitForIdle()
 
-        activityRule.onNodeWithText("Route: ProgressTab").assertIsDisplayed()
-        activityRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
+        activityRule.onNodeWithText("Training Progress").assertIsDisplayed()
     }
 }

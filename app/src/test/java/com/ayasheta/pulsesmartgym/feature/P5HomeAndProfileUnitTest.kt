@@ -485,6 +485,7 @@ class P5HomeAndProfileUnitTest {
         override fun observeSession(ownerId: String, sessionId: String): Flow<WorkoutSession?> = flowOf(null)
         override suspend fun getSession(ownerId: String, sessionId: String): WorkoutSession? = null
         override suspend fun startSessionFromPlan(ownerId: String, planId: String) = throw UnsupportedOperationException()
+        override suspend fun startSessionFromHistory(ownerId: String, historicalSessionId: String) = throw UnsupportedOperationException()
         override suspend fun recordPerformedSet(ownerId: String, request: RecordSetRequest): RecordSetResult = throw UnsupportedOperationException()
         override suspend fun correctPerformedSet(ownerId: String, request: RecordSetRequest) = throw UnsupportedOperationException()
         override suspend fun completeSession(ownerId: String, sessionId: String) = throw UnsupportedOperationException()
@@ -509,6 +510,9 @@ class P5HomeAndProfileUnitTest {
         fun setHistory(ownerId: String, list: List<SessionSummary>) { history.value = history.value + (ownerId to list) }
         override fun observeHistory(ownerId: String, statusFilter: SessionStatus?): Flow<List<SessionSummary>> = history.map { it[ownerId].orEmpty() }
         override fun observeAggregateMetrics(ownerId: String): Flow<HistoryAggregateMetrics> = flowOf(HistoryAggregateMetrics(0, 0, 0, 0, 0, 0.0))
+        override fun observeFinishedSessions(ownerId: String): Flow<List<WorkoutSession>> = flowOf(emptyList())
+        override fun observeSessionDetails(ownerId: String, sessionId: String): Flow<WorkoutSession?> = flowOf(null)
+        override fun observePersonalRecords(ownerId: String): Flow<List<com.ayasheta.pulsesmartgym.core.model.history.ExercisePersonalRecord>> = flowOf(emptyList())
         override suspend fun getSessionDetails(ownerId: String, sessionId: String): WorkoutSession? = null
     }
 }

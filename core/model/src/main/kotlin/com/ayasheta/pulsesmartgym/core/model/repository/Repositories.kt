@@ -7,6 +7,7 @@ import com.ayasheta.pulsesmartgym.core.model.exercise.EquipmentCategory
 import com.ayasheta.pulsesmartgym.core.model.exercise.ExerciseDefinition
 import com.ayasheta.pulsesmartgym.core.model.exercise.MuscleGroup
 import com.ayasheta.pulsesmartgym.core.model.exercise.TrackingCategory
+import com.ayasheta.pulsesmartgym.core.model.history.ExercisePersonalRecord
 import com.ayasheta.pulsesmartgym.core.model.history.HistoryAggregateMetrics
 import com.ayasheta.pulsesmartgym.core.model.history.SessionSummary
 import com.ayasheta.pulsesmartgym.core.model.profile.AuthState
@@ -50,6 +51,7 @@ interface WorkoutSessionRepository {
     fun observeSession(ownerId: String, sessionId: String): Flow<WorkoutSession?>
     suspend fun getSession(ownerId: String, sessionId: String): WorkoutSession?
     suspend fun startSessionFromPlan(ownerId: String, planId: String): DomainResult<WorkoutSession>
+    suspend fun startSessionFromHistory(ownerId: String, historicalSessionId: String): DomainResult<WorkoutSession>
     suspend fun recordPerformedSet(ownerId: String, request: RecordSetRequest): RecordSetResult
     suspend fun correctPerformedSet(ownerId: String, request: RecordSetRequest): DomainResult<PerformedSet>
     suspend fun completeSession(ownerId: String, sessionId: String): DomainResult<WorkoutSession>
@@ -76,6 +78,9 @@ interface WorkoutSessionRepository {
 interface WorkoutHistoryRepository {
     fun observeHistory(ownerId: String, statusFilter: SessionStatus? = null): Flow<List<SessionSummary>>
     fun observeAggregateMetrics(ownerId: String): Flow<HistoryAggregateMetrics>
+    fun observeFinishedSessions(ownerId: String): Flow<List<WorkoutSession>>
+    fun observeSessionDetails(ownerId: String, sessionId: String): Flow<WorkoutSession?>
+    fun observePersonalRecords(ownerId: String): Flow<List<ExercisePersonalRecord>>
     suspend fun getSessionDetails(ownerId: String, sessionId: String): WorkoutSession?
 }
 

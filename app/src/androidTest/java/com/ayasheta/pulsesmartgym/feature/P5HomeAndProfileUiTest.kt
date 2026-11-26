@@ -102,7 +102,7 @@ class P5HomeAndProfileUiTest {
         // Home -> Progress via View Training Progress & PRs
         composeRule.onNodeWithText(PulseTab.HOME.label).performClick()
         composeRule.onNodeWithText("View Training Progress & PRs →").performClick()
-        composeRule.onNodeWithText("Route: ProgressTab").assertIsDisplayed()
+        composeRule.onNodeWithText("Training Progress").assertIsDisplayed()
 
         // Home -> Profile via avatar click
         composeRule.onNodeWithText(PulseTab.HOME.label).performClick()

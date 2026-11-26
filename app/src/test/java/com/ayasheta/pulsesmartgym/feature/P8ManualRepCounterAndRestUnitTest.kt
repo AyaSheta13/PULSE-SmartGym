@@ -641,6 +641,9 @@ private class FakeP8SessionRepository(
 
     override suspend fun startSessionFromPlan(ownerId: String, planId: String) = throw UnsupportedOperationException()
 
+    override suspend fun startSessionFromHistory(ownerId: String, historicalSessionId: String): DomainResult<WorkoutSession> =
+        throw UnsupportedOperationException()
+
     override suspend fun recordPerformedSet(ownerId: String, request: RecordSetRequest): RecordSetResult {
         recordCalls++
         val current = getSession(ownerId, request.sessionId) ?: return RecordSetResult.NotFound("Missing")

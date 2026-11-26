@@ -48,11 +48,13 @@ fun WorkoutResultScreen(
     viewModel: WorkoutResultViewModel,
     onBackToHome: () -> Unit,
     modifier: Modifier = Modifier,
+    onViewHistory: (() -> Unit)? = null,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     WorkoutResultScreenContent(
         uiState = uiState,
         onBackToHome = onBackToHome,
+        onViewHistory = onViewHistory,
         modifier = modifier,
     )
 }
@@ -62,6 +64,7 @@ fun WorkoutResultScreenContent(
     uiState: WorkoutResultUiState,
     onBackToHome: () -> Unit,
     modifier: Modifier = Modifier,
+    onViewHistory: (() -> Unit)? = null,
 ) {
     val renderInWindow = LocalRenderModalsInWindow.current
     Column(
@@ -415,24 +418,65 @@ fun WorkoutResultScreenContent(
 
                     item(key = "back_to_home_cta") {
                         Spacer(modifier = Modifier.height(4.dp))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(WorkoutPalette.PrimaryCoral)
-                                .clickable(onClick = onBackToHome)
-                                .testTag("button_summary_back_home"),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            BasicText(
-                                text = "Back to Home",
-                                style = PulseTheme.typography.ctaPrimary.copy(
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                ),
-                            )
+                        if (uiState.status != SessionStatus.ABANDONED && onViewHistory != null) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(52.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(WorkoutPalette.PrimaryCoral)
+                                    .clickable(onClick = onViewHistory)
+                                    .testTag("button_summary_view_history"),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                BasicText(
+                                    text = "View History",
+                                    style = PulseTheme.typography.ctaPrimary.copy(
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                    ),
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable(onClick = onBackToHome)
+                                    .padding(vertical = 10.dp)
+                                    .testTag("button_summary_back_home"),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                BasicText(
+                                    text = "Back to Home →",
+                                    style = PulseTheme.typography.contentPrimary.copy(
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = WorkoutPalette.TextMuted,
+                                    ),
+                                )
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(52.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(WorkoutPalette.PrimaryCoral)
+                                    .clickable(onClick = onBackToHome)
+                                    .testTag("button_summary_back_home"),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                BasicText(
+                                    text = "Back to Home",
+                                    style = PulseTheme.typography.ctaPrimary.copy(
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                    ),
+                                )
+                            }
                         }
                     }
                 }

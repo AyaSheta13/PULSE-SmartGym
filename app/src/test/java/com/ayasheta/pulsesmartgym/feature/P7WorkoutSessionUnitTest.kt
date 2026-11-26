@@ -340,6 +340,9 @@ private class FakeWorkoutSessionRepo : WorkoutSessionRepository {
     override suspend fun startSessionFromPlan(ownerId: String, planId: String): DomainResult<WorkoutSession> =
         throw UnsupportedOperationException()
 
+    override suspend fun startSessionFromHistory(ownerId: String, historicalSessionId: String): DomainResult<WorkoutSession> =
+        throw UnsupportedOperationException()
+
     override suspend fun recordPerformedSet(ownerId: String, request: RecordSetRequest): RecordSetResult {
         val current = getSession(ownerId, request.sessionId) ?: return RecordSetResult.NotFound("Not found")
         if (current.status != SessionStatus.ACTIVE) return RecordSetResult.InvalidState("Not active")

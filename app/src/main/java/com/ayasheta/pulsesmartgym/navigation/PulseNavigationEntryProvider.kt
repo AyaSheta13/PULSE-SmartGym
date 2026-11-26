@@ -301,21 +301,34 @@ fun rememberPulseEntryProvider(
     }
 
     entry<ProgressTab> {
-        NavigationPlaceholderScreen(
-            title = "Progress",
-            routeLabel = "ProgressTab",
-            topBarStyle = PulseTopAppBarStyle.TitleOnly("Progress"),
+        val viewModel: com.ayasheta.pulsesmartgym.feature.progress.TrainingProgressViewModel = viewModel {
+            com.ayasheta.pulsesmartgym.feature.progress.TrainingProgressViewModel(
+                authRepository = dataContainer.authRepository,
+                workoutHistoryRepository = dataContainer.workoutHistoryRepository,
+                userProfileRepository = dataContainer.userProfileRepository,
+                userPreferencesRepository = dataContainer.userPreferencesRepository,
+                savedStateHandle = createSavedStateHandle(),
+            )
+        }
+        com.ayasheta.pulsesmartgym.feature.progress.TrainingProgressScreen(
+            viewModel = viewModel,
+            onStartWorkoutClick = { navigator.selectTab(PulseTab.WORKOUTS) },
         )
     }
 
     entry<HistoryTab> {
-        NavigationPlaceholderScreen(
-            title = "Workout History",
-            routeLabel = "HistoryTab",
-            topBarStyle = PulseTopAppBarStyle.TitleWithBadge(
-                title = "Workout History",
-                badgeLabel = "Local Storage",
-            ),
+        val viewModel: com.ayasheta.pulsesmartgym.feature.history.WorkoutHistoryViewModel = viewModel {
+            com.ayasheta.pulsesmartgym.feature.history.WorkoutHistoryViewModel(
+                authRepository = dataContainer.authRepository,
+                workoutHistoryRepository = dataContainer.workoutHistoryRepository,
+            )
+        }
+        com.ayasheta.pulsesmartgym.feature.history.WorkoutHistoryScreen(
+            viewModel = viewModel,
+            onSessionClick = { sessionId ->
+                navigator.navigate(SessionDetails(sessionId = sessionId))
+            },
+            onGoToWorkoutsClick = { navigator.selectTab(PulseTab.WORKOUTS) },
         )
     }
 
@@ -563,6 +576,7 @@ fun rememberPulseEntryProvider(
         WorkoutResultScreen(
             viewModel = viewModel,
             onBackToHome = { navigator.exitWorkoutSummaryToHome() },
+            onViewHistory = { navigator.exitWorkoutSummaryToHistory() },
         )
     }
 
@@ -578,16 +592,27 @@ fun rememberPulseEntryProvider(
         WorkoutResultScreen(
             viewModel = viewModel,
             onBackToHome = { navigator.exitWorkoutSummaryToHome() },
+            onViewHistory = { navigator.exitWorkoutSummaryToHistory() },
         )
     }
 
     entry<SessionDetails> { key ->
-        NavigationPlaceholderScreen(
-            title = "Session Details",
-            routeLabel = "SessionDetails",
-            topBarStyle = PulseTopAppBarStyle.BackWithTitle("Session Details", onBackClick = { navigator.navigateBack() }),
-            routeArguments = listOf("sessionId" to key.sessionId),
+        val viewModel: com.ayasheta.pulsesmartgym.feature.history.details.SessionDetailsViewModel = viewModel {
+            com.ayasheta.pulsesmartgym.feature.history.details.SessionDetailsViewModel(
+                sessionId = key.sessionId,
+                authRepository = dataContainer.authRepository,
+                workoutHistoryRepository = dataContainer.workoutHistoryRepository,
+                userPreferencesRepository = dataContainer.userPreferencesRepository,
+            )
+        }
+        com.ayasheta.pulsesmartgym.feature.history.details.SessionDetailsScreen(
+            viewModel = viewModel,
             onBackClick = { navigator.navigateBack() },
+            onRepeatWorkoutClick = { historicalSessionId ->
+                sessionLaunchCoordinator.repeatHistoricalSession(historicalSessionId)
+            },
+            isRepeating = sessionLaunchCoordinator.isStarting,
+            repeatErrorMessage = sessionLaunchCoordinator.errorMessage,
         )
     }
 

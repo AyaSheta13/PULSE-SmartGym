@@ -348,24 +348,24 @@ class P4AuthAndProfileUiTest {
             }
         }
 
-        // Push SessionDetails("session_sample_1") on PROGRESS tab
+        // Push MyDevice on PROGRESS tab
         composeRule.runOnIdle { navigator.selectTab(PulseTab.PROGRESS) }
-        composeRule.runOnIdle { navigator.navigate(com.ayasheta.pulsesmartgym.navigation.route.SessionDetails("session_sample_1")) }
-        composeRule.onNodeWithText("Route: SessionDetails").assertIsDisplayed()
+        composeRule.runOnIdle { navigator.navigate(com.ayasheta.pulsesmartgym.navigation.route.MyDevice) }
+        composeRule.onNodeWithText("Route: MyDevice").assertIsDisplayed()
         composeRule.onNodeWithText("Increment Local State").performClick()
         composeRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
 
-        // Switch to HISTORY tab and push same SessionDetails("session_sample_1")
+        // Switch to HISTORY tab and push same MyDevice
         composeRule.runOnIdle { navigator.selectTab(PulseTab.HISTORY) }
-        composeRule.runOnIdle { navigator.navigate(com.ayasheta.pulsesmartgym.navigation.route.SessionDetails("session_sample_1")) }
-        composeRule.onNodeWithText("Route: SessionDetails").assertIsDisplayed()
+        composeRule.runOnIdle { navigator.navigate(com.ayasheta.pulsesmartgym.navigation.route.MyDevice) }
+        composeRule.onNodeWithText("Route: MyDevice").assertIsDisplayed()
         composeRule.onNodeWithText("Saved State Counter: 0").assertIsDisplayed()
 
-        // Pop HISTORY's SessionDetails, then switch back to PROGRESS -> PROGRESS's SessionDetails state is intact
+        // Pop HISTORY's MyDevice, then switch back to PROGRESS -> PROGRESS's MyDevice state is intact
         composeRule.runOnIdle { navigator.navigateBack() }
-        composeRule.onNodeWithText("Route: HistoryTab").assertIsDisplayed()
+        composeRule.onNodeWithText("Workout History").assertIsDisplayed()
         composeRule.runOnIdle { navigator.selectTab(PulseTab.PROGRESS) }
-        composeRule.onNodeWithText("Route: SessionDetails").assertIsDisplayed()
+        composeRule.onNodeWithText("Route: MyDevice").assertIsDisplayed()
         composeRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
     }
 

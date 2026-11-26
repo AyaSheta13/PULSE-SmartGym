@@ -2,6 +2,7 @@ package com.ayasheta.pulsesmartgym.core.data.repository.history
 
 import com.ayasheta.pulsesmartgym.core.data.local.database.dao.WorkoutSessionDao
 import com.ayasheta.pulsesmartgym.core.data.mapper.toDomain
+import com.ayasheta.pulsesmartgym.core.model.history.ExercisePersonalRecord
 import com.ayasheta.pulsesmartgym.core.model.history.HistoryAggregateMetrics
 import com.ayasheta.pulsesmartgym.core.model.history.SessionSummary
 import com.ayasheta.pulsesmartgym.core.model.history.WorkoutAnalytics
@@ -30,6 +31,25 @@ class RoomWorkoutHistoryRepository(
             WorkoutAnalytics.aggregateSummaries(summaries)
         }
 
+    override fun observeFinishedSessions(ownerId: String): Flow<List<WorkoutSession>> =
+        sessionDao.observeHistory(ownerId, null).map { sessions ->
+            sessions.map { it.toDomain() }
+        }
+
+    override fun observeSessionDetails(ownerId: String, sessionId: String): Flow<WorkoutSession?> =
+        sessionDao.observeSession(ownerId, sessionId).map { relation ->
+            relation?.toDomain()?.takeIf {
+                it.status == SessionStatus.COMPLETED || it.status == SessionStatus.PARTIALLY_COMPLETED
+            }
+        }
+
+    override fun observePersonalRecords(ownerId: String): Flow<List<ExercisePersonalRecord>> =
+        observeFinishedSessions(ownerId).map { sessions ->
+            WorkoutAnalytics.calculatePersonalRecords(sessions)
+        }
+
     override suspend fun getSessionDetails(ownerId: String, sessionId: String): WorkoutSession? =
-        sessionDao.getSession(ownerId, sessionId)?.toDomain()
+        sessionDao.getSession(ownerId, sessionId)?.toDomain()?.takeIf {
+            it.status == SessionStatus.COMPLETED || it.status == SessionStatus.PARTIALLY_COMPLETED
+        }
 }
