@@ -209,7 +209,7 @@ class P7WorkoutSessionUnitTest {
         assertEquals(2, partialUi.totalPartialReps)
         assertEquals("4m 15s", partialUi.durationText)
         assertEquals("2 / 4 sets", partialUi.setsChipText)
-        assertEquals("800 kg volume", partialUi.volumeChipText)
+        assertEquals("800 kg vol (partial)", partialUi.volumeChipText)
         assertEquals("1 of 2 Exercises Recorded", partialUi.breakdownHeaderRight)
         assertFalse(partialUi.exercises[0].isSkipped)
         assertTrue(partialUi.exercises[1].isSkipped)

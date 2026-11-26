@@ -952,8 +952,8 @@ private fun resolvePlanThumbnailRes(planName: String, index: Int): Int {
     }
 }
 
-private fun formatKg(volumeKg: Double): String {
-    val rounded = volumeKg.roundToInt()
-    val formatted = NumberFormat.getIntegerInstance(Locale.US).format(rounded)
-    return "$formatted kg"
-}
+private fun formatKg(volumeKg: Double): String =
+    com.ayasheta.pulsesmartgym.feature.session.dashboard.SessionUiMapper.formatVolumeWithUnit(
+        volumeKg = volumeKg,
+        unit = com.ayasheta.pulsesmartgym.core.model.common.WeightUnit.KG,
+    )

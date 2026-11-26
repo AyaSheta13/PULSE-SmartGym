@@ -5,6 +5,8 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.ayasheta.pulsesmartgym.core.data.local.database.PulseDatabase
 import com.ayasheta.pulsesmartgym.core.data.local.database.RoomTransactionRunner
+import com.ayasheta.pulsesmartgym.core.data.local.database.dao.WorkoutSessionDao
+import com.ayasheta.pulsesmartgym.core.data.local.database.entity.SessionExerciseEntity
 import com.ayasheta.pulsesmartgym.core.data.repository.exercise.RoomExerciseRepository
 import com.ayasheta.pulsesmartgym.core.data.repository.history.RoomWorkoutHistoryRepository
 import com.ayasheta.pulsesmartgym.core.data.repository.workout.RoomWorkoutPlanRepository
@@ -17,6 +19,8 @@ import com.ayasheta.pulsesmartgym.core.model.session.SessionStatus
 import com.ayasheta.pulsesmartgym.core.model.workout.PlanExerciseDraft
 import com.ayasheta.pulsesmartgym.core.model.workout.PlannedSetDraft
 import com.ayasheta.pulsesmartgym.core.model.workout.WorkoutPlanDraft
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -131,6 +135,97 @@ class P9HistoryAndRepeatRoomTest {
             assertNotNull(sessionRepo2.observeActiveSession("owner_a").first())
         } finally {
             db2.close()
+            dbFile.delete()
+        }
+    }
+
+    @Test
+    fun repeatWorkout_concurrentRequests_rollbackOnMidInsertFailure_andUnauthorizedRejection() = runTest {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val dbFile = File(context.filesDir, "p9_repeat_integrity_${System.nanoTime()}.db")
+        val db = Room.databaseBuilder(context, PulseDatabase::class.java, dbFile.absolutePath)
+            .addMigrations(PulseDatabase.MIGRATION_1_2, PulseDatabase.MIGRATION_2_3)
+            .build()
+        try {
+            val tx = RoomTransactionRunner(db)
+            val exRepo = RoomExerciseRepository(db.exerciseDao())
+            val planRepo = RoomWorkoutPlanRepository(db.workoutPlanDao(), db.exerciseDao(), tx)
+            val sessionRepo = RoomWorkoutSessionRepository(db.workoutSessionDao(), db.workoutPlanDao(), db.exerciseDao(), tx)
+
+            val bench = exRepo.observeAll().first().first { it.name.contains("Bench", ignoreCase = true) }
+            val plan = (planRepo.createPlan(
+                ownerId = "owner_a",
+                draft = WorkoutPlanDraft(
+                    name = "Original Plan",
+                    exercises = listOf(
+                        PlanExerciseDraft(bench.id, 0, plannedSets = listOf(PlannedSetDraft(1, 10, WeightLoad.fromKilograms(80.0), 90))),
+                    ),
+                ),
+            ) as DomainResult.Success).data
+
+            val s1 = (sessionRepo.startSessionFromPlan("owner_a", plan.id) as DomainResult.Success).data
+            sessionRepo.recordPerformedSet("owner_a", RecordSetRequest(s1.id, s1.exercises[0].id, 1, 10, 0, WeightLoad.fromKilograms(80.0)))
+            sessionRepo.completeSession("owner_a", s1.id)
+
+            // 1. Edit original plan -> repeating s1 retains original snapshot (80 kg), not edited (120 kg)
+            planRepo.updatePlan(
+                ownerId = "owner_a",
+                planId = plan.id,
+                draft = WorkoutPlanDraft(
+                    name = "Edited Plan",
+                    exercises = listOf(
+                        PlanExerciseDraft(bench.id, 0, plannedSets = listOf(PlannedSetDraft(1, 5, WeightLoad.fromKilograms(120.0), 60))),
+                    ),
+                ),
+            )
+
+            // 2. Unauthorized / invalid repeat requests rejected
+            val wrongOwner = sessionRepo.startSessionFromHistory("owner_b", s1.id)
+            assertTrue(wrongOwner is DomainResult.Failure && wrongOwner.error is DataError.NotFound)
+            val blankOwner = sessionRepo.startSessionFromHistory(" ", s1.id)
+            assertTrue(blankOwner is DomainResult.Failure && blankOwner.error is DataError.ValidationError)
+
+            // 3. Mid-transaction insertion failure -> full rollback (no orphan ACTIVE session)
+            val failingDao = object : WorkoutSessionDao by db.workoutSessionDao() {
+                override suspend fun insertSessionExercises(exercises: List<SessionExerciseEntity>) {
+                    throw IllegalStateException("Simulated insertion failure")
+                }
+            }
+            val failingRepo = RoomWorkoutSessionRepository(failingDao, db.workoutPlanDao(), db.exerciseDao(), tx)
+            val failedRepeat = failingRepo.startSessionFromHistory("owner_a", s1.id)
+            assertTrue(failedRepeat is DomainResult.Failure && failedRepeat.error is DataError.StorageError)
+            assertNull(db.workoutSessionDao().getActiveSession("owner_a"))
+
+            // 4. Two concurrent Repeat Workout requests -> only one succeeds, one gets ActiveSessionConflict
+            val (r1, r2) = awaitAll(
+                async { sessionRepo.startSessionFromHistory("owner_a", s1.id) },
+                async { sessionRepo.startSessionFromHistory("owner_a", s1.id) },
+            )
+            val results = listOf(r1, r2)
+            assertEquals(1, results.count { it is DomainResult.Success })
+            assertEquals(1, results.count { it is DomainResult.Failure && it.error is DataError.ActiveSessionConflict })
+            val activeFromRepeat = (results.first { it is DomainResult.Success } as DomainResult.Success).data
+            assertEquals("Original Plan", activeFromRepeat.planNameSnapshot)
+            assertEquals(80.0, activeFromRepeat.exercises[0].plannedSets[0].targetLoad?.toKilograms() ?: 0.0, 0.01)
+            assertEquals(0, activeFromRepeat.exercises.sumOf { it.performedSets.size })
+            assertNull(sessionRepo.observeRestState("owner_a", activeFromRepeat.id).first())
+
+            // Clean up active session, then test Concurrent Repeat vs Start Workout
+            sessionRepo.endSessionEarly("owner_a", activeFromRepeat.id)
+            val (c1, c2) = awaitAll(
+                async { sessionRepo.startSessionFromHistory("owner_a", s1.id) },
+                async { sessionRepo.startSessionFromPlan("owner_a", plan.id) },
+            )
+            val mixed = listOf(c1, c2)
+            assertEquals(1, mixed.count { it is DomainResult.Success })
+            assertEquals(1, mixed.count { it is DomainResult.Failure && it.error is DataError.ActiveSessionConflict })
+
+            // Original historical session s1 remains untouched
+            val reloadedS1 = db.workoutSessionDao().getSession("owner_a", s1.id)!!
+            assertEquals(SessionStatus.COMPLETED, reloadedS1.session.status)
+            assertEquals(1, reloadedS1.exercises.sumOf { it.performedSets.size })
+        } finally {
+            db.close()
             dbFile.delete()
         }
     }

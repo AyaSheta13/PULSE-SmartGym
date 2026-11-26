@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
 import com.ayasheta.pulsesmartgym.core.model.device.TrackingMode
+import com.ayasheta.pulsesmartgym.core.model.history.VolumeCoverage
 import com.ayasheta.pulsesmartgym.core.model.history.WorkoutAnalytics
 import com.ayasheta.pulsesmartgym.core.model.profile.AuthState
 import com.ayasheta.pulsesmartgym.core.model.repository.AuthRepository
@@ -82,13 +83,17 @@ class WorkoutResultViewModel(
                 "${summary.completedSetsCount} / ${summary.totalPlannedSetsCount} sets"
             }
 
-            val volumeValue = when (unit) {
-                WeightUnit.KG -> summary.totalVolumeKg
-                WeightUnit.LBS -> summary.totalVolumeKg * 2.20462262185
+            val allPerformed = orderedExercises.flatMap { it.performedSets }
+            val coverage = WorkoutAnalytics.calculateVolumeCoverage(allPerformed)
+            val volumeChip = when {
+                coverage == VolumeCoverage.NO_MEASURED_VOLUME && summary.completedSetsCount > 0 -> "— volume"
+                coverage == VolumeCoverage.PARTIALLY_MEASURED -> {
+                    val formatted = SessionUiMapper.formatVolumeNumber(summary.totalVolumeKg, unit)
+                    val unitLabel = if (unit == WeightUnit.KG) "kg" else "lbs"
+                    "$formatted $unitLabel vol (partial)"
+                }
+                else -> "${SessionUiMapper.formatVolumeWithUnit(summary.totalVolumeKg, unit)} volume"
             }
-            val unitLabel = if (unit == WeightUnit.KG) "kg" else "lbs"
-            val formattedVolume = NumberFormat.getIntegerInstance(Locale.US).format(volumeValue.roundToInt())
-            val volumeChip = "$formattedVolume $unitLabel volume"
 
             val recordedExercisesCount = orderedExercises.count { it.performedSets.isNotEmpty() }
             val breakdownRight = if (session.status == SessionStatus.COMPLETED) {

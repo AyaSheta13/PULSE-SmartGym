@@ -2,6 +2,7 @@ package com.ayasheta.pulsesmartgym.feature.history
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ayasheta.pulsesmartgym.core.model.history.WorkoutAnalytics
 import com.ayasheta.pulsesmartgym.core.model.profile.AuthState
 import com.ayasheta.pulsesmartgym.core.model.repository.AuthRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.WorkoutHistoryRepository
@@ -14,6 +15,8 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.ZoneId
@@ -52,23 +55,25 @@ class WorkoutHistoryViewModel(
                         AuthState.Unauthenticated -> flowOf(WorkoutHistoryUiState.SignedOut)
                         is AuthState.Authenticated -> {
                             val ownerId = authState.user.id
-                            combine(
-                                workoutHistoryRepository.observeHistory(ownerId),
-                                workoutHistoryRepository.observeAggregateMetrics(ownerId),
-                            ) { summaries, aggregates ->
-                                HistoryUiMapper.mapToUiState(
-                                    summaries = summaries,
-                                    aggregates = aggregates,
-                                    today = todayProvider(),
-                                    zoneId = zoneProvider(),
-                                )
-                            }.catch { throwable ->
-                                emit(
-                                    WorkoutHistoryUiState.Error(
-                                        throwable.message ?: "Unable to load workout history.",
-                                    ),
-                                )
-                            }
+                            workoutHistoryRepository.observeHistory(ownerId)
+                                .map<_, WorkoutHistoryUiState> { summaries ->
+                                    HistoryUiMapper.mapToUiState(
+                                        summaries = summaries,
+                                        aggregates = WorkoutAnalytics.aggregateSummaries(summaries),
+                                        today = todayProvider(),
+                                        zoneId = zoneProvider(),
+                                    )
+                                }
+                                .onStart {
+                                    emit(WorkoutHistoryUiState.Loading)
+                                }
+                                .catch { throwable ->
+                                    emit(
+                                        WorkoutHistoryUiState.Error(
+                                            throwable.message ?: "Unable to load workout history.",
+                                        ),
+                                    )
+                                }
                         }
                     }
                 }

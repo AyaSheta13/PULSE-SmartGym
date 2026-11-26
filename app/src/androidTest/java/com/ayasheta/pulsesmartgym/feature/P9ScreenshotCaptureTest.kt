@@ -211,10 +211,10 @@ class P9ScreenshotCaptureTest {
             endedAtEpochMs = start + 2_535_000L,
             status = SessionStatus.COMPLETED,
             exercises = listOf(
-                makeEx("e1", "s_comp", "bench_press", "Barbell Bench Press", 0, 4, 10, 80.0),
-                makeEx("e2", "s_comp", "incline_db_press", "Incline Dumbbell Press", 1, 4, 9, 28.0),
-                makeEx("e3", "s_comp", "barbell_row", "Bent-Over Barbell Row", 2, 4, 8, 70.0),
-                makeEx("e4", "s_comp", "overhead_tricep", "Overhead Triceps Extension", 3, 4, 8, 32.0),
+                makeEx("e1", "s_comp", "bench_press", "Barbell Bench Press", 0, 4, 10, 80.0, completedAtEpochMs = start),
+                makeEx("e2", "s_comp", "incline_db_press", "Incline Dumbbell Press", 1, 4, 9, 28.0, completedAtEpochMs = start),
+                makeEx("e3", "s_comp", "barbell_row", "Bent-Over Barbell Row", 2, 4, 8, 70.0, completedAtEpochMs = start),
+                makeEx("e4", "s_comp", "overhead_tricep", "Overhead Triceps Extension", 3, 4, 8, 32.0, completedAtEpochMs = start),
             ),
         )
     }
@@ -230,10 +230,10 @@ class P9ScreenshotCaptureTest {
             endedAtEpochMs = start + 255_000L,
             status = SessionStatus.PARTIALLY_COMPLETED,
             exercises = listOf(
-                makeEx("e1", "s_part", "bench_press", "Barbell Bench Press", 0, 4, 10, 80.0, recordedSets = 1),
-                makeEx("e2", "s_part", "incline_db_press", "Incline Dumbbell Press", 1, 4, 9, 28.0, recordedSets = 0),
-                makeEx("e3", "s_part", "barbell_row", "Bent-Over Barbell Row", 2, 4, 8, 70.0, recordedSets = 0),
-                makeEx("e4", "s_part", "overhead_tricep", "Overhead Triceps Extension", 3, 4, 8, 32.0, recordedSets = 0),
+                makeEx("e1", "s_part", "bench_press", "Barbell Bench Press", 0, 4, 10, 80.0, recordedSets = 1, completedAtEpochMs = start),
+                makeEx("e2", "s_part", "incline_db_press", "Incline Dumbbell Press", 1, 4, 9, 28.0, recordedSets = 0, completedAtEpochMs = start),
+                makeEx("e3", "s_part", "barbell_row", "Bent-Over Barbell Row", 2, 4, 8, 70.0, recordedSets = 0, completedAtEpochMs = start),
+                makeEx("e4", "s_part", "overhead_tricep", "Overhead Triceps Extension", 3, 4, 8, 32.0, recordedSets = 0, completedAtEpochMs = start),
             ),
         )
     }
@@ -248,7 +248,7 @@ class P9ScreenshotCaptureTest {
             startedAtEpochMs = start,
             endedAtEpochMs = start + 2_900_000L,
             status = SessionStatus.COMPLETED,
-            exercises = listOf(makeEx("e5", "s_2", "back_squat", "Barbell Back Squat", 0, 4, 10, 100.0)),
+            exercises = listOf(makeEx("e5", "s_2", "back_squat", "Barbell Back Squat", 0, 4, 10, 100.0, completedAtEpochMs = start)),
         )
     }
 
@@ -262,7 +262,7 @@ class P9ScreenshotCaptureTest {
             startedAtEpochMs = start,
             endedAtEpochMs = start + 2_710_000L,
             status = SessionStatus.COMPLETED,
-            exercises = listOf(makeEx("e6", "s_3", "barbell_row", "Bent-Over Barbell Row", 0, 4, 10, 85.0)),
+            exercises = listOf(makeEx("e6", "s_3", "barbell_row", "Bent-Over Barbell Row", 0, 4, 10, 85.0, completedAtEpochMs = start)),
         )
     }
 
@@ -276,6 +276,7 @@ class P9ScreenshotCaptureTest {
         reps: Int,
         kg: Double,
         recordedSets: Int = plannedCount,
+        completedAtEpochMs: Long = 1_000L,
     ): SessionExercise = SessionExercise(
         id = id,
         sessionId = sessId,
@@ -287,7 +288,7 @@ class P9ScreenshotCaptureTest {
         orderIndex = order,
         plannedSets = (1..plannedCount).map { idx -> SessionPlannedSet("sp_${id}_$idx", id, idx, reps, WeightLoad.fromKilograms(kg), 90) },
         performedSets = (1..recordedSets).map { idx ->
-            PerformedSet("pf_${id}_$idx", sessId, id, idx, reps, 0, WeightLoad.fromKilograms(kg), 1_000L, TrackingMode.MANUAL, MeasurementOrigin.MANUAL_INPUT, 45_000L)
+            PerformedSet("pf_${id}_$idx", sessId, id, idx, reps, 0, WeightLoad.fromKilograms(kg), completedAtEpochMs, TrackingMode.MANUAL, MeasurementOrigin.MANUAL_INPUT, 45_000L)
         },
     )
 }

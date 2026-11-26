@@ -3,10 +3,28 @@ package com.ayasheta.pulsesmartgym.feature.session.dashboard
 import com.ayasheta.pulsesmartgym.core.model.common.WeightLoad
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
 import com.ayasheta.pulsesmartgym.core.model.session.WorkoutSession
+import java.text.NumberFormat
 import java.util.Locale
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 object SessionUiMapper {
+
+    private const val LBS_PER_KG = 2.20462262185
+
+    fun formatVolumeNumber(volumeKg: Double, unit: WeightUnit): String {
+        val value = when (unit) {
+            WeightUnit.KG -> volumeKg
+            WeightUnit.LBS -> volumeKg * LBS_PER_KG
+        }
+        val rounded = if (value.isFinite()) value.roundToLong().coerceAtLeast(0L) else 0L
+        return NumberFormat.getIntegerInstance(Locale.US).format(rounded)
+    }
+
+    fun formatVolumeWithUnit(volumeKg: Double, unit: WeightUnit): String {
+        val unitLabel = if (unit == WeightUnit.KG) "kg" else "lbs"
+        return "${formatVolumeNumber(volumeKg, unit)} $unitLabel"
+    }
 
     fun computeElapsedSeconds(
         startedAtEpochMs: Long,

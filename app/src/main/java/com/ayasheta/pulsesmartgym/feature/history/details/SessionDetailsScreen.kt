@@ -8,6 +8,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -238,13 +240,15 @@ fun SessionDetailsScreenContent(
                                     ),
                                 )
                             }
-                            Row(
+                            @OptIn(ExperimentalLayoutApi::class)
+                            FlowRow(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
-                                TotalsChip(text = uiState.setsChipText, modifier = Modifier.weight(1f))
-                                TotalsChip(text = uiState.repsChipText, modifier = Modifier.weight(1.2f))
-                                TotalsChip(text = uiState.volumeChipText, modifier = Modifier.weight(1.2f))
+                                TotalsChip(text = uiState.setsChipText)
+                                TotalsChip(text = uiState.repsChipText)
+                                TotalsChip(text = uiState.volumeChipText)
                             }
                         }
                     }
@@ -406,8 +410,7 @@ private fun TotalsChip(
                 fontWeight = FontWeight.SemiBold,
                 color = WorkoutPalette.TextPrimary,
             ),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            maxLines = 2,
         )
     }
 }

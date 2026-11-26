@@ -1,6 +1,8 @@
 package com.ayasheta.pulsesmartgym.feature
 
 import androidx.lifecycle.SavedStateHandle
+import com.ayasheta.pulsesmartgym.core.model.common.DataError
+import com.ayasheta.pulsesmartgym.core.model.common.DomainResult
 import com.ayasheta.pulsesmartgym.core.model.common.WeightLoad
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
 import com.ayasheta.pulsesmartgym.core.model.device.MeasurementOrigin
@@ -26,9 +28,12 @@ import com.ayasheta.pulsesmartgym.core.model.repository.AuthRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.UserPreferencesRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.UserProfileRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.WorkoutHistoryRepository
+import com.ayasheta.pulsesmartgym.core.model.repository.WorkoutSessionRepository
 import com.ayasheta.pulsesmartgym.core.model.session.PerformedSet
+import com.ayasheta.pulsesmartgym.core.model.session.RecordSetRequest
 import com.ayasheta.pulsesmartgym.core.model.session.SessionExercise
 import com.ayasheta.pulsesmartgym.core.model.session.SessionPlannedSet
+import com.ayasheta.pulsesmartgym.core.model.session.SessionRestState
 import com.ayasheta.pulsesmartgym.core.model.session.SessionStatus
 import com.ayasheta.pulsesmartgym.core.model.session.WorkoutSession
 import com.ayasheta.pulsesmartgym.feature.history.HistoryUiMapper
@@ -36,21 +41,30 @@ import com.ayasheta.pulsesmartgym.feature.history.WorkoutHistoryUiState
 import com.ayasheta.pulsesmartgym.feature.history.WorkoutHistoryViewModel
 import com.ayasheta.pulsesmartgym.feature.history.details.SessionDetailsUiState
 import com.ayasheta.pulsesmartgym.feature.history.details.SessionDetailsViewModel
+import com.ayasheta.pulsesmartgym.feature.progress.ProgressUiMapper
 import com.ayasheta.pulsesmartgym.feature.progress.TrainingProgressUiState
 import com.ayasheta.pulsesmartgym.feature.progress.TrainingProgressViewModel
+import com.ayasheta.pulsesmartgym.feature.session.WorkoutSessionLaunchCoordinator
+import com.ayasheta.pulsesmartgym.feature.session.dashboard.SessionUiMapper
+import com.ayasheta.pulsesmartgym.feature.session.summary.WorkoutResultViewModel
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -188,7 +202,8 @@ class P9HistoryAndAnalyticsUnitTest {
         val s3 = makeSession("s3", SessionStatus.COMPLETED, t3, t3 + 1000L, fullReps = 6, partialReps = 0, loadKg = 90.0, sourceExId = "ex_bench")
         val tiedPr = WorkoutAnalytics.calculatePersonalRecords(listOf(s1, s2, s3)).single()
         assertEquals(6, tiedPr.repsAtMaxLoad)
-        assertNull(tiedPr.improvementKg)
+        assertEquals(90.0, tiedPr.previousBestLoad!!.toKilograms(), 0.01)
+        assertEquals(0.0, tiedPr.improvementKg!!, 0.01)
     }
 
     @Test
@@ -238,6 +253,27 @@ class P9HistoryAndAnalyticsUnitTest {
     private fun epoch(year: Int, month: Int, day: Int, hour: Int, minute: Int): Long =
         ZonedDateTime.of(year, month, day, hour, minute, 0, 0, zone).toInstant().toEpochMilli()
 
+    private fun session(
+        id: String,
+        status: SessionStatus,
+        startedAtMs: Long,
+        endedAtMs: Long?,
+        setCount: Int = 1,
+        fullReps: Int = 10,
+        loadKg: Double? = 80.0,
+        sourceExId: String = "ex_bench_press",
+    ): WorkoutSession = makeSession(
+        id = id,
+        status = status,
+        startedAtMs = startedAtMs,
+        endedAtMs = endedAtMs,
+        fullReps = fullReps,
+        partialReps = 0,
+        loadKg = loadKg,
+        sourceExId = sourceExId,
+        setCount = setCount,
+    )
+
     private fun makeSession(
         id: String,
         status: SessionStatus,
@@ -247,16 +283,17 @@ class P9HistoryAndAnalyticsUnitTest {
         partialReps: Int,
         loadKg: Double?,
         sourceExId: String = "ex_bench_press",
+        setCount: Int = 1,
     ): WorkoutSession {
         val performed = if (status == SessionStatus.ABANDONED) {
             emptyList()
         } else {
-            listOf(
+            (1..setCount).map { idx ->
                 PerformedSet(
-                    id = "perf_$id",
+                    id = "perf_${id}_$idx",
                     sessionId = id,
                     sessionExerciseId = "se_$id",
-                    setIndex = 1,
+                    setIndex = idx,
                     fullReps = fullReps,
                     partialReps = partialReps,
                     actualLoad = loadKg?.let { WeightLoad.fromKilograms(it) },
@@ -264,8 +301,8 @@ class P9HistoryAndAnalyticsUnitTest {
                     trackingMode = TrackingMode.MANUAL,
                     origin = MeasurementOrigin.MANUAL_INPUT,
                     durationMs = 45_000L,
-                ),
-            )
+                )
+            }
         }
         return WorkoutSession(
             id = id,
@@ -291,6 +328,262 @@ class P9HistoryAndAnalyticsUnitTest {
             ),
         )
     }
+
+    @Test
+    fun personalRecords_distinguishFirst_improved_andMatched_withDeterministicTieBreak() {
+        val zone = ZoneId.of("UTC")
+        val today = LocalDate.of(2026, 10, 24)
+        val t1 = ZonedDateTime.of(2026, 10, 10, 10, 0, 0, 0, zone).toInstant().toEpochMilli()
+        val t2 = ZonedDateTime.of(2026, 10, 15, 10, 0, 0, 0, zone).toInstant().toEpochMilli()
+        val t3 = ZonedDateTime.of(2026, 10, 20, 10, 0, 0, 0, zone).toInstant().toEpochMilli()
+
+        val firstOnly = session("s_first", SessionStatus.COMPLETED, t1, t1 + 1000L, setCount = 1, fullReps = 5, loadKg = 80.0, sourceExId = "ex_first")
+        val improved1 = session("s_imp1", SessionStatus.COMPLETED, t1, t1 + 1000L, setCount = 1, fullReps = 5, loadKg = 80.0, sourceExId = "ex_imp")
+        val improved2 = session("s_imp2", SessionStatus.COMPLETED, t2, t2 + 1000L, setCount = 1, fullReps = 5, loadKg = 92.5, sourceExId = "ex_imp")
+        val matched1 = session("s_mat1", SessionStatus.COMPLETED, t1, t1 + 1000L, setCount = 1, fullReps = 6, loadKg = 90.0, sourceExId = "ex_mat")
+        val matched2 = session("s_mat2", SessionStatus.COMPLETED, t3, t3 + 1000L, setCount = 1, fullReps = 6, loadKg = 90.0, sourceExId = "ex_mat")
+
+        val state = ProgressUiMapper.mapToUiState(
+            sessions = listOf(firstOnly, improved1, improved2, matched1, matched2),
+            weeklyTarget = 4,
+            unit = WeightUnit.KG,
+            selectedWeekOffset = 0,
+            today = today,
+            zoneId = zone,
+        ) as TrainingProgressUiState.Populated
+
+        val firstRow = state.personalRecords.first { it.exerciseKey.endsWith("ex_first") }
+        val impRow = state.personalRecords.first { it.exerciseKey.endsWith("ex_imp") }
+        val matRow = state.personalRecords.first { it.exerciseKey.endsWith("ex_mat") }
+        assertTrue(firstRow.detailLabel.endsWith("First PR"))
+        assertTrue(impRow.detailLabel.endsWith("+12.5 kg PR"))
+        assertTrue(matRow.detailLabel.endsWith("Matched PR"))
+        assertEquals("Oct 20", matRow.dateLabel)
+    }
+
+    @Test
+    fun unknownAndPartialVolume_suppressMisleadingPercentages_acrossProgressSummaryAndDetails() {
+        val zone = ZoneId.of("UTC")
+        val today = LocalDate.of(2026, 10, 24)
+        val prevStart = ZonedDateTime.of(2026, 10, 14, 10, 0, 0, 0, zone).toInstant().toEpochMilli()
+        val currStart = ZonedDateTime.of(2026, 10, 21, 10, 0, 0, 0, zone).toInstant().toEpochMilli()
+
+        // 1. Unknown current-week volume with known previous-week volume -> NOT -100%
+        val prevKnown = session("s_pk", SessionStatus.COMPLETED, prevStart, prevStart + 600_000L, setCount = 2, fullReps = 10, loadKg = 50.0)
+        val currUnknown = session("s_cu", SessionStatus.COMPLETED, currStart, currStart + 600_000L, setCount = 2, fullReps = 10, loadKg = null)
+
+        val unknownCurrState = ProgressUiMapper.mapToUiState(
+            sessions = listOf(prevKnown, currUnknown),
+            weeklyTarget = null,
+            unit = WeightUnit.KG,
+            selectedWeekOffset = 0,
+            today = today,
+            zoneId = zone,
+        ) as TrainingProgressUiState.Populated
+        assertEquals("—", unknownCurrState.volumeCard.primaryValue)
+        assertEquals("unmeasured", unknownCurrState.volumeCard.primaryUnit)
+        assertEquals("Unmeasured loads", unknownCurrState.volumeCard.deltaText)
+        assertEquals("Unmeasured (This Week)", unknownCurrState.chartHeaderVolumeText)
+
+        // Summary & Details also show "— volume" rather than "0 kg volume"
+        val resUnknown = WorkoutResultViewModel.mapSessionToResult(currUnknown, WeightUnit.KG)
+        val detUnknown = SessionDetailsViewModel.mapToLoaded(currUnknown, WeightUnit.KG, today, zone)
+        assertEquals("— volume", resUnknown.volumeChipText)
+        assertEquals("— volume", detUnknown.volumeChipText)
+
+        // 2. Known current-week volume with unknown previous-week volume
+        val prevUnknown = session("s_pu", SessionStatus.COMPLETED, prevStart, prevStart + 600_000L, setCount = 2, fullReps = 10, loadKg = null)
+        val currKnown = session("s_ck", SessionStatus.COMPLETED, currStart, currStart + 600_000L, setCount = 2, fullReps = 10, loadKg = 50.0)
+        val unknownPrevState = ProgressUiMapper.mapToUiState(
+            sessions = listOf(prevUnknown, currKnown),
+            weeklyTarget = null,
+            unit = WeightUnit.KG,
+            selectedWeekOffset = 0,
+            today = today,
+            zoneId = zone,
+        ) as TrainingProgressUiState.Populated
+        assertEquals("Prior wk unmeasured", unknownPrevState.volumeCard.deltaText)
+
+        // 3. Partial measurement coverage (mixed known and null loads)
+        val currMixed = WorkoutSession(
+            id = "s_mix",
+            ownerProfileId = "user_a",
+            sourcePlanId = "p1",
+            planNameSnapshot = "Mixed",
+            startedAtEpochMs = currStart,
+            endedAtEpochMs = currStart + 600_000L,
+            status = SessionStatus.COMPLETED,
+            exercises = listOf(
+                SessionExercise(
+                    id = "se_mix",
+                    sessionId = "s_mix",
+                    sourceExerciseId = "bench",
+                    exerciseNameSnapshot = "Bench",
+                    muscleGroupSnapshot = MuscleGroup.CHEST,
+                    equipmentSnapshot = EquipmentCategory.BARBELL,
+                    trackingCategorySnapshot = TrackingCategory.LINEAR,
+                    orderIndex = 0,
+                    plannedSets = emptyList(),
+                    performedSets = listOf(
+                        PerformedSet("p1", "s_mix", "se_mix", 1, 10, 0, WeightLoad.fromKilograms(80.0), currStart, TrackingMode.MANUAL, MeasurementOrigin.MANUAL_INPUT),
+                        PerformedSet("p2", "s_mix", "se_mix", 2, 10, 0, null, currStart, TrackingMode.MANUAL, MeasurementOrigin.MANUAL_INPUT),
+                    ),
+                ),
+            ),
+        )
+        val partialState = ProgressUiMapper.mapToUiState(
+            sessions = listOf(prevKnown, currMixed),
+            weeklyTarget = null,
+            unit = WeightUnit.KG,
+            selectedWeekOffset = 0,
+            today = today,
+            zoneId = zone,
+        ) as TrainingProgressUiState.Populated
+        assertEquals("Partial coverage", partialState.volumeCard.deltaText)
+        assertTrue(partialState.chartHeaderVolumeText.contains("(partial)"))
+        assertTrue(WorkoutResultViewModel.mapSessionToResult(currMixed, WeightUnit.KG).volumeChipText.contains("(partial)"))
+        assertTrue(SessionDetailsViewModel.mapToLoaded(currMixed, WeightUnit.KG, today, zone).volumeChipText.contains("(partial)"))
+
+        // 4. Zero measured weight -> KNOWN_ZERO_VOLUME
+        val currZero = session("s_zero", SessionStatus.COMPLETED, currStart, currStart + 600_000L, setCount = 1, fullReps = 10, loadKg = 0.0)
+        assertEquals(VolumeCoverage.KNOWN_ZERO_VOLUME, WorkoutAnalytics.calculateVolumeCoverage(currZero.exercises.first().performedSets))
+        val zeroState = ProgressUiMapper.mapToUiState(
+            sessions = listOf(currZero),
+            weeklyTarget = null,
+            unit = WeightUnit.KG,
+            selectedWeekOffset = 0,
+            today = today,
+            zoneId = zone,
+        ) as TrainingProgressUiState.Populated
+        assertEquals("0", zeroState.volumeCard.primaryValue)
+        assertEquals("kg", zeroState.volumeCard.primaryUnit)
+    }
+
+    @Test
+    fun largeVolume_dstTransition_invalidDuration_andHistoricalWeekLabel_areAccurate() {
+        // Large volume > Int.MAX_VALUE without overflow
+        val hugeKg = 2_500_000_000.0
+        assertEquals("2,500,000,000 kg", SessionUiMapper.formatVolumeWithUnit(hugeKg, WeightUnit.KG))
+        assertEquals("5,511,556,555 lbs", SessionUiMapper.formatVolumeWithUnit(hugeKg, WeightUnit.LBS))
+
+        // Invalid / missing duration (endedAt < startedAt or null)
+        val zone = ZoneId.of("America/New_York")
+        // Spring forward DST week: 2026-03-08 is DST transition in New York
+        val monStart = ZonedDateTime.of(2026, 3, 2, 0, 30, 0, 0, zone).toInstant().toEpochMilli()
+        val sunLate = ZonedDateTime.of(2026, 3, 8, 23, 30, 0, 0, zone).toInstant().toEpochMilli()
+        val sMon = session("s_dst1", SessionStatus.COMPLETED, monStart, monStart - 5_000L, setCount = 1, fullReps = 10, loadKg = 100.0)
+        val sSun = session("s_dst2", SessionStatus.COMPLETED, sunLate, null, setCount = 1, fullReps = 10, loadKg = 100.0)
+
+        assertEquals(0L, WorkoutAnalytics.summarizeSession(sMon).durationMs)
+        assertNull(WorkoutAnalytics.summarizeSession(sSun).durationMs)
+        assertEquals("—", SessionDetailsViewModel.mapToLoaded(sSun, WeightUnit.KG, LocalDate.of(2026, 3, 9), zone).durationText)
+
+        // Selected historical week uses truthful date range, NOT "This Week"
+        val today = LocalDate.of(2026, 3, 10)
+        val histWeekState = ProgressUiMapper.mapToUiState(
+            sessions = listOf(sMon, sSun),
+            weeklyTarget = 4,
+            unit = WeightUnit.LBS,
+            selectedWeekOffset = 1,
+            today = today,
+            zoneId = zone,
+        ) as TrainingProgressUiState.Populated
+        assertFalse(histWeekState.chartHeaderVolumeText.contains("This Week"))
+        assertTrue(histWeekState.chartHeaderVolumeText.contains("Mar 2–8"))
+        assertTrue(histWeekState.chartHeaderVolumeText.contains("lbs"))
+        assertEquals("4,409", histWeekState.volumeCard.primaryValue)
+    }
+
+    @Test
+    fun workoutHistoryViewModel_derivesConsistentAggregates_andClearsPreviousOwnerImmediately() = runBlocking {
+        val auth = FakeP9AuthRepo("user_a")
+        val delayUserB = CompletableDeferred<Unit>()
+        val historyRepo = DelayedFakeP9HistoryRepo(delayedOwnerId = "user_b", gate = delayUserB)
+        val prefsRepo = FakeP9PrefsRepo()
+        val profileRepo = FakeP9ProfileRepo()
+
+        val t1 = 1_760_000_000_000L
+        val sA = session("sa_1", SessionStatus.COMPLETED, t1, t1 + 600_000L, setCount = 2, fullReps = 10, loadKg = 60.0)
+        historyRepo.setSessions("user_a", listOf(sA))
+        val sB = session("sb_1", SessionStatus.COMPLETED, t1, t1 + 300_000L, setCount = 1, fullReps = 5, loadKg = 40.0)
+        historyRepo.setSessions("user_b", listOf(sB))
+
+        val historyVm = WorkoutHistoryViewModel(auth, historyRepo, { LocalDate.of(2026, 10, 24) }, { ZoneId.of("UTC") })
+        val progressVm = TrainingProgressViewModel(auth, historyRepo, profileRepo, prefsRepo, SavedStateHandle(), { LocalDate.of(2026, 10, 24) }, { ZoneId.of("UTC") })
+        val detailsVm = SessionDetailsViewModel("sa_1", auth, historyRepo, prefsRepo, { LocalDate.of(2026, 10, 24) }, { ZoneId.of("UTC") })
+        yield()
+
+        val histA = historyVm.uiState.value as WorkoutHistoryUiState.Populated
+        assertEquals("1 saved session", histA.savedSessionsHeadline)
+        assertTrue(progressVm.uiState.value is TrainingProgressUiState.Populated)
+        assertTrue(detailsVm.uiState.value is SessionDetailsUiState.Loaded)
+
+        // Reactive update: adding a second session updates BOTH rows and aggregates from the same snapshot
+        val sA2 = session("sa_2", SessionStatus.PARTIALLY_COMPLETED, t1 + 1000L, t1 + 101_000L, setCount = 1, fullReps = 4, loadKg = 50.0)
+        historyRepo.setSessions("user_a", listOf(sA, sA2))
+        yield()
+        val histA2 = historyVm.uiState.value as WorkoutHistoryUiState.Populated
+        assertEquals("2 saved sessions", histA2.savedSessionsHeadline)
+        assertEquals(2, histA2.sections.sumOf { it.items.size })
+
+        // Switch to user_b whose emissions are delayed -> previous user_a data MUST clear immediately to Loading!
+        auth.switchUser("user_b")
+        yield()
+        assertTrue(historyVm.uiState.value is WorkoutHistoryUiState.Loading)
+        assertTrue(progressVm.uiState.value is TrainingProgressUiState.Loading)
+        assertTrue(detailsVm.uiState.value is SessionDetailsUiState.Loading)
+
+        // Complete delay -> user_b gets only user_b data, details for sa_1 is Unavailable
+        delayUserB.complete(Unit)
+        yield()
+        val histB = historyVm.uiState.value as WorkoutHistoryUiState.Populated
+        assertEquals(1, histB.sections.sumOf { it.items.size })
+        assertEquals("sb_1", histB.sections.first().items.first().sessionId)
+        assertTrue(detailsVm.uiState.value is SessionDetailsUiState.Unavailable)
+    }
+
+    @Test
+    fun launchCoordinator_resetsLoadingOnFailure_andDoesNotNavigateIfOwnerChanges() = runBlocking {
+        val auth = FakeP9AuthRepo("user_a")
+        val gate = CompletableDeferred<Unit>()
+        var navigated = false
+        val fakeSessionRepo = object : WorkoutSessionRepository {
+            override fun observeActiveSession(ownerId: String) = throw UnsupportedOperationException()
+            override fun observeSession(ownerId: String, sessionId: String) = throw UnsupportedOperationException()
+            override suspend fun getSession(ownerId: String, sessionId: String) = throw UnsupportedOperationException()
+            override fun observeRestState(ownerId: String, sessionId: String): Flow<SessionRestState?> = throw UnsupportedOperationException()
+            override suspend fun startSessionFromPlan(ownerId: String, planId: String) =
+                DomainResult.Failure(DataError.StorageError("boom"))
+            override suspend fun startSessionFromHistory(ownerId: String, historicalSessionId: String): DomainResult<WorkoutSession> {
+                gate.await()
+                return DomainResult.Success(session("new_s", SessionStatus.ACTIVE, 1000L, null))
+            }
+            override suspend fun recordPerformedSet(ownerId: String, request: RecordSetRequest) = throw UnsupportedOperationException()
+            override suspend fun correctPerformedSet(ownerId: String, request: RecordSetRequest) = throw UnsupportedOperationException()
+            override suspend fun startRestTimer(ownerId: String, sessionId: String, exerciseId: String, exerciseName: String, completedSetIndex: Int, durationSeconds: Int, nextExerciseId: String?, nextSetIndex: Int?) = throw UnsupportedOperationException()
+            override suspend fun extendRestTimer(ownerId: String, sessionId: String, additionalSeconds: Int) = throw UnsupportedOperationException()
+            override suspend fun clearRestTimer(ownerId: String, sessionId: String) = throw UnsupportedOperationException()
+            override suspend fun completeSession(ownerId: String, sessionId: String) = throw UnsupportedOperationException()
+            override suspend fun endSessionEarly(ownerId: String, sessionId: String) = throw UnsupportedOperationException()
+        }
+        val coordinator = WorkoutSessionLaunchCoordinator(this, auth, fakeSessionRepo) { _, _ -> navigated = true }
+
+        // 1. Failure resets isStarting and sets errorMessage
+        coordinator.startOrResumePlan("p1")
+        yield()
+        assertFalse(coordinator.isStarting)
+        assertEquals("boom", coordinator.errorMessage)
+
+        // 2. Owner changes mid-flight -> does not navigate and resets isStarting
+        coordinator.repeatHistoricalSession("hist_1")
+        yield()
+        assertTrue(coordinator.isStarting)
+        auth.switchUser("user_b")
+        gate.complete(Unit)
+        yield()
+        assertFalse(coordinator.isStarting)
+        assertFalse(navigated)
+    }
 }
 
 private class FakeP9AuthRepo(initialId: String) : AuthRepository {
@@ -310,7 +603,28 @@ private class FakeP9AuthRepo(initialId: String) : AuthRepository {
     override suspend fun signOut() { state.value = AuthState.Unauthenticated }
 }
 
-private class FakeP9HistoryRepo : WorkoutHistoryRepository {
+private class DelayedFakeP9HistoryRepo(
+    private val delayedOwnerId: String? = null,
+    private val gate: CompletableDeferred<Unit>? = null,
+) : FakeP9HistoryRepo() {
+    override fun observeHistory(ownerId: String, statusFilter: SessionStatus?): Flow<List<SessionSummary>> =
+        flow {
+            if (ownerId == delayedOwnerId && gate != null) gate.await()
+            emitAll(super.observeHistory(ownerId, statusFilter))
+        }
+    override fun observeFinishedSessions(ownerId: String): Flow<List<WorkoutSession>> =
+        flow {
+            if (ownerId == delayedOwnerId && gate != null) gate.await()
+            emitAll(super.observeFinishedSessions(ownerId))
+        }
+    override fun observeSessionDetails(ownerId: String, sessionId: String): Flow<WorkoutSession?> =
+        flow {
+            if (ownerId == delayedOwnerId && gate != null) gate.await()
+            emitAll(super.observeSessionDetails(ownerId, sessionId))
+        }
+}
+
+private open class FakeP9HistoryRepo : WorkoutHistoryRepository {
     private val sessionsByOwner = MutableStateFlow<Map<String, List<WorkoutSession>>>(emptyMap())
     fun setSessions(ownerId: String, list: List<WorkoutSession>) {
         sessionsByOwner.value = sessionsByOwner.value + (ownerId to list)

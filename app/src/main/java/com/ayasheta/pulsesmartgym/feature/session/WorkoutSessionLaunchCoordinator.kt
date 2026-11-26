@@ -59,25 +59,33 @@ class WorkoutSessionLaunchCoordinator(
             isStarting = true
             errorMessage = null
             conflict = null
-            val auth = authRepository.restoreSession()
-            if (auth !is AuthState.Authenticated) {
-                errorMessage = "Please sign in to start a workout session."
-                isStarting = false
-                return@launch
-            }
-            when (val result = workoutSessionRepository.startSessionFromPlan(auth.user.id, planId)) {
-                is DomainResult.Success -> {
-                    val session = result.data
-                    onNavigateToSession(session.sourcePlanId ?: planId, session.id)
+            try {
+                val auth = authRepository.restoreSession()
+                if (auth !is AuthState.Authenticated) {
+                    errorMessage = "Please sign in to start a workout session."
+                    return@launch
                 }
-                is DomainResult.Failure -> {
-                    when (val err = result.error) {
-                        is DataError.ActiveSessionConflict -> conflict = err
-                        else -> errorMessage = err.userMessage()
+                val expectedOwnerId = auth.user.id
+                val result = workoutSessionRepository.startSessionFromPlan(expectedOwnerId, planId)
+                val latestOwnerId = (authRepository.restoreSession() as? AuthState.Authenticated)?.user?.id
+                if (latestOwnerId != expectedOwnerId) {
+                    return@launch
+                }
+                when (result) {
+                    is DomainResult.Success -> {
+                        val session = result.data
+                        onNavigateToSession(session.sourcePlanId ?: planId, session.id)
+                    }
+                    is DomainResult.Failure -> {
+                        when (val err = result.error) {
+                            is DataError.ActiveSessionConflict -> conflict = err
+                            else -> errorMessage = err.userMessage()
+                        }
                     }
                 }
+            } finally {
+                isStarting = false
             }
-            isStarting = false
         }
     }
 
@@ -87,25 +95,33 @@ class WorkoutSessionLaunchCoordinator(
             isStarting = true
             errorMessage = null
             conflict = null
-            val auth = authRepository.restoreSession()
-            if (auth !is AuthState.Authenticated) {
-                errorMessage = "Please sign in to repeat this workout."
-                isStarting = false
-                return@launch
-            }
-            when (val result = workoutSessionRepository.startSessionFromHistory(auth.user.id, historicalSessionId)) {
-                is DomainResult.Success -> {
-                    val session = result.data
-                    onNavigateToSession(session.sourcePlanId ?: "", session.id)
+            try {
+                val auth = authRepository.restoreSession()
+                if (auth !is AuthState.Authenticated) {
+                    errorMessage = "Please sign in to repeat this workout."
+                    return@launch
                 }
-                is DomainResult.Failure -> {
-                    when (val err = result.error) {
-                        is DataError.ActiveSessionConflict -> conflict = err
-                        else -> errorMessage = err.userMessage()
+                val expectedOwnerId = auth.user.id
+                val result = workoutSessionRepository.startSessionFromHistory(expectedOwnerId, historicalSessionId)
+                val latestOwnerId = (authRepository.restoreSession() as? AuthState.Authenticated)?.user?.id
+                if (latestOwnerId != expectedOwnerId) {
+                    return@launch
+                }
+                when (result) {
+                    is DomainResult.Success -> {
+                        val session = result.data
+                        onNavigateToSession(session.sourcePlanId ?: "", session.id)
+                    }
+                    is DomainResult.Failure -> {
+                        when (val err = result.error) {
+                            is DataError.ActiveSessionConflict -> conflict = err
+                            else -> errorMessage = err.userMessage()
+                        }
                     }
                 }
+            } finally {
+                isStarting = false
             }
-            isStarting = false
         }
     }
 

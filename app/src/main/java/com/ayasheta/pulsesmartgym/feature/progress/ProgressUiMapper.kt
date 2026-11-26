@@ -17,6 +17,7 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
 import java.util.Locale
 import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 object ProgressUiMapper {
 
@@ -69,7 +70,7 @@ object ProgressUiMapper {
             volumeCard = buildVolumeCard(metrics, unit),
             setsCard = buildSetsCard(metrics),
             avgDurationCard = buildAvgDurationCard(metrics),
-            chartHeaderVolumeText = buildChartHeaderVolume(metrics, unit),
+            chartHeaderVolumeText = buildChartHeaderVolume(metrics, unit, selectedWeekOffset.coerceAtLeast(0)),
             bars = buildBars(metrics, unit),
             personalRecords = prs.map { mapPrRow(it, unit, today, zoneId) },
         )
@@ -96,29 +97,37 @@ object ProgressUiMapper {
         metrics: PeriodProgressMetrics,
         unit: WeightUnit,
     ): ProgressMetricCardUiModel {
-        val intFmt = NumberFormat.getIntegerInstance(Locale.US)
-        val (primaryVal, primaryUnit) = if (metrics.volumeCoverage == VolumeCoverage.NO_MEASURED_VOLUME && metrics.setsLoggedCount > 0) {
+        val isUnknownWithActivity = metrics.volumeCoverage == VolumeCoverage.NO_MEASURED_VOLUME &&
+            metrics.setsLoggedCount > 0
+        val (primaryVal, primaryUnit) = if (isUnknownWithActivity) {
             "—" to "unmeasured"
         } else {
             when (unit) {
                 WeightUnit.KG -> {
                     if (metrics.totalVolumeKg >= 1000.0) {
-                        val tonnes = ((metrics.totalVolumeKg / 1000.0) * 10.0).roundToInt() / 10.0
-                        val exactKg = intFmt.format(metrics.totalVolumeKg.roundToInt())
-                        "$tonnes" to "tonnes ($exactKg kg)"
+                        val tonnes = ((metrics.totalVolumeKg / 1000.0) * 10.0).roundToLong() / 10.0
+                        val exactKg = SessionUiMapper.formatVolumeNumber(metrics.totalVolumeKg, WeightUnit.KG)
+                        val suffix = if (metrics.volumeCoverage == VolumeCoverage.PARTIALLY_MEASURED) " • partial" else ""
+                        "$tonnes" to "tonnes ($exactKg kg$suffix)"
                     } else {
-                        intFmt.format(metrics.totalVolumeKg.roundToInt()) to "kg"
+                        val suffix = if (metrics.volumeCoverage == VolumeCoverage.PARTIALLY_MEASURED) "kg (partial)" else "kg"
+                        SessionUiMapper.formatVolumeNumber(metrics.totalVolumeKg, WeightUnit.KG) to suffix
                     }
                 }
                 WeightUnit.LBS -> {
-                    val lbs = metrics.totalVolumeKg * 2.20462262185
-                    intFmt.format(lbs.roundToInt()) to "lbs"
+                    val suffix = if (metrics.volumeCoverage == VolumeCoverage.PARTIALLY_MEASURED) "lbs (partial)" else "lbs"
+                    SessionUiMapper.formatVolumeNumber(metrics.totalVolumeKg, WeightUnit.LBS) to suffix
                 }
             }
         }
 
         val pct = metrics.volumeChangePercent
         val changePart = when {
+            isUnknownWithActivity -> "Unmeasured loads"
+            metrics.volumeCoverage == VolumeCoverage.PARTIALLY_MEASURED -> "Partial coverage"
+            metrics.previousWeekVolumeCoverage == VolumeCoverage.PARTIALLY_MEASURED -> "Prior wk partial"
+            metrics.previousWeekVolumeCoverage == VolumeCoverage.NO_MEASURED_VOLUME &&
+                metrics.previousWeekSetsLoggedCount > 0 -> "Prior wk unmeasured"
             pct == null -> "No prior volume"
             pct > 0 -> "+$pct%"
             else -> "$pct%"
@@ -181,17 +190,22 @@ object ProgressUiMapper {
     private fun buildChartHeaderVolume(
         metrics: PeriodProgressMetrics,
         unit: WeightUnit,
+        selectedWeekOffset: Int,
     ): String {
+        val periodSuffix = if (selectedWeekOffset == 0) {
+            "This Week"
+        } else {
+            formatWeekRange(metrics.weekStart, metrics.weekEnd)
+        }
         if (metrics.volumeCoverage == VolumeCoverage.NO_MEASURED_VOLUME && metrics.setsLoggedCount > 0) {
-            return "Unmeasured"
+            return "Unmeasured ($periodSuffix)"
         }
-        val intFmt = NumberFormat.getIntegerInstance(Locale.US)
-        val value = when (unit) {
-            WeightUnit.KG -> metrics.totalVolumeKg
-            WeightUnit.LBS -> metrics.totalVolumeKg * 2.20462262185
+        val formattedWithUnit = SessionUiMapper.formatVolumeWithUnit(metrics.totalVolumeKg, unit)
+        return if (metrics.volumeCoverage == VolumeCoverage.PARTIALLY_MEASURED) {
+            "$formattedWithUnit (partial) • $periodSuffix"
+        } else {
+            "$formattedWithUnit $periodSuffix"
         }
-        val unitLabel = if (unit == WeightUnit.KG) "kg" else "lbs"
-        return "${intFmt.format(value.roundToInt())} $unitLabel This Week"
     }
 
     private fun buildBars(
@@ -199,20 +213,14 @@ object ProgressUiMapper {
         unit: WeightUnit,
     ): List<WeeklyVolumeBarUiModel> {
         val maxVol = metrics.dailyVolumeKg.maxOrNull()?.takeIf { it > 0.0 } ?: 1.0
-        val intFmt = NumberFormat.getIntegerInstance(Locale.US)
-        val unitLabel = if (unit == WeightUnit.KG) "kg" else "lbs"
 
         return metrics.dailyVolumeKg.mapIndexed { idx, kg ->
-            val displayVal = when (unit) {
-                WeightUnit.KG -> kg
-                WeightUnit.LBS -> kg * 2.20462262185
-            }
             val heightFraction = if (kg <= 0.0) 0.06f else (kg / maxVol).toFloat().coerceIn(0.12f, 1f)
             val measured = metrics.dailyMeasuredFlags.getOrElse(idx) { false }
             val a11y = if (kg > 0.0) {
-                "${fullDayNames[idx]}: ${intFmt.format(displayVal.roundToInt())} $unitLabel"
+                "${fullDayNames[idx]}: ${SessionUiMapper.formatVolumeWithUnit(kg, unit)}"
             } else if (measured) {
-                "${fullDayNames[idx]}: 0 $unitLabel"
+                "${fullDayNames[idx]}: ${SessionUiMapper.formatVolumeWithUnit(0.0, unit)}"
             } else {
                 "${fullDayNames[idx]}: No volume logged"
             }
@@ -243,16 +251,21 @@ object ProgressUiMapper {
         }
         val weightLabel = SessionUiMapper.formatWeightLoad(pr.maxLoad, unit) ?: "—"
         val repWord = if (pr.repsAtMaxLoad == 1) "rep" else "reps"
-        val improvementText = pr.improvementKg?.let { kg ->
-            val valInUnit = when (unit) {
-                WeightUnit.KG -> kg
-                WeightUnit.LBS -> kg * 2.20462262185
+        val improvementText = when {
+            pr.previousBestLoad == null -> "First PR"
+            (pr.improvementKg ?: 0.0) > 0.0 -> {
+                val kg = pr.improvementKg!!
+                val valInUnit = when (unit) {
+                    WeightUnit.KG -> kg
+                    WeightUnit.LBS -> kg * 2.20462262185
+                }
+                val rounded = ((valInUnit * 10.0).roundToInt() / 10.0)
+                val formatted = if (rounded % 1.0 == 0.0) rounded.toInt().toString() else rounded.toString()
+                val u = if (unit == WeightUnit.KG) "kg" else "lbs"
+                "+$formatted $u PR"
             }
-            val rounded = ((valInUnit * 10.0).roundToInt() / 10.0)
-            val formatted = if (rounded % 1.0 == 0.0) rounded.toInt().toString() else rounded.toString()
-            val u = if (unit == WeightUnit.KG) "kg" else "lbs"
-            "+$formatted $u PR"
-        } ?: "First PR"
+            else -> "Matched PR"
+        }
 
         return PersonalRecordRowUiModel(
             exerciseKey = pr.exerciseKey,

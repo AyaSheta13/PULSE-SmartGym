@@ -127,87 +127,113 @@ class RoomWorkoutSessionRepository(
         PulseValidators.validateOwnerId(ownerId)?.let {
             return DomainResult.Failure(DataError.ValidationError(it))
         }
-        return transactionRunner.runInTransaction {
-            val existingActive = sessionDao.getActiveSession(ownerId)
-            if (existingActive != null) {
-                return@runInTransaction DomainResult.Failure(
-                    DataError.ActiveSessionConflict(
-                        activeSessionId = existingActive.session.id,
-                        activePlanId = existingActive.session.sourcePlanId,
-                        activePlanName = existingActive.session.planNameSnapshot,
-                    ),
-                )
-            }
-
-            val historical = sessionDao.getSession(ownerId, historicalSessionId)
-                ?: return@runInTransaction DomainResult.Failure(
-                    DataError.NotFound("Historical workout session '$historicalSessionId' not found"),
-                )
-
-            val status = historical.session.status
-            if (status != SessionStatus.COMPLETED && status != SessionStatus.PARTIALLY_COMPLETED) {
-                return@runInTransaction DomainResult.Failure(
-                    DataError.InvalidSessionState("Cannot repeat session in state $status"),
-                )
-            }
-            if (historical.exercises.isEmpty()) {
-                return@runInTransaction DomainResult.Failure(
-                    DataError.ValidationError("Historical workout has no exercises to repeat"),
-                )
-            }
-
-            val newSessionId = UUID.randomUUID().toString()
-            val validSourcePlanId = historical.session.sourcePlanId?.takeIf { planId ->
-                planDao.getPlan(ownerId, planId) != null
-            }
-            val newSessionEntity = WorkoutSessionEntity(
-                id = newSessionId,
-                ownerProfileId = ownerId,
-                sourcePlanId = validSourcePlanId,
-                planNameSnapshot = historical.session.planNameSnapshot,
-                startedAtEpochMs = clockMs(),
-                endedAtEpochMs = null,
-                status = SessionStatus.ACTIVE,
-            )
-
-            val newExercises = mutableListOf<SessionExerciseEntity>()
-            val newPlannedSets = mutableListOf<SessionPlannedSetEntity>()
-
-            for (exWithSets in historical.exercises.sortedBy { it.sessionExercise.orderIndex }) {
-                val src = exWithSets.sessionExercise
-                val validSourceExerciseId = src.sourceExerciseId?.takeIf { exId ->
-                    exerciseDao.getById(exId) != null
-                }
-                val newExerciseId = UUID.randomUUID().toString()
-                newExercises += SessionExerciseEntity(
-                    id = newExerciseId,
-                    sessionId = newSessionId,
-                    sourceExerciseId = validSourceExerciseId,
-                    exerciseNameSnapshot = src.exerciseNameSnapshot,
-                    muscleGroupSnapshot = src.muscleGroupSnapshot,
-                    equipmentSnapshot = src.equipmentSnapshot,
-                    trackingCategorySnapshot = src.trackingCategorySnapshot,
-                    orderIndex = src.orderIndex,
-                )
-                exWithSets.plannedSets.sortedBy { it.setIndex }.forEach { planned ->
-                    newPlannedSets += SessionPlannedSetEntity(
-                        id = UUID.randomUUID().toString(),
-                        sessionExerciseId = newExerciseId,
-                        setIndex = planned.setIndex,
-                        targetReps = planned.targetReps,
-                        targetLoadGrams = planned.targetLoadGrams,
-                        targetRestSeconds = planned.targetRestSeconds,
+        if (historicalSessionId.isBlank()) {
+            return DomainResult.Failure(DataError.ValidationError("Historical session ID cannot be blank"))
+        }
+        return try {
+            transactionRunner.runInTransaction {
+                val existingActive = sessionDao.getActiveSession(ownerId)
+                if (existingActive != null) {
+                    return@runInTransaction DomainResult.Failure(
+                        DataError.ActiveSessionConflict(
+                            activeSessionId = existingActive.session.id,
+                            activePlanId = existingActive.session.sourcePlanId,
+                            activePlanName = existingActive.session.planNameSnapshot,
+                        ),
                     )
                 }
+
+                val historical = sessionDao.getSession(ownerId, historicalSessionId)
+                    ?: return@runInTransaction DomainResult.Failure(
+                        DataError.NotFound("Historical workout session '$historicalSessionId' not found"),
+                    )
+
+                val status = historical.session.status
+                if (status != SessionStatus.COMPLETED && status != SessionStatus.PARTIALLY_COMPLETED) {
+                    return@runInTransaction DomainResult.Failure(
+                        DataError.InvalidSessionState("Cannot repeat session in state $status"),
+                    )
+                }
+                if (historical.session.planNameSnapshot.isBlank()) {
+                    return@runInTransaction DomainResult.Failure(
+                        DataError.ValidationError("Historical workout snapshot is missing a plan name"),
+                    )
+                }
+                if (historical.exercises.isEmpty()) {
+                    return@runInTransaction DomainResult.Failure(
+                        DataError.ValidationError("Historical workout has no exercises to repeat"),
+                    )
+                }
+                val hasInvalidSnapshot = historical.exercises.any { ex ->
+                    ex.sessionExercise.exerciseNameSnapshot.isBlank() ||
+                        ex.sessionExercise.orderIndex < 0 ||
+                        ex.plannedSets.any { p ->
+                            p.setIndex < 1 || p.targetReps < 1 || (p.targetRestSeconds != null && p.targetRestSeconds < 0)
+                        }
+                }
+                if (hasInvalidSnapshot) {
+                    return@runInTransaction DomainResult.Failure(
+                        DataError.ValidationError("Historical workout snapshot contains invalid exercise or set data"),
+                    )
+                }
+
+                val newSessionId = UUID.randomUUID().toString()
+                val validSourcePlanId = historical.session.sourcePlanId?.takeIf { planId ->
+                    planDao.getPlan(ownerId, planId) != null
+                }
+                val newSessionEntity = WorkoutSessionEntity(
+                    id = newSessionId,
+                    ownerProfileId = ownerId,
+                    sourcePlanId = validSourcePlanId,
+                    planNameSnapshot = historical.session.planNameSnapshot,
+                    startedAtEpochMs = clockMs(),
+                    endedAtEpochMs = null,
+                    status = SessionStatus.ACTIVE,
+                )
+
+                val newExercises = mutableListOf<SessionExerciseEntity>()
+                val newPlannedSets = mutableListOf<SessionPlannedSetEntity>()
+
+                for (exWithSets in historical.exercises.sortedBy { it.sessionExercise.orderIndex }) {
+                    val src = exWithSets.sessionExercise
+                    val validSourceExerciseId = src.sourceExerciseId?.takeIf { exId ->
+                        exerciseDao.getById(exId) != null
+                    }
+                    val newExerciseId = UUID.randomUUID().toString()
+                    newExercises += SessionExerciseEntity(
+                        id = newExerciseId,
+                        sessionId = newSessionId,
+                        sourceExerciseId = validSourceExerciseId,
+                        exerciseNameSnapshot = src.exerciseNameSnapshot,
+                        muscleGroupSnapshot = src.muscleGroupSnapshot,
+                        equipmentSnapshot = src.equipmentSnapshot,
+                        trackingCategorySnapshot = src.trackingCategorySnapshot,
+                        orderIndex = src.orderIndex,
+                    )
+                    exWithSets.plannedSets.sortedBy { it.setIndex }.forEach { planned ->
+                        newPlannedSets += SessionPlannedSetEntity(
+                            id = UUID.randomUUID().toString(),
+                            sessionExerciseId = newExerciseId,
+                            setIndex = planned.setIndex,
+                            targetReps = planned.targetReps,
+                            targetLoadGrams = planned.targetLoadGrams,
+                            targetRestSeconds = planned.targetRestSeconds,
+                        )
+                    }
+                }
+
+                sessionDao.insertSession(newSessionEntity)
+                if (newExercises.isNotEmpty()) sessionDao.insertSessionExercises(newExercises)
+                if (newPlannedSets.isNotEmpty()) sessionDao.insertSessionPlannedSets(newPlannedSets)
+
+                val created = sessionDao.getSession(ownerId, newSessionId)?.toDomain()
+                    ?: return@runInTransaction DomainResult.Failure(DataError.StorageError("Failed to read repeated session"))
+                DomainResult.Success(created)
             }
-
-            sessionDao.insertSession(newSessionEntity)
-            if (newExercises.isNotEmpty()) sessionDao.insertSessionExercises(newExercises)
-            if (newPlannedSets.isNotEmpty()) sessionDao.insertSessionPlannedSets(newPlannedSets)
-
-            val created = sessionDao.getSession(ownerId, newSessionId)?.toDomain()
-                ?: return@runInTransaction DomainResult.Failure(DataError.StorageError("Failed to read repeated session"))
-            DomainResult.Success(created)
+        } catch (ce: kotlin.coroutines.cancellation.CancellationException) {
+            throw ce
+        } catch (t: Throwable) {
+            DomainResult.Failure(DataError.StorageError(t.message ?: "Failed to repeat workout session"))
         }
     }
 

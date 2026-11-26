@@ -68,6 +68,8 @@ data class PeriodProgressMetrics(
     val dailyVolumeKg: List<Double>,
     val dailyMeasuredFlags: List<Boolean>,
     val highlightDayIndex: Int?,
+    val previousWeekVolumeCoverage: VolumeCoverage = VolumeCoverage.NO_MEASURED_VOLUME,
+    val previousWeekSetsLoggedCount: Int = 0,
 )
 
 data class ExercisePersonalRecord(
@@ -303,10 +305,20 @@ object WorkoutAnalytics {
         }
 
         val currentVolumeKg = dailyVolumes.sum()
+        val currentCoverage = calculateVolumeCoverage(allCurrentPerformed)
         val prevAllPerformed = prevWeekSessions.flatMap { s -> s.exercises.flatMap { it.performedSets } }
         val prevVolumeKg = calculateVolumeKg(prevAllPerformed)
-        val volumeChangePercent = if (prevVolumeKg > 0.0) {
-            (((currentVolumeKg - prevVolumeKg) / prevVolumeKg) * 100.0).toInt()
+        val prevCoverage = calculateVolumeCoverage(prevAllPerformed)
+        val isCurrentCompleteForComparison = currentCoverage == VolumeCoverage.FULLY_MEASURED ||
+            currentCoverage == VolumeCoverage.KNOWN_ZERO_VOLUME ||
+            (currentCoverage == VolumeCoverage.NO_MEASURED_VOLUME && allCurrentPerformed.isEmpty())
+        val isPrevCompleteForComparison = prevCoverage == VolumeCoverage.FULLY_MEASURED
+        val volumeChangePercent = if (
+            prevVolumeKg > 0.0 &&
+            isCurrentCompleteForComparison &&
+            isPrevCompleteForComparison
+        ) {
+            kotlin.math.round(((currentVolumeKg - prevVolumeKg) / prevVolumeKg) * 100.0).toInt()
         } else {
             null
         }
@@ -356,7 +368,7 @@ object WorkoutAnalytics {
             totalVolumeKg = currentVolumeKg,
             previousWeekVolumeKg = prevVolumeKg,
             volumeChangePercent = volumeChangePercent,
-            volumeCoverage = calculateVolumeCoverage(allCurrentPerformed),
+            volumeCoverage = currentCoverage,
             setsLoggedCount = setsLogged,
             setsLoggedDelta = setsDelta,
             avgDurationMinutes = avgDurationMinutes,
@@ -364,6 +376,8 @@ object WorkoutAnalytics {
             dailyVolumeKg = dailyVolumes.toList(),
             dailyMeasuredFlags = dailyMeasured.toList(),
             highlightDayIndex = highlightDayIndex,
+            previousWeekVolumeCoverage = prevCoverage,
+            previousWeekSetsLoggedCount = prevSetsLogged,
         )
     }
 
@@ -424,10 +438,10 @@ object WorkoutAnalytics {
                 .filter { it.achievedAtEpochMs < best.achievedAtEpochMs }
                 .maxByOrNull { it.load.grams }
                 ?.load
-            val improvementKg = if (previousBest != null && best.load.grams > previousBest.grams) {
-                (best.load.grams - previousBest.grams) / 1000.0
-            } else {
-                null
+            val improvementKg = when {
+                previousBest == null -> null
+                best.load.grams > previousBest.grams -> (best.load.grams - previousBest.grams) / 1000.0
+                else -> 0.0
             }
             ExercisePersonalRecord(
                 exerciseKey = best.exerciseKey,

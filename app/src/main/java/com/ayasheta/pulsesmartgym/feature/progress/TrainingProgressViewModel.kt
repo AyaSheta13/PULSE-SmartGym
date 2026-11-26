@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.ZoneId
@@ -87,6 +88,8 @@ class TrainingProgressViewModel(
                                     today = todayProvider(),
                                     zoneId = zoneProvider(),
                                 )
+                            }.onStart {
+                                emit(TrainingProgressUiState.Loading)
                             }.catch { throwable ->
                                 emit(
                                     TrainingProgressUiState.Error(

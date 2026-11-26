@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.time.Instant
@@ -83,6 +84,8 @@ class SessionDetailsViewModel(
                                         zoneId = zoneProvider(),
                                     )
                                 }
+                            }.onStart {
+                                emit(SessionDetailsUiState.Loading)
                             }.catch { throwable ->
                                 emit(
                                     SessionDetailsUiState.Error(
@@ -150,19 +153,13 @@ class SessionDetailsViewModel(
             }
 
             val unitLabel = if (unit == WeightUnit.KG) "kg" else "lbs"
-            val volumeChipText = if (coverage == VolumeCoverage.NO_MEASURED_VOLUME) {
-                "— volume"
-            } else {
-                val volValue = when (unit) {
-                    WeightUnit.KG -> summary.totalVolumeKg
-                    WeightUnit.LBS -> summary.totalVolumeKg * 2.20462262185
-                }
-                val formatted = NumberFormat.getIntegerInstance(Locale.US).format(volValue.roundToInt())
-                if (coverage == VolumeCoverage.PARTIALLY_MEASURED) {
+            val volumeChipText = when {
+                coverage == VolumeCoverage.NO_MEASURED_VOLUME && summary.completedSetsCount > 0 -> "— volume"
+                coverage == VolumeCoverage.PARTIALLY_MEASURED -> {
+                    val formatted = SessionUiMapper.formatVolumeNumber(summary.totalVolumeKg, unit)
                     "$formatted $unitLabel vol (partial)"
-                } else {
-                    "$formatted $unitLabel volume"
                 }
+                else -> "${SessionUiMapper.formatVolumeWithUnit(summary.totalVolumeKg, unit)} volume"
             }
 
             val recordedExercisesCount = orderedExercises.count { it.performedSets.isNotEmpty() }

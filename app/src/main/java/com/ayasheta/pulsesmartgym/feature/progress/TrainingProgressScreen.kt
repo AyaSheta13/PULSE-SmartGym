@@ -9,6 +9,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -358,6 +360,7 @@ private fun ProgressTopBar(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ProgressMetricCard(
     model: ProgressMetricCardUiModel,
@@ -384,12 +387,11 @@ private fun ProgressMetricCard(
                 letterSpacing = 0.4.sp,
                 color = WorkoutPalette.TextMuted,
             ),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            maxLines = 2,
         )
-        Row(
+        FlowRow(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.Bottom,
+            verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             BasicText(
                 text = model.primaryValue,
@@ -398,6 +400,7 @@ private fun ProgressMetricCard(
                     fontWeight = FontWeight.Bold,
                     color = WorkoutPalette.TextPrimary,
                 ),
+                modifier = Modifier.alignByBaseline(),
             )
             if (model.primaryUnit.isNotEmpty()) {
                 BasicText(
@@ -406,8 +409,8 @@ private fun ProgressMetricCard(
                         fontSize = 12.sp,
                         color = WorkoutPalette.TextMuted,
                     ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines = 2,
+                    modifier = Modifier.alignByBaseline(),
                 )
             }
         }
@@ -418,8 +421,7 @@ private fun ProgressMetricCard(
                 fontWeight = FontWeight.Medium,
                 color = deltaColor,
             ),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            maxLines = 2,
         )
     }
 }

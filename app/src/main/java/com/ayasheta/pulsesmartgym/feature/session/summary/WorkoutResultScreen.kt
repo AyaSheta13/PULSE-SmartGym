@@ -8,6 +8,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -259,24 +261,23 @@ fun WorkoutResultScreenContent(
                                 )
                             }
 
-                            Row(
+                            @OptIn(ExperimentalLayoutApi::class)
+                            FlowRow(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 SummaryMetricChip(
                                     text = uiState.durationText,
                                     showClock = true,
-                                    modifier = Modifier.weight(1f),
                                 )
                                 SummaryMetricChip(
                                     text = uiState.setsChipText,
                                     showClock = false,
-                                    modifier = Modifier.weight(1f),
                                 )
                                 SummaryMetricChip(
                                     text = uiState.volumeChipText,
                                     showClock = false,
-                                    modifier = Modifier.weight(1f),
                                 )
                             }
                         }
@@ -515,8 +516,7 @@ private fun SummaryMetricChip(
                 fontWeight = FontWeight.SemiBold,
                 color = WorkoutPalette.TextPrimary,
             ),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            maxLines = 2,
         )
     }
 }
