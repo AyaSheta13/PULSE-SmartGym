@@ -65,16 +65,33 @@ fun ManualRepCounterScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val handledTerminalId = remember(viewModel) { mutableStateOf<String?>(null) }
+    val handledCompleted = remember(viewModel) { mutableStateOf(false) }
 
     LaunchedEffect(uiState) {
-        val terminal = uiState as? ManualRepCounterUiState.Terminal ?: return@LaunchedEffect
-        if (handledTerminalId.value != terminal.sessionId) {
-            handledTerminalId.value = terminal.sessionId
-            if (terminal.status == SessionStatus.COMPLETED) {
-                onSessionCompleted(terminal.sessionId)
-            } else {
-                onSessionEndedEarly(terminal.sessionId)
+        when (val state = uiState) {
+            is ManualRepCounterUiState.Terminal -> {
+                if (handledTerminalId.value != state.sessionId) {
+                    handledTerminalId.value = state.sessionId
+                    if (state.status == SessionStatus.COMPLETED) {
+                        onSessionCompleted(state.sessionId)
+                    } else {
+                        onSessionEndedEarly(state.sessionId)
+                    }
+                }
             }
+            is ManualRepCounterUiState.Completed -> {
+                if (!handledCompleted.value) {
+                    handledCompleted.value = true
+                    onSetFinished(state.sessionId, state.hasRestStarted, null, state.restErrorMessage)
+                }
+            }
+            is ManualRepCounterUiState.AlreadyCompleted -> {
+                if (!handledCompleted.value) {
+                    handledCompleted.value = true
+                    onBackClick()
+                }
+            }
+            else -> Unit
         }
     }
 
@@ -82,7 +99,10 @@ fun ManualRepCounterScreen(
         viewModel.events.collect { event ->
             when (event) {
                 is ManualRepCounterEvent.SetFinished -> {
-                    onSetFinished(event.sessionId, event.hasRestStarted, event.nextTarget, event.restErrorMessage)
+                    if (!handledCompleted.value) {
+                        handledCompleted.value = true
+                        onSetFinished(event.sessionId, event.hasRestStarted, event.nextTarget, event.restErrorMessage)
+                    }
                 }
             }
         }
@@ -127,7 +147,9 @@ fun ManualRepCounterScreenContent(
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             when (uiState) {
-                ManualRepCounterUiState.Loading, is ManualRepCounterUiState.Terminal -> {
+                ManualRepCounterUiState.Loading,
+                is ManualRepCounterUiState.Terminal,
+                is ManualRepCounterUiState.Completed -> {
                     SetExecutionTopBar(
                         title = "Manual Counter",
                         subtitle = "Loading...",

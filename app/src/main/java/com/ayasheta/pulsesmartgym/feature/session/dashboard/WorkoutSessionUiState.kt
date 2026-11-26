@@ -85,6 +85,7 @@ sealed interface WorkoutSessionUiState {
         val manualEntryError: String? = null,
         val actionError: String? = null,
         val restTimer: SessionRestTimerUiModel? = null,
+        val isRestBusy: Boolean = false,
         val connectionLabel: String = "Not Connected",
     ) : WorkoutSessionUiState {
         val formattedElapsedTime: String

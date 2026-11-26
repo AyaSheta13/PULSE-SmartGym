@@ -10,6 +10,14 @@ import com.ayasheta.pulsesmartgym.core.data.local.database.PulseDatabase
 import com.ayasheta.pulsesmartgym.core.data.local.database.RoomTransactionRunner
 import com.ayasheta.pulsesmartgym.core.data.repository.session.RoomWorkoutSessionRepository
 import com.ayasheta.pulsesmartgym.core.model.common.DomainResult
+import com.ayasheta.pulsesmartgym.core.model.common.RecordSetResult
+import com.ayasheta.pulsesmartgym.core.model.common.WeightLoad
+import com.ayasheta.pulsesmartgym.core.model.device.MeasurementOrigin
+import com.ayasheta.pulsesmartgym.core.model.device.TrackingMode
+import com.ayasheta.pulsesmartgym.core.model.exercise.EquipmentCategory
+import com.ayasheta.pulsesmartgym.core.model.exercise.MuscleGroup
+import com.ayasheta.pulsesmartgym.core.model.exercise.TrackingCategory
+import com.ayasheta.pulsesmartgym.core.model.session.RecordSetRequest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -129,6 +137,72 @@ class Migration2To3Test {
             assertNull(repo2.observeRestState("owner_a", "sess_a").first())
         } finally {
             db2.close()
+            dbFile.delete()
+        }
+    }
+
+    @Test
+    fun correctPerformedSet_preservesRecordedDurationMs() = runTest {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val dbFile = File(context.filesDir, "p8_correct_duration_${System.nanoTime()}.db")
+        val db = Room.databaseBuilder(context, PulseDatabase::class.java, dbFile.absolutePath)
+            .addMigrations(PulseDatabase.MIGRATION_1_2, PulseDatabase.MIGRATION_2_3)
+            .build()
+        try {
+            val writable = db.openHelper.writableDatabase
+            writable.execSQL(
+                "INSERT INTO workout_sessions (id, ownerProfileId, sourcePlanId, planNameSnapshot, status, startedAtEpochMs, endedAtEpochMs) VALUES ('sess_c', 'owner_a', NULL, 'Push', 'ACTIVE', 1000, NULL)",
+            )
+            writable.execSQL(
+                "INSERT INTO session_exercises (id, sessionId, sourceExerciseId, exerciseNameSnapshot, muscleGroupSnapshot, equipmentSnapshot, trackingCategorySnapshot, orderIndex) VALUES ('ex_c', 'sess_c', NULL, 'Bench', 'CHEST', 'BARBELL', 'LINEAR', 0)",
+            )
+            writable.execSQL(
+                "INSERT INTO session_planned_sets (id, sessionExerciseId, setIndex, targetReps, targetLoadGrams, targetRestSeconds) VALUES ('ps_c', 'ex_c', 1, 10, 80000, 90)",
+            )
+
+            val repo = RoomWorkoutSessionRepository(
+                sessionDao = db.workoutSessionDao(),
+                planDao = db.workoutPlanDao(),
+                exerciseDao = db.exerciseDao(),
+                transactionRunner = RoomTransactionRunner(db),
+                clockMs = { 5_000L },
+            )
+            val recordResult = repo.recordPerformedSet(
+                ownerId = "owner_a",
+                request = RecordSetRequest(
+                    sessionId = "sess_c",
+                    sessionExerciseId = "ex_c",
+                    setIndex = 1,
+                    fullReps = 8,
+                    partialReps = 0,
+                    actualLoad = WeightLoad.fromKilograms(80.0),
+                    trackingMode = TrackingMode.MANUAL,
+                    origin = MeasurementOrigin.MANUAL_INPUT,
+                    durationMs = 18_500L,
+                ),
+            )
+            assertTrue(recordResult is RecordSetResult.Recorded)
+
+            val corrected = repo.correctPerformedSet(
+                ownerId = "owner_a",
+                request = RecordSetRequest(
+                    sessionId = "sess_c",
+                    sessionExerciseId = "ex_c",
+                    setIndex = 1,
+                    fullReps = 9,
+                    partialReps = 0,
+                    actualLoad = WeightLoad.fromKilograms(82.5),
+                    trackingMode = TrackingMode.MANUAL,
+                    origin = MeasurementOrigin.MANUAL_INPUT,
+                    durationMs = null,
+                ),
+            )
+            assertTrue(corrected is DomainResult.Success)
+            val updated = (corrected as DomainResult.Success).data
+            assertEquals(9, updated.fullReps)
+            assertEquals(18_500L, updated.durationMs)
+        } finally {
+            db.close()
             dbFile.delete()
         }
     }

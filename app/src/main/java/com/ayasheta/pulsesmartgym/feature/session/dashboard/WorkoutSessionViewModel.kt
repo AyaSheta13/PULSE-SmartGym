@@ -32,6 +32,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 sealed interface WorkoutSessionEvent {
     data class Completed(val sessionId: String) : WorkoutSessionEvent
@@ -66,7 +68,9 @@ class WorkoutSessionViewModel(
     private val isSavingSetFlow = MutableStateFlow(false)
     private val isCompletingFlow = MutableStateFlow(false)
     private val isEndingEarlyFlow = MutableStateFlow(false)
+    private val isRestBusyFlow = MutableStateFlow(false)
 
+    private val restMutex = Mutex()
     private var activeOwnerId: String? = null
     private var handledRestDeadlineMs: Long? = null
 
@@ -164,9 +168,9 @@ class WorkoutSessionViewModel(
             ) { target, entryError, actionError, showEndEarly, isSaving ->
                 TransientState(target, entryError, actionError, showEndEarly, isSaving)
             }.combine(
-                combine(isCompletingFlow, isEndingEarlyFlow) { c, e -> c to e },
-            ) { first, (completing, ending) ->
-                first.copy(isCompleting = completing, isEndingEarly = ending)
+                combine(isCompletingFlow, isEndingEarlyFlow, isRestBusyFlow) { c, e, r -> Triple(c, e, r) },
+            ) { first, (completing, ending, restBusy) ->
+                first.copy(isCompleting = completing, isEndingEarly = ending, isRestBusy = restBusy)
             }.collectLatest { transient ->
                 _uiState.update { current ->
                     if (current is WorkoutSessionUiState.Active) {
@@ -178,6 +182,7 @@ class WorkoutSessionViewModel(
                             isSavingSet = transient.isSaving,
                             isCompletingSession = transient.isCompleting,
                             isEndingEarly = transient.isEndingEarly,
+                            isRestBusy = transient.isRestBusy,
                         )
                     } else {
                         current
@@ -197,6 +202,7 @@ class WorkoutSessionViewModel(
             isSavingSet = isSavingSetFlow.value,
             isCompletingSession = isCompletingFlow.value,
             isEndingEarly = isEndingEarlyFlow.value,
+            isRestBusy = isRestBusyFlow.value,
         )
     }
 
@@ -208,6 +214,8 @@ class WorkoutSessionViewModel(
         isSavingSetFlow.value = false
         isCompletingFlow.value = false
         isEndingEarlyFlow.value = false
+        isRestBusyFlow.value = false
+        handledRestDeadlineMs = null
     }
 
     fun refreshElapsedTime() {
@@ -230,10 +238,33 @@ class WorkoutSessionViewModel(
 
     fun extendRestTimer(additionalSeconds: Int = 30) {
         val active = _uiState.value as? WorkoutSessionUiState.Active ?: return
+        val rest = active.restTimer ?: return
         val ownerId = activeOwnerId ?: return
-        handledRestDeadlineMs = null
+        if (isRestBusyFlow.value || isCompletingFlow.value || isEndingEarlyFlow.value) return
+        isRestBusyFlow.value = true
+        actionErrorFlow.value = null
         viewModelScope.launch {
-            workoutSessionRepository.extendRestTimer(ownerId, active.sessionId, additionalSeconds)
+            restMutex.withLock {
+                try {
+                    if (activeOwnerId != ownerId) return@withLock
+                    val latest = workoutSessionRepository.getSession(ownerId, active.sessionId)
+                    if (latest == null || latest.status != SessionStatus.ACTIVE) return@withLock
+                    when (val result = workoutSessionRepository.extendRestTimer(ownerId, active.sessionId, additionalSeconds)) {
+                        is DomainResult.Success -> {
+                            if (activeOwnerId == ownerId) {
+                                handledRestDeadlineMs = null
+                            }
+                        }
+                        is DomainResult.Failure -> {
+                            if (activeOwnerId == ownerId) {
+                                actionErrorFlow.value = "Could not extend rest timer: ${result.error.userMessage()}"
+                            }
+                        }
+                    }
+                } finally {
+                    isRestBusyFlow.value = false
+                }
+            }
         }
     }
 
@@ -241,14 +272,39 @@ class WorkoutSessionViewModel(
         actionErrorFlow.value = message
     }
 
+    fun dismissActionError() {
+        actionErrorFlow.value = null
+    }
+
     fun skipRestTimer() {
         val active = _uiState.value as? WorkoutSessionUiState.Active ?: return
         val rest = active.restTimer ?: return
         val ownerId = activeOwnerId ?: return
-        handledRestDeadlineMs = rest.deadlineEpochMs
+        if (isRestBusyFlow.value || isCompletingFlow.value || isEndingEarlyFlow.value) return
+        isRestBusyFlow.value = true
+        actionErrorFlow.value = null
         viewModelScope.launch {
-            workoutSessionRepository.clearRestTimer(ownerId, active.sessionId)
-            emitNextSetIfUncompleted(active, rest)
+            restMutex.withLock {
+                try {
+                    if (activeOwnerId != ownerId) return@withLock
+                    val latest = workoutSessionRepository.getSession(ownerId, active.sessionId)
+                    if (latest == null || latest.status != SessionStatus.ACTIVE) return@withLock
+                    when (val result = workoutSessionRepository.clearRestTimer(ownerId, active.sessionId)) {
+                        is DomainResult.Success -> {
+                            if (activeOwnerId == ownerId) {
+                                handledRestDeadlineMs = rest.deadlineEpochMs
+                            }
+                        }
+                        is DomainResult.Failure -> {
+                            if (activeOwnerId == ownerId) {
+                                actionErrorFlow.value = "Could not skip rest timer: ${result.error.userMessage()}"
+                            }
+                        }
+                    }
+                } finally {
+                    isRestBusyFlow.value = false
+                }
+            }
         }
     }
 
@@ -257,34 +313,78 @@ class WorkoutSessionViewModel(
         val rest = active.restTimer ?: return
         if (rest.remainingSeconds > 0) return
         if (handledRestDeadlineMs == rest.deadlineEpochMs) return
-        handledRestDeadlineMs = rest.deadlineEpochMs
         val ownerId = activeOwnerId ?: return
+        handledRestDeadlineMs = rest.deadlineEpochMs
         viewModelScope.launch {
-            workoutSessionRepository.clearRestTimer(ownerId, active.sessionId)
-            emitNextSetIfUncompleted(active, rest)
+            restMutex.withLock {
+                if (activeOwnerId != ownerId) return@withLock
+                val latest = workoutSessionRepository.getSession(ownerId, active.sessionId)
+                if (latest == null || latest.status != SessionStatus.ACTIVE) return@withLock
+                when (val result = workoutSessionRepository.clearRestTimer(ownerId, active.sessionId)) {
+                    is DomainResult.Success -> Unit
+                    is DomainResult.Failure -> {
+                        if (activeOwnerId == ownerId) {
+                            actionErrorFlow.value = "Rest timer finished, but could not clear timer: ${result.error.userMessage()}"
+                        }
+                    }
+                }
+            }
         }
     }
 
-    private fun emitNextSetIfUncompleted(
-        active: WorkoutSessionUiState.Active,
-        rest: SessionRestTimerUiModel,
-    ) {
-        val nextExId = rest.nextExerciseId
-        val nextSetIdx = rest.nextSetIndex
-        val isTargetStillUncompleted = nextExId != null && nextSetIdx != null && active.exercises
-            .firstOrNull { it.sessionExerciseId == nextExId }
+    fun startSetFromDashboard(sessionExerciseId: String, setIndex: Int) {
+        val active = _uiState.value as? WorkoutSessionUiState.Active ?: return
+        val ownerId = activeOwnerId ?: return
+        if (isRestBusyFlow.value || isCompletingFlow.value || isEndingEarlyFlow.value || isSavingSetFlow.value) return
+        val targetRow = active.exercises
+            .firstOrNull { it.sessionExerciseId == sessionExerciseId }
             ?.sets
-            ?.firstOrNull { it.setIndex == nextSetIdx }
-            ?.performed == null
+            ?.firstOrNull { it.setIndex == setIndex }
+        if (targetRow == null || targetRow.performed != null) return
 
-        if (isTargetStillUncompleted && nextExId != null && nextSetIdx != null) {
-            _events.tryEmit(
-                WorkoutSessionEvent.NavigateToNextSet(
-                    sessionId = active.sessionId,
-                    exerciseId = nextExId,
-                    setIndex = nextSetIdx,
-                ),
-            )
+        if (active.restTimer == null) {
+            _events.tryEmit(WorkoutSessionEvent.NavigateToNextSet(active.sessionId, sessionExerciseId, setIndex))
+            return
+        }
+
+        isRestBusyFlow.value = true
+        actionErrorFlow.value = null
+        viewModelScope.launch {
+            restMutex.withLock {
+                try {
+                    if (activeOwnerId != ownerId) return@withLock
+                    val latest = workoutSessionRepository.getSession(ownerId, active.sessionId)
+                    if (latest == null || latest.status != SessionStatus.ACTIVE) return@withLock
+                    val stillUncompleted = latest.exercises
+                        .firstOrNull { it.id == sessionExerciseId }
+                        ?.plannedSets?.any { it.setIndex == setIndex } == true &&
+                        latest.exercises
+                            .firstOrNull { it.id == sessionExerciseId }
+                            ?.performedSets?.none { it.setIndex == setIndex } == true
+                    if (!stillUncompleted) return@withLock
+
+                    when (val result = workoutSessionRepository.clearRestTimer(ownerId, active.sessionId)) {
+                        is DomainResult.Success -> {
+                            if (activeOwnerId == ownerId) {
+                                _events.tryEmit(
+                                    WorkoutSessionEvent.NavigateToNextSet(
+                                        sessionId = active.sessionId,
+                                        exerciseId = sessionExerciseId,
+                                        setIndex = setIndex,
+                                    ),
+                                )
+                            }
+                        }
+                        is DomainResult.Failure -> {
+                            if (activeOwnerId == ownerId) {
+                                actionErrorFlow.value = "Could not clear active rest timer: ${result.error.userMessage()}"
+                            }
+                        }
+                    }
+                } finally {
+                    isRestBusyFlow.value = false
+                }
+            }
         }
     }
 
@@ -488,5 +588,6 @@ class WorkoutSessionViewModel(
         val isSaving: Boolean,
         val isCompleting: Boolean = false,
         val isEndingEarly: Boolean = false,
+        val isRestBusy: Boolean = false,
     )
 }

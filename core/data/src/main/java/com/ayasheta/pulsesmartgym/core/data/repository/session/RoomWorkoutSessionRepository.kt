@@ -235,32 +235,34 @@ class RoomWorkoutSessionRepository(
                 fullReps = request.fullReps,
                 partialReps = request.partialReps,
                 actualLoadGrams = request.actualLoad?.grams,
-                completedAtEpochMs = clockMs(),
+                completedAtEpochMs = existing.completedAtEpochMs,
                 trackingMode = request.trackingMode,
                 origin = request.origin,
-                durationMs = request.durationMs,
+                durationMs = request.durationMs ?: existing.durationMs,
             )
-            val repEntities = request.repRecords.map { rep ->
-                RepRecordEntity(
-                    id = UUID.randomUUID().toString(),
-                    performedSetId = existing.id,
-                    repIndex = rep.repIndex,
-                    classification = rep.classification,
-                    totalDurationMs = rep.totalDurationMs,
-                    concentricDurationMs = rep.concentricDurationMs,
-                    eccentricDurationMs = rep.eccentricDurationMs,
-                    angularRomDegrees = rep.angularRomDegrees,
-                    linearRomCm = rep.linearRomCm,
-                    origin = rep.origin,
-                )
-            }
-
             sessionDao.updatePerformedSet(updatedSet)
-            sessionDao.deleteRepRecordsForSet(updatedSet.id)
-            if (repEntities.isNotEmpty()) {
+            val resultRepRecords = if (request.repRecords.isNotEmpty()) {
+                val repEntities = request.repRecords.map { rep ->
+                    RepRecordEntity(
+                        id = UUID.randomUUID().toString(),
+                        performedSetId = existing.id,
+                        repIndex = rep.repIndex,
+                        classification = rep.classification,
+                        totalDurationMs = rep.totalDurationMs,
+                        concentricDurationMs = rep.concentricDurationMs,
+                        eccentricDurationMs = rep.eccentricDurationMs,
+                        angularRomDegrees = rep.angularRomDegrees,
+                        linearRomCm = rep.linearRomCm,
+                        origin = rep.origin,
+                    )
+                }
+                sessionDao.deleteRepRecordsForSet(updatedSet.id)
                 sessionDao.insertRepRecords(repEntities)
+                request.repRecords
+            } else {
+                emptyList()
             }
-            DomainResult.Success(updatedSet.toDomain(request.repRecords))
+            DomainResult.Success(updatedSet.toDomain(resultRepRecords))
         }
     }
 

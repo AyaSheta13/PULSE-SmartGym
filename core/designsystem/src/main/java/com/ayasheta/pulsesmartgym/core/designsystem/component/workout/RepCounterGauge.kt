@@ -29,6 +29,10 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -68,7 +72,15 @@ fun PulseRepCounterGauge(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box(
-                modifier = Modifier.size(224.dp),
+                modifier = Modifier
+                    .size(224.dp)
+                    .testTag("rep_counter_gauge_arc")
+                    .semantics {
+                        progressBarRangeInfo = ProgressBarRangeInfo(
+                            current = animatedProgress,
+                            range = 0f..1f,
+                        )
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 Canvas(modifier = Modifier.fillMaxSize().padding(14.dp)) {

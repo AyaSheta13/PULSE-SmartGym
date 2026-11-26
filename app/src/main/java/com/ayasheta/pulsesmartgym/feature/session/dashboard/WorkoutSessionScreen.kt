@@ -146,13 +146,14 @@ fun WorkoutSessionScreen(
                 ?.sets
                 ?.firstOrNull { it.setIndex == setIndex }
             if (active != null && row?.performed == null && onStartSet != null) {
-                onStartSet(active.sessionId, sessionExerciseId, setIndex)
+                viewModel.startSetFromDashboard(sessionExerciseId, setIndex)
             } else {
                 viewModel.openSetEntry(sessionExerciseId, setIndex)
             }
         },
         onAddRestTimeClick = { viewModel.extendRestTimer(30) },
         onSkipRestClick = viewModel::skipRestTimer,
+        onDismissActionError = viewModel::dismissActionError,
         onDismissSetEntry = viewModel::dismissSetEntry,
         onConfirmSetEntry = viewModel::submitManualSet,
         onFinishWorkout = viewModel::finishWorkout,
@@ -177,6 +178,7 @@ fun WorkoutSessionScreenContent(
     modifier: Modifier = Modifier,
     onAddRestTimeClick: () -> Unit = {},
     onSkipRestClick: () -> Unit = {},
+    onDismissActionError: () -> Unit = {},
 ) {
     val renderInWindow = LocalRenderModalsInWindow.current
     val connectionLabel = (uiState as? WorkoutSessionUiState.Active)?.connectionLabel ?: "Not Connected"
@@ -276,14 +278,31 @@ fun WorkoutSessionScreenContent(
                                         .padding(horizontal = 12.dp, vertical = 10.dp)
                                         .testTag("session_action_error"),
                                 ) {
-                                    BasicText(
-                                        text = uiState.actionError,
-                                        style = PulseTheme.typography.contentPrimary.copy(
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = WorkoutPalette.ErrorText,
-                                        ),
-                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        BasicText(
+                                            text = uiState.actionError,
+                                            style = PulseTheme.typography.contentPrimary.copy(
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = WorkoutPalette.ErrorText,
+                                            ),
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                        BasicText(
+                                            text = "Dismiss",
+                                            style = PulseTheme.typography.label.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                color = WorkoutPalette.ErrorText,
+                                            ),
+                                            modifier = Modifier
+                                                .clickable(onClick = onDismissActionError)
+                                                .padding(4.dp),
+                                        )
+                                    }
                                 }
                             }
                         }

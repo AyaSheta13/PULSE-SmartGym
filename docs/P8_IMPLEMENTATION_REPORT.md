@@ -29,7 +29,15 @@ Implemented **P8 — Manual Rep Counter, Rest Timer & Workout Completion** on br
 - Preserved P7 `Edit` correction (`ManualSetEntrySheet`), non-sequential set selection, early termination, hidden bottom bar, and durable terminal redirects.
 
 ## 3. Verification Summary
-- `:core:designsystem:testDebugUnitTest`, `:core:data:testDebugUnitTest`, `:app:testDebugUnitTest`: **PASS** (including `P8ManualRepCounterAndRestUnitTest` rest-persistence failure and monotonic duration coverage).
-- `:app:assembleDebug` and `:app:assembleRelease`: **PASS**.
-- `:core:data:connectedDebugAndroidTest`: **21/21 PASS** (including `Migration2To3Test`).
-- `:app:connectedDebugAndroidTest`: **34/34 PASS** (including `P8ManualRepCounterUiTest` and `P8ScreenshotCaptureTest` gauge animation settlement verification).
+- `:core:model:build`: **PASS**
+- `:core:designsystem:testDebugUnitTest`, `:core:data:testDebugUnitTest`, `:app:testDebugUnitTest`: **PASS** (`40/40` `:app` unit tests passed, including rest-timer error handling, concurrency/retry/account-switching, `SavedStateHandle` counter restoration, and monotonic duration).
+- `:app:assembleDebug` and `:app:assembleRelease`: **PASS**
+- `:core:data:connectedDebugAndroidTest`: **22/22 PASS** (including `Migration2To3Test` and `correctPerformedSet_preservesRecordedDurationMs`).
+- `:app:connectedDebugAndroidTest`: **34/34 PASS** (0 skipped, 0 failed; includes `P8ManualRepCounterUiTest` Activity recreation, `P8ScreenshotCaptureTest` deterministic `mainClock.autoAdvance = false` gauge animation test, and all P7 regression tests).
+
+## 4. Concurrency, Error Handling & Restoration Policy
+- **Rest Timer Concurrency**: All rest mutations (`extendRestTimer`, `skipRestTimer`, `onRestExpired`, and `startSetFromDashboard`) in `WorkoutSessionViewModel` are serialized with `Mutex` (`restMutex`) and `isRestBusy`, re-validating `activeOwnerId` and `SessionStatus.ACTIVE` before and after repository calls.
+- **Rest Timer Error Handling**: `extendRestTimer`, `skipRestTimer`, and `onRestExpired` handle `DomainResult.Failure` explicitly without clearing persisted rest state, surface a dismissible recoverable error banner, and prevent infinite retry loops on natural expiration via `handledExpiredDeadlineMs`.
+- **Arbitrary Set Selection**: Skipping or expiring rest returns/keeps the user on the `WorkoutSession` dashboard without forcing sequential navigation; starting any unfinished set during active rest safely clears the timer first.
+- **Counter Lifecycle**: `ManualRepCounterViewModel` persists unsaved reps, actual weight load, monotonic start time (`SystemClock.elapsedRealtime()`), and durable `Completed` outcome in `SavedStateHandle`. `ManualRepCounterScreen` observes `ManualRepCounterUiState.Completed` and `AlreadyCompleted` via `LaunchedEffect` so missed `SharedFlow` events or restored routes return safely to `WorkoutSession`.
+- **Known Limitations**: P9/P10 BLE connectivity and sensor rep/ROM/tempo telemetry are intentionally not implemented.

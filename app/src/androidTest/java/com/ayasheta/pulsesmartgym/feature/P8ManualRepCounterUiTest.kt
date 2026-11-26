@@ -78,11 +78,19 @@ class P8ManualRepCounterUiTest {
         }
         activityRule.onNodeWithText("0").assertIsDisplayed()
 
-        // Increment reps to 8 and adjust weight
+        // Increment reps to 8 and adjust weight, then recreate Activity -> unsaved reps & weight survive!
         repeat(9) { activityRule.onNodeWithContentDescription("Add one rep").performClick() }
         activityRule.onNodeWithContentDescription("Subtract one rep").performClick()
         activityRule.onNodeWithContentDescription("Increase weight").performClick()
         activityRule.onNodeWithText("8").assertIsDisplayed()
+
+        activityRule.activityRule.scenario.recreate()
+        activityRule.waitForIdle()
+        activityRule.waitUntil(5_000) {
+            runCatching { activityRule.onNodeWithTag("manual_rep_counter_screen").assertExists(); true }.getOrDefault(false)
+        }
+        activityRule.onNodeWithText("8").assertIsDisplayed()
+        activityRule.onNodeWithText("82.5").assertIsDisplayed()
 
         // 3. Finish Set -> returns to WorkoutSession with Rest Timer visible
         activityRule.onNodeWithTag("button_finish_set").performClick()
@@ -94,6 +102,11 @@ class P8ManualRepCounterUiTest {
 
         // 4. Extend rest +30s and recreate Activity -> Rest Timer survives!
         activityRule.onNodeWithText("+30s").performClick()
+        activityRule.waitUntil(5_000) {
+            runBlocking {
+                isolatedRule.container.workoutSessionRepository.observeRestState(ownerId, activeSession.id).first()?.durationSeconds == 120
+            }
+        }
         val persistedRest = runBlocking {
             isolatedRule.container.workoutSessionRepository.observeRestState(ownerId, activeSession.id).first()
         }
@@ -106,8 +119,12 @@ class P8ManualRepCounterUiTest {
             runCatching { activityRule.onNodeWithTag("session_rest_timer_card").assertExists(); true }.getOrDefault(false)
         }
 
-        // 5. Skip Rest -> transitions to ReadyStartSet for Set 2
+        // 5. Skip Rest -> stays on WorkoutSession dashboard; user freely starts Set 2
         activityRule.onNodeWithText("Skip Rest").performClick()
+        activityRule.waitUntil(5_000) {
+            runCatching { activityRule.onNodeWithTag("session_rest_timer_card").assertDoesNotExist(); true }.getOrDefault(false)
+        }
+        activityRule.onNodeWithTag("session_set_start_${ex1Id}_2").performClick()
         activityRule.waitUntil(5_000) {
             runCatching { activityRule.onNodeWithTag("ready_start_set_screen").assertExists(); true }.getOrDefault(false)
         }

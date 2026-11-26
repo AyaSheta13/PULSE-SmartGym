@@ -274,7 +274,7 @@ class P8ManualRepCounterAndRestUnitTest {
         }
         assertEquals(90, extended.restTimer!!.remainingSeconds)
 
-        // Advance time past deadline -> refresh + onRestExpired emits NavigateToNextSet and clears rest
+        // Advance time past deadline -> refresh + onRestExpired clears rest and keeps user on dashboard (no forced navigation)
         nowMs = 195_000L
         vm.refreshElapsedTime()
         vm.onRestExpired()
@@ -282,14 +282,9 @@ class P8ManualRepCounterAndRestUnitTest {
             vm.uiState.first { it is WorkoutSessionUiState.Active && it.restTimer == null } as WorkoutSessionUiState.Active
         }
         assertNull(afterExpire.restTimer)
-        withTimeout(5_000) {
-            while (events.none { it is WorkoutSessionEvent.NavigateToNextSet && it.exerciseId == "ex_1" && it.setIndex == 2 }) {
-                kotlinx.coroutines.delay(10)
-            }
-        }
-        assertTrue(events.any { it is WorkoutSessionEvent.NavigateToNextSet && it.exerciseId == "ex_1" && it.setIndex == 2 })
+        assertTrue(events.none { it is WorkoutSessionEvent.NavigateToNextSet })
 
-        // Start another rest and test Skip Rest
+        // Start another rest and test Skip Rest (also keeps user on dashboard without forced navigation)
         sessionRepo.startRestTimer(
             ownerId = "user_1",
             sessionId = "sess_1",
@@ -308,12 +303,7 @@ class P8ManualRepCounterAndRestUnitTest {
             vm.uiState.first { it is WorkoutSessionUiState.Active && it.restTimer == null } as WorkoutSessionUiState.Active
         }
         assertNull(afterSkip.restTimer)
-        withTimeout(5_000) {
-            while (events.none { it is WorkoutSessionEvent.NavigateToNextSet && it.exerciseId == "ex_2" && it.setIndex == 1 }) {
-                kotlinx.coroutines.delay(10)
-            }
-        }
-        assertTrue(events.any { it is WorkoutSessionEvent.NavigateToNextSet && it.exerciseId == "ex_2" && it.setIndex == 1 })
+        assertTrue(events.none { it is WorkoutSessionEvent.NavigateToNextSet })
         collectJob.cancel()
     }
 
@@ -383,6 +373,142 @@ class P8ManualRepCounterAndRestUnitTest {
         assertEquals(finished.restErrorMessage, dashboardState.actionError)
         assertNull(dashboardState.restTimer)
         assertNull(dashboardState.exercises.first().sets.first { it.setIndex == 2 }.performed)
+    }
+
+    @Test
+    fun restTimer_handlesExtendFailure_skipFailure_expirationFailure_retry_andAccountSwitch(): Unit = runBlocking {
+        var nowMs = 100_000L
+        val sessionRepo = FakeP8SessionRepository(clockMs = { nowMs })
+        val authRepo = FakeP8AuthRepository("user_1")
+        val prefsRepo = FakeP8PreferencesRepository()
+        sessionRepo.putSession(sampleSession())
+        sessionRepo.startRestTimer("user_1", "sess_1", "ex_1", "Barbell Bench Press", 1, 60, "ex_1", 2)
+
+        val vm = WorkoutSessionViewModel("sess_1", authRepo, sessionRepo, prefsRepo, clockMs = { nowMs })
+        withTimeout(5_000) {
+            vm.uiState.first { it is WorkoutSessionUiState.Active && it.restTimer != null }
+        }
+
+        // 1. Failed extend preserves deadline and surfaces error; retry succeeds
+        sessionRepo.failExtendRest = true
+        vm.extendRestTimer(30)
+        val afterExtendFail = withTimeout(5_000) {
+            vm.uiState.first { it is WorkoutSessionUiState.Active && it.actionError != null } as WorkoutSessionUiState.Active
+        }
+        assertEquals(60, afterExtendFail.restTimer!!.remainingSeconds)
+        assertTrue(afterExtendFail.actionError!!.contains("extend", ignoreCase = true))
+
+        sessionRepo.failExtendRest = false
+        vm.extendRestTimer(30)
+        val afterExtendRetry = withTimeout(5_000) {
+            vm.uiState.first { it is WorkoutSessionUiState.Active && it.restTimer?.remainingSeconds == 90 && it.actionError == null } as WorkoutSessionUiState.Active
+        }
+        assertEquals(90, afterExtendRetry.restTimer!!.remainingSeconds)
+
+        // 2. Failed skip preserves rest state; rapid skip + retry clears cleanly
+        sessionRepo.failClearRest = true
+        vm.skipRestTimer()
+        vm.skipRestTimer()
+        val afterSkipFail = withTimeout(5_000) {
+            vm.uiState.first { it is WorkoutSessionUiState.Active && it.actionError != null } as WorkoutSessionUiState.Active
+        }
+        assertNotNull(afterSkipFail.restTimer)
+        assertTrue(afterSkipFail.actionError!!.contains("skip", ignoreCase = true))
+
+        sessionRepo.failClearRest = false
+        vm.skipRestTimer()
+        withTimeout(5_000) {
+            vm.uiState.first { it is WorkoutSessionUiState.Active && it.restTimer == null }
+        }
+
+        // 3. Failed natural expiration does not loop infinitely
+        sessionRepo.clearCallsForLastFail = 0
+        sessionRepo.startRestTimer("user_1", "sess_1", "ex_1", "Barbell Bench Press", 1, 30, "ex_1", 2)
+        withTimeout(5_000) {
+            vm.uiState.first { it is WorkoutSessionUiState.Active && it.restTimer != null }
+        }
+        sessionRepo.failClearRest = true
+        nowMs = 140_000L
+        vm.refreshElapsedTime()
+        vm.onRestExpired()
+        vm.onRestExpired()
+        val afterExpireFail = withTimeout(5_000) {
+            vm.uiState.first { it is WorkoutSessionUiState.Active && it.actionError != null } as WorkoutSessionUiState.Active
+        }
+        assertEquals(1, sessionRepo.clearCallsForLastFail)
+        assertTrue(afterExpireFail.actionError!!.contains("clear", ignoreCase = true))
+
+        // 4. Account switch transitions cleanly to SignedOut
+        authRepo.signOut()
+        withTimeout(5_000) {
+            vm.uiState.first { it is WorkoutSessionUiState.SignedOut }
+        }
+    }
+
+    @Test
+    fun manualRepCounter_restoresSavedStateHandle_andDurableCompletedState() = runBlocking {
+        var nowMs = 20_000L
+        val sessionRepo = FakeP8SessionRepository(clockMs = { nowMs })
+        val authRepo = FakeP8AuthRepository("user_1")
+        val prefsRepo = FakeP8PreferencesRepository()
+        sessionRepo.putSession(sampleSession())
+        val savedState = androidx.lifecycle.SavedStateHandle()
+
+        val vm1 = ManualRepCounterViewModel(
+            sessionId = "sess_1",
+            exerciseId = "ex_1",
+            setIndex = 1,
+            authRepository = authRepo,
+            workoutSessionRepository = sessionRepo,
+            userPreferencesRepository = prefsRepo,
+            savedStateHandle = savedState,
+            elapsedRealtimeMs = { nowMs },
+        )
+        withTimeout(5_000) { vm1.uiState.first { it is ManualRepCounterUiState.Active } }
+        repeat(5) { vm1.incrementRep() }
+        vm1.incrementWeight()
+
+        // Simulate process/VM recreation with the same SavedStateHandle
+        nowMs = 30_000L
+        val vm2 = ManualRepCounterViewModel(
+            sessionId = "sess_1",
+            exerciseId = "ex_1",
+            setIndex = 1,
+            authRepository = authRepo,
+            workoutSessionRepository = sessionRepo,
+            userPreferencesRepository = prefsRepo,
+            savedStateHandle = savedState,
+            elapsedRealtimeMs = { nowMs },
+        )
+        val restored = withTimeout(5_000) {
+            vm2.uiState.first { it is ManualRepCounterUiState.Active } as ManualRepCounterUiState.Active
+        }
+        assertEquals(5, restored.currentReps)
+        assertEquals(82.5, restored.actualLoad!!.toKilograms(), 0.01)
+
+        // Finish set -> durable Completed state survives recreation even if SharedFlow event was missed
+        vm2.finishSet()
+        val completed = withTimeout(5_000) {
+            vm2.uiState.first { it is ManualRepCounterUiState.Completed } as ManualRepCounterUiState.Completed
+        }
+        assertTrue(completed.hasRestStarted)
+        val savedPerf = sessionRepo.getSession("user_1", "sess_1")!!.exercises.first().performedSets.single()
+        assertEquals(10_000L, savedPerf.durationMs)
+
+        val vm3 = ManualRepCounterViewModel(
+            sessionId = "sess_1",
+            exerciseId = "ex_1",
+            setIndex = 1,
+            authRepository = authRepo,
+            workoutSessionRepository = sessionRepo,
+            userPreferencesRepository = prefsRepo,
+            savedStateHandle = savedState,
+            elapsedRealtimeMs = { nowMs },
+        )
+        val restoredCompleted = withTimeout(5_000) {
+            vm3.uiState.first { it is ManualRepCounterUiState.Completed } as ManualRepCounterUiState.Completed
+        }
+        assertEquals("sess_1", restoredCompleted.sessionId)
     }
 
     private fun sampleSession(): WorkoutSession = WorkoutSession(
@@ -464,6 +590,9 @@ private class FakeP8SessionRepository(
     private val restStates = MutableStateFlow<Map<String, SessionRestState>>(emptyMap())
     var recordCalls = 0
     var failStartRest = false
+    var failExtendRest = false
+    var failClearRest = false
+    var clearCallsForLastFail = 0
 
     fun putSession(session: WorkoutSession) {
         sessions.value = sessions.value + (session.id to session)
@@ -562,6 +691,9 @@ private class FakeP8SessionRepository(
     }
 
     override suspend fun extendRestTimer(ownerId: String, sessionId: String, additionalSeconds: Int): DomainResult<SessionRestState> {
+        if (failExtendRest) {
+            return DomainResult.Failure(DataError.StorageError("Simulated extend failure"))
+        }
         val existing = restStates.value[sessionId] ?: return DomainResult.Failure(DataError.NotFound("No rest"))
         val updated = existing.copy(
             durationSeconds = existing.durationSeconds + additionalSeconds,
@@ -572,6 +704,10 @@ private class FakeP8SessionRepository(
     }
 
     override suspend fun clearRestTimer(ownerId: String, sessionId: String): DomainResult<Unit> {
+        if (failClearRest) {
+            clearCallsForLastFail++
+            return DomainResult.Failure(DataError.StorageError("Simulated clear failure"))
+        }
         restStates.value = restStates.value - sessionId
         return DomainResult.Success(Unit)
     }

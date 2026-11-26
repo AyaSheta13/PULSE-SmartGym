@@ -15,9 +15,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
@@ -202,6 +206,7 @@ class P8ScreenshotCaptureTest {
     fun verifyRepCounterGaugeAnimation_incrementsDecrements_andCapturesSettledScreenshot() {
         var reps by mutableStateOf(0)
         var targetReps by mutableStateOf(10)
+        composeRule.mainClock.autoAdvance = false
 
         composeRule.setContent {
             val baseDensity = LocalDensity.current
@@ -245,21 +250,51 @@ class P8ScreenshotCaptureTest {
             }
         }
 
-        composeRule.waitForIdle()
-        // Rapid successive increments (0 -> 3 -> 7 -> 9) then decrement (9 -> 8)
-        reps = 3
-        composeRule.mainClock.advanceTimeBy(120L)
-        reps = 7
-        composeRule.mainClock.advanceTimeBy(120L)
-        reps = 9
-        composeRule.mainClock.advanceTimeBy(120L)
-        reps = 8
-        composeRule.mainClock.advanceTimeBy(500L)
-        composeRule.waitForIdle()
-
         val outDir = File(ApplicationProvider.getApplicationContext<Context>().filesDir, "p8_screenshots").apply {
             mkdirs()
         }
+
+        fun currentArcProgress(): Float =
+            composeRule.onNodeWithTag("rep_counter_gauge_arc")
+                .fetchSemanticsNode()
+                .config[SemanticsProperties.ProgressBarRangeInfo]
+                .current
+
+        // 1. Start at 0/10
+        composeRule.mainClock.advanceTimeByFrame()
+        assertEquals(0f, currentArcProgress(), 0.001f)
+
+        // 2-3. Increase to 5/10 and advance by intermediate interval (160ms)
+        reps = 5
+        composeRule.mainClock.advanceTimeBy(160L)
+        val midForward = currentArcProgress()
+        assertTrue("Expected intermediate forward progress in (0.0, 0.5), got $midForward", midForward > 0f && midForward < 0.5f)
+        saveBitmap(
+            composeRule.onRoot().captureToImage().asAndroidBitmap(),
+            File(outDir, "05_gauge_anim_intermediate.png"),
+        )
+
+        // 4-6. Advance until completion -> reaches 0.5
+        composeRule.mainClock.advanceTimeBy(300L)
+        assertEquals(0.5f, currentArcProgress(), 0.001f)
+
+        // 7-8. Decrement to 3/10 -> backward movement
+        reps = 3
+        composeRule.mainClock.advanceTimeBy(160L)
+        val midBackward = currentArcProgress()
+        assertTrue("Expected intermediate backward progress in (0.3, 0.5), got $midBackward", midBackward > 0.3f && midBackward < 0.5f)
+        composeRule.mainClock.advanceTimeBy(300L)
+        assertEquals(0.3f, currentArcProgress(), 0.001f)
+
+        // 9-10. Rapid successive changes (3 -> 7 -> 9 -> 8) -> settles at 0.8
+        reps = 7
+        composeRule.mainClock.advanceTimeBy(80L)
+        reps = 9
+        composeRule.mainClock.advanceTimeBy(80L)
+        reps = 8
+        composeRule.mainClock.advanceTimeBy(500L)
+        assertEquals(0.8f, currentArcProgress(), 0.001f)
+
         saveBitmap(
             composeRule.onRoot().captureToImage().asAndroidBitmap(),
             File(outDir, "04_manual_rep_counter_animated_settled.png"),
@@ -268,7 +303,7 @@ class P8ScreenshotCaptureTest {
         // Verify targetReps <= 0 handles safely
         targetReps = 0
         composeRule.mainClock.advanceTimeBy(400L)
-        composeRule.waitForIdle()
+        assertEquals(0f, currentArcProgress(), 0.001f)
     }
 
     private fun saveBitmap(bitmap: Bitmap, file: File) {

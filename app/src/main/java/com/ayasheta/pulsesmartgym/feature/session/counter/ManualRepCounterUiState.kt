@@ -19,6 +19,12 @@ sealed interface ManualRepCounterUiState {
         val status: SessionStatus,
     ) : ManualRepCounterUiState
 
+    data class Completed(
+        val sessionId: String,
+        val hasRestStarted: Boolean,
+        val restErrorMessage: String? = null,
+    ) : ManualRepCounterUiState
+
     data class Active(
         val sessionId: String,
         val exerciseId: String,

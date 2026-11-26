@@ -1,5 +1,6 @@
 package com.ayasheta.pulsesmartgym.feature.session.counter
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ayasheta.pulsesmartgym.core.model.common.DomainResult
@@ -38,8 +39,18 @@ class ManualRepCounterViewModel(
     private val authRepository: AuthRepository,
     private val workoutSessionRepository: WorkoutSessionRepository,
     private val userPreferencesRepository: UserPreferencesRepository,
+    private val savedStateHandle: SavedStateHandle = SavedStateHandle(),
     private val elapsedRealtimeMs: () -> Long = { android.os.SystemClock.elapsedRealtime() },
 ) : ViewModel() {
+
+    private val stateKeyPrefix = "counter_${sessionId}_${exerciseId}_${setIndex}"
+    private val repsKey = "${stateKeyPrefix}_reps"
+    private val loadGramsKey = "${stateKeyPrefix}_load_grams"
+    private val loadInitKey = "${stateKeyPrefix}_load_init"
+    private val startElapsedKey = "${stateKeyPrefix}_start_elapsed"
+    private val completedKey = "${stateKeyPrefix}_completed"
+    private val completedRestStartedKey = "${stateKeyPrefix}_completed_rest"
+    private val completedRestErrorKey = "${stateKeyPrefix}_completed_rest_err"
 
     private val _uiState = MutableStateFlow<ManualRepCounterUiState>(ManualRepCounterUiState.Loading)
     val uiState: StateFlow<ManualRepCounterUiState> = _uiState.asStateFlow()
@@ -47,17 +58,31 @@ class ManualRepCounterViewModel(
     private val _events = MutableSharedFlow<ManualRepCounterEvent>(extraBufferCapacity = 4)
     val events: SharedFlow<ManualRepCounterEvent> = _events.asSharedFlow()
 
-    private val currentRepsFlow = MutableStateFlow(0)
-    private val actualLoadFlow = MutableStateFlow<WeightLoad?>(null)
+    private val currentRepsFlow = MutableStateFlow(savedStateHandle.get<Int>(repsKey) ?: 0)
+    private val actualLoadFlow = MutableStateFlow<WeightLoad?>(
+        savedStateHandle.get<Long>(loadGramsKey)?.let { WeightLoad(it) },
+    )
     private val isSubmittingFlow = MutableStateFlow(false)
     private val errorMessageFlow = MutableStateFlow<String?>(null)
     private val showEndEarlyFlow = MutableStateFlow(false)
     private val isEndingEarlyFlow = MutableStateFlow(false)
+    private val completionStateFlow = MutableStateFlow<ManualRepCounterUiState.Completed?>(
+        if (savedStateHandle.get<Boolean>(completedKey) == true) {
+            ManualRepCounterUiState.Completed(
+                sessionId = sessionId,
+                hasRestStarted = savedStateHandle.get<Boolean>(completedRestStartedKey) ?: false,
+                restErrorMessage = savedStateHandle.get<String>(completedRestErrorKey),
+            )
+        } else {
+            null
+        },
+    )
 
     private var activeOwnerId: String? = null
-    private var hasInitializedLoad = false
+    private var hasInitializedLoad = savedStateHandle.get<Boolean>(loadInitKey) ?: false
     private var latestSession: WorkoutSession? = null
-    private val setStartedAtElapsedMs: Long = elapsedRealtimeMs()
+    private val setStartedAtElapsedMs: Long = savedStateHandle.get<Long>(startElapsedKey)
+        ?: elapsedRealtimeMs().also { savedStateHandle[startElapsedKey] = it }
 
     init {
         observeState()
@@ -94,7 +119,10 @@ class ManualRepCounterViewModel(
                             } else {
                                 val exercise = session.exercises.firstOrNull { it.id == exerciseId }
                                 val plannedSet = exercise?.plannedSets?.firstOrNull { it.setIndex == setIndex }
-                                if (exercise == null || plannedSet == null) {
+                                val completedOutcome = completionStateFlow.value
+                                if (completedOutcome != null) {
+                                    completedOutcome
+                                } else if (exercise == null || plannedSet == null) {
                                     ManualRepCounterUiState.Missing("Set $setIndex could not be found in this session.")
                                 } else if (exercise.performedSets.any { it.setIndex == setIndex } && !isSubmittingFlow.value) {
                                     ManualRepCounterUiState.AlreadyCompleted(
@@ -104,6 +132,8 @@ class ManualRepCounterViewModel(
                                 } else {
                                     if (!hasInitializedLoad) {
                                         actualLoadFlow.value = plannedSet.targetLoad
+                                        savedStateHandle[loadGramsKey] = plannedSet.targetLoad?.grams
+                                        savedStateHandle[loadInitKey] = true
                                         hasInitializedLoad = true
                                     }
                                     ManualRepCounterUiState.Active(
@@ -186,32 +216,49 @@ class ManualRepCounterViewModel(
         errorMessageFlow.value = null
         showEndEarlyFlow.value = false
         isEndingEarlyFlow.value = false
+        completionStateFlow.value = null
+        savedStateHandle[repsKey] = 0
+        savedStateHandle[loadGramsKey] = null
+        savedStateHandle[loadInitKey] = false
+        savedStateHandle[completedKey] = false
+        savedStateHandle[completedRestStartedKey] = false
+        savedStateHandle[completedRestErrorKey] = null
     }
 
     fun incrementRep() {
         if (_uiState.value !is ManualRepCounterUiState.Active || isSubmittingFlow.value) return
         errorMessageFlow.value = null
-        currentRepsFlow.update { (it + 1).coerceAtMost(999) }
+        currentRepsFlow.update { next ->
+            (next + 1).coerceAtMost(999).also { savedStateHandle[repsKey] = it }
+        }
     }
 
     fun decrementRep() {
         if (_uiState.value !is ManualRepCounterUiState.Active || isSubmittingFlow.value) return
         errorMessageFlow.value = null
-        currentRepsFlow.update { (it - 1).coerceAtLeast(0) }
+        currentRepsFlow.update { next ->
+            (next - 1).coerceAtLeast(0).also { savedStateHandle[repsKey] = it }
+        }
     }
 
     fun incrementWeight() {
         val active = _uiState.value as? ManualRepCounterUiState.Active ?: return
         if (isSubmittingFlow.value) return
         errorMessageFlow.value = null
-        actualLoadFlow.value = stepWeight(active.actualLoad, active.preferredWeightUnit, deltaSign = +1)
+        val next = stepWeight(active.actualLoad, active.preferredWeightUnit, deltaSign = +1)
+        actualLoadFlow.value = next
+        savedStateHandle[loadGramsKey] = next.grams
+        savedStateHandle[loadInitKey] = true
     }
 
     fun decrementWeight() {
         val active = _uiState.value as? ManualRepCounterUiState.Active ?: return
         if (isSubmittingFlow.value) return
         errorMessageFlow.value = null
-        actualLoadFlow.value = stepWeight(active.actualLoad, active.preferredWeightUnit, deltaSign = -1)
+        val next = stepWeight(active.actualLoad, active.preferredWeightUnit, deltaSign = -1)
+        actualLoadFlow.value = next
+        savedStateHandle[loadGramsKey] = next.grams
+        savedStateHandle[loadInitKey] = true
     }
 
     fun finishSet() {
@@ -275,6 +322,16 @@ class ManualRepCounterViewModel(
                     } else {
                         false to null
                     }
+                    val completedState = ManualRepCounterUiState.Completed(
+                        sessionId = active.sessionId,
+                        hasRestStarted = hasRestStarted,
+                        restErrorMessage = restErrorMessage,
+                    )
+                    savedStateHandle[completedKey] = true
+                    savedStateHandle[completedRestStartedKey] = hasRestStarted
+                    savedStateHandle[completedRestErrorKey] = restErrorMessage
+                    completionStateFlow.value = completedState
+                    _uiState.value = completedState
                     _events.tryEmit(
                         ManualRepCounterEvent.SetFinished(
                             sessionId = active.sessionId,

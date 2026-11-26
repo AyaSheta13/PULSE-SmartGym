@@ -506,6 +506,7 @@ fun rememberPulseEntryProvider(
                 authRepository = dataContainer.authRepository,
                 workoutSessionRepository = dataContainer.workoutSessionRepository,
                 userPreferencesRepository = dataContainer.userPreferencesRepository,
+                savedStateHandle = createSavedStateHandle(),
             )
         }
         com.ayasheta.pulsesmartgym.feature.session.counter.ManualRepCounterScreen(
@@ -519,7 +520,7 @@ fun rememberPulseEntryProvider(
                     sessionId = sessionId,
                     nextExerciseId = nextTarget?.exerciseId,
                     nextSetIndex = nextTarget?.setIndex,
-                    openNextSetImmediately = restErrorMessage == null && !hasRestStarted && nextTarget != null,
+                    openNextSetImmediately = false,
                 )
             },
             onSessionCompleted = { completedSessionId ->
