@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -220,6 +221,35 @@ fun PulseBottomSheet(
 }
 
 /**
+ * Hosts a nullable sheet state [targetState] so the sheet remains mounted while playing its
+ * 240ms downward exit animation and scrim fade before unmounting.
+ */
+@Composable
+fun <T : Any> PulseAnimatedBottomSheetHost(
+    targetState: T?,
+    content: @Composable (state: T, visible: Boolean, onExitComplete: () -> Unit) -> Unit,
+) {
+    var displayedState by remember { mutableStateOf(targetState) }
+    var visible by remember { mutableStateOf(targetState != null) }
+
+    LaunchedEffect(targetState) {
+        if (targetState != null) {
+            displayedState = targetState
+            visible = true
+        } else if (displayedState != null) {
+            visible = false
+        }
+    }
+
+    val current = displayedState ?: return
+    content(current, visible) {
+        if (targetState == null) {
+            displayedState = null
+        }
+    }
+}
+
+/**
  * Reusable bottom-sheet overlay that animates its scrim alpha and slides the sheet content from
  * its full measured height outside the bottom edge (300ms enter / 240ms exit).
  */
@@ -227,6 +257,8 @@ fun PulseBottomSheet(
 fun PulseAnimatedBottomSheetOverlay(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
+    visible: Boolean = true,
+    onExitComplete: () -> Unit = {},
     scrimColor: Color = Color.Black,
     scrimAlphaMax: Float = 0.55f,
     dismissEnabled: Boolean = true,
@@ -236,21 +268,40 @@ fun PulseAnimatedBottomSheetOverlay(
     val slideFraction = remember { Animatable(1f) }
     val scrimAlpha = remember { Animatable(0f) }
     var sheetHeightPx by remember { mutableIntStateOf(0) }
+    val latestOnExitComplete by rememberUpdatedState(onExitComplete)
 
-    LaunchedEffect(Unit) {
-        coroutineScope {
-            launch {
-                scrimAlpha.animateTo(
-                    targetValue = scrimAlphaMax,
-                    animationSpec = tween(durationMillis = SHEET_ENTER_DURATION_MS, easing = FastOutSlowInEasing),
-                )
+    LaunchedEffect(visible) {
+        if (visible) {
+            coroutineScope {
+                launch {
+                    scrimAlpha.animateTo(
+                        targetValue = scrimAlphaMax,
+                        animationSpec = tween(durationMillis = SHEET_ENTER_DURATION_MS, easing = FastOutSlowInEasing),
+                    )
+                }
+                launch {
+                    slideFraction.animateTo(
+                        targetValue = 0f,
+                        animationSpec = tween(durationMillis = SHEET_ENTER_DURATION_MS, easing = FastOutSlowInEasing),
+                    )
+                }
             }
-            launch {
-                slideFraction.animateTo(
-                    targetValue = 0f,
-                    animationSpec = tween(durationMillis = SHEET_ENTER_DURATION_MS, easing = FastOutSlowInEasing),
-                )
+        } else {
+            coroutineScope {
+                launch {
+                    scrimAlpha.animateTo(
+                        targetValue = 0f,
+                        animationSpec = tween(durationMillis = SHEET_EXIT_DURATION_MS, easing = FastOutLinearInEasing),
+                    )
+                }
+                launch {
+                    slideFraction.animateTo(
+                        targetValue = 1f,
+                        animationSpec = tween(durationMillis = SHEET_EXIT_DURATION_MS, easing = FastOutLinearInEasing),
+                    )
+                }
             }
+            latestOnExitComplete()
         }
     }
 
@@ -261,7 +312,7 @@ fun PulseAnimatedBottomSheetOverlay(
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
-                enabled = dismissEnabled,
+                enabled = dismissEnabled && visible,
                 onClick = onDismissRequest,
             )
             .let { if (scrimTestTag != null) it.semantics { dialog() } else it },

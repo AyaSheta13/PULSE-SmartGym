@@ -483,14 +483,13 @@ fun DeviceAssistedRepCounterContent(
                     onContinueManuallyClick = onContinueManuallyClick,
                 )
 
-                if (uiState.showEndEarlyConfirmation) {
-                    EndWorkoutEarlyModal(
-                        recordedSetsCount = uiState.recordedSetsCount,
-                        isEnding = uiState.isEndingEarly,
-                        onKeepWorkingOut = onDismissEndEarly,
-                        onEndWorkout = onConfirmEndEarly,
-                    )
-                }
+                EndWorkoutEarlyModal(
+                    visible = uiState.showEndEarlyConfirmation,
+                    recordedSetsCount = uiState.recordedSetsCount,
+                    isEnding = uiState.isEndingEarly,
+                    onKeepWorkingOut = onDismissEndEarly,
+                    onEndWorkout = onConfirmEndEarly,
+                )
             }
         }
     }

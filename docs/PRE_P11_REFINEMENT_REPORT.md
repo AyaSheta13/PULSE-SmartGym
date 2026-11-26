@@ -63,4 +63,16 @@
 | `:core:data:connectedDebugAndroidTest` | PASSED | 27 tests, 0 failures, 0 errors, 0 skipped |
 | `:app:connectedDebugAndroidTest` | PASSED | 48 tests, 0 failures, 0 errors, 0 skipped |
 
-- **Visual QA Artifacts**: `docs/visual-qa/pre-p11/before/` and `docs/visual-qa/pre-p11/after/` (verified launcher icon on `emulator-5554`, seamless white status bar / top app bar, clean Login without Google/Apple or debug showcase buttons, Onboarding pager).
+- **Visual QA Artifacts**: `docs/visual-qa/pre-p11/before/` and `docs/visual-qa/pre-p11/after/`:
+  - `01_launcher_icon.png`: Installed adaptive launcher icon (`#FF623E` coral + centered white PULSE bolt).
+  - `03_onboarding.png` / `04_auth_entry.png` / `18_three_button_nav.png`: Edge-to-edge status bar & 3-button Android navigation bar matching adjacent surfaces with zero seam or translucent scrim.
+  - `08_home_nav_selected.png` & `09_home_nav_unselected.png`: Selected (`HomeFilled`) and unselected (`Home`) navigation icons without roof protrusion.
+  - `10_workout_details.png`: Corrected Workout Details bottom action container (`Start Workout` / `Edit Plan`) with single inset consumption and no excess whitespace.
+  - `11_rep_counter_halos_manual.png` & `12_rep_counter_halos_device.png`: Both manual and device-assisted rep counter cards with clipped top-right coral and bottom-left blue halos.
+  - `13_device_discovery_scanning.png`: Staggered 3-ring radar pulse animation during `SCANNING`.
+  - `14_login_inline_validation.png` & `15_signup_inline_validation.png`: Inline field-specific validation on Login & Sign Up with preserved inputs and no social login or debug showcase buttons.
+  - `16_bottom_sheet_open.png` & `17_bottom_sheet_mid_exit.png`: Overlay bottom sheet open state and mid-exit downward slide + simultaneous scrim fade (`240ms` exit).
+
+## 3. Remaining Limitations
+- `PreP11VisualQaCaptureTest` captures Compose-rendered surfaces for component/layout evidence alongside live `adb` captures (`01_launcher_icon.png`, `04_auth_entry.png`, `05_login.png`, `18_three_button_nav.png`).
+- Real ESP32 BLE GATT characteristic/protocol integration remains deferred to P11/P12 by design (`FakeDeviceDataSource` provides simulated discovery and telemetry).

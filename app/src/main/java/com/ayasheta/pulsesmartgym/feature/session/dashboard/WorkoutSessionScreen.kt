@@ -44,6 +44,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ayasheta.pulsesmartgym.core.designsystem.component.progress.PulseLoadingIndicator
+import com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseAnimatedBottomSheetHost
 import com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseAnimatedBottomSheetOverlay
 import com.ayasheta.pulsesmartgym.core.designsystem.component.workout.PulseRestTimerCard
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
@@ -373,27 +374,24 @@ fun WorkoutSessionScreenContent(
         }
 
         if (uiState is WorkoutSessionUiState.Active) {
-            uiState.manualEntryTarget?.let { target ->
-                ManualSetEntrySheet(
-                    target = target,
-                    preferredWeightUnit = uiState.preferredWeightUnit,
-                    isSaving = uiState.isSavingSet,
-                    errorMessage = uiState.manualEntryError,
-                    onDismiss = onDismissSetEntry,
-                    onConfirm = onConfirmSetEntry,
-                    inWindow = renderInWindow,
-                )
-            }
+            ManualSetEntrySheet(
+                target = uiState.manualEntryTarget,
+                preferredWeightUnit = uiState.preferredWeightUnit,
+                isSaving = uiState.isSavingSet,
+                errorMessage = uiState.manualEntryError,
+                onDismiss = onDismissSetEntry,
+                onConfirm = onConfirmSetEntry,
+                inWindow = renderInWindow,
+            )
 
-            if (uiState.showEndEarlyConfirmation) {
-                EndWorkoutEarlyModal(
-                    recordedSetsCount = uiState.totalRecordedSets,
-                    isEnding = uiState.isEndingEarly,
-                    onKeepWorkingOut = onDismissEndEarly,
-                    onEndWorkout = onConfirmEndEarly,
-                    inWindow = renderInWindow,
-                )
-            }
+            EndWorkoutEarlyModal(
+                visible = uiState.showEndEarlyConfirmation,
+                recordedSetsCount = uiState.totalRecordedSets,
+                isEnding = uiState.isEndingEarly,
+                onKeepWorkingOut = onDismissEndEarly,
+                onEndWorkout = onConfirmEndEarly,
+                inWindow = renderInWindow,
+            )
         }
     }
 }
@@ -554,14 +552,21 @@ fun EndWorkoutEarlyModal(
     onKeepWorkingOut: () -> Unit,
     onEndWorkout: () -> Unit,
     inWindow: Boolean = false,
+    visible: Boolean = true,
 ) {
-    val modalBody: @Composable () -> Unit = {
-        PulseAnimatedBottomSheetOverlay(
-            onDismissRequest = onKeepWorkingOut,
-            scrimAlphaMax = 0.55f,
-            dismissEnabled = !isEnding,
-            modifier = Modifier.testTag("modal_end_early_scrim"),
-        ) { sheetModifier ->
+    PulseAnimatedBottomSheetHost(targetState = if (visible) recordedSetsCount else null) { setsCount, sheetVisible, onExitComplete ->
+        val actionDispatched = androidx.compose.runtime.remember(setsCount, sheetVisible) {
+            androidx.compose.runtime.mutableStateOf(false)
+        }
+        val modalBody: @Composable () -> Unit = {
+            PulseAnimatedBottomSheetOverlay(
+                visible = sheetVisible,
+                onDismissRequest = onKeepWorkingOut,
+                onExitComplete = onExitComplete,
+                scrimAlphaMax = 0.55f,
+                dismissEnabled = !isEnding,
+                modifier = Modifier.testTag("modal_end_early_scrim"),
+            ) { sheetModifier ->
             val navBarBottom = if (inWindow) {
                 0.dp
             } else {
@@ -605,7 +610,7 @@ fun EndWorkoutEarlyModal(
                         .height(52.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(WorkoutPalette.PrimaryCoral)
-                        .clickable(enabled = !isEnding, onClick = onKeepWorkingOut)
+                        .clickable(enabled = !isEnding && sheetVisible, onClick = onKeepWorkingOut)
                         .testTag("button_keep_working_out"),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -625,7 +630,15 @@ fun EndWorkoutEarlyModal(
                         .alpha(if (isEnding) 0.6f else 1f)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color(0xFFEEEAE6))
-                        .clickable(enabled = !isEnding, onClick = onEndWorkout)
+                        .clickable(
+                            enabled = !isEnding && sheetVisible && !actionDispatched.value,
+                            onClick = {
+                                if (!actionDispatched.value) {
+                                    actionDispatched.value = true
+                                    onEndWorkout()
+                                }
+                            },
+                        )
                         .testTag("button_confirm_end_workout"),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -658,5 +671,6 @@ fun EndWorkoutEarlyModal(
         ) {
             modalBody()
         }
+    }
     }
 }

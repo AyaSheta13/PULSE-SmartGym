@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.ayasheta.pulsesmartgym.core.designsystem.component.progress.PulseLoadingIndicator
+import com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseAnimatedBottomSheetHost
 import com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseAnimatedBottomSheetOverlay
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
@@ -47,10 +48,37 @@ import com.ayasheta.pulsesmartgym.feature.workout.components.WorkoutPalette
 
 @Composable
 fun ManualSetEntrySheet(
+    target: ManualSetEntryTarget?,
+    preferredWeightUnit: WeightUnit,
+    isSaving: Boolean,
+    errorMessage: String?,
+    onDismiss: () -> Unit,
+    onConfirm: (fullRepsInput: String, partialRepsInput: String, loadInput: String) -> Unit,
+    inWindow: Boolean = false,
+) {
+    PulseAnimatedBottomSheetHost(targetState = target) { activeTarget, visible, onExitComplete ->
+        ManualSetEntrySheetContent(
+            target = activeTarget,
+            preferredWeightUnit = preferredWeightUnit,
+            isSaving = isSaving,
+            errorMessage = errorMessage,
+            visible = visible,
+            onExitComplete = onExitComplete,
+            onDismiss = onDismiss,
+            onConfirm = onConfirm,
+            inWindow = inWindow,
+        )
+    }
+}
+
+@Composable
+private fun ManualSetEntrySheetContent(
     target: ManualSetEntryTarget,
     preferredWeightUnit: WeightUnit,
     isSaving: Boolean,
     errorMessage: String?,
+    visible: Boolean,
+    onExitComplete: () -> Unit,
     onDismiss: () -> Unit,
     onConfirm: (fullRepsInput: String, partialRepsInput: String, loadInput: String) -> Unit,
     inWindow: Boolean = false,
@@ -76,7 +104,9 @@ fun ManualSetEntrySheet(
     val targetLoadLabel = SessionUiMapper.formatWeightLoad(target.targetLoad, preferredWeightUnit)
     val sheetBody: @Composable () -> Unit = {
         PulseAnimatedBottomSheetOverlay(
+            visible = visible,
             onDismissRequest = onDismiss,
+            onExitComplete = onExitComplete,
             scrimAlphaMax = 0.55f,
             dismissEnabled = !isSaving,
             modifier = Modifier.testTag("modal_manual_set_entry_scrim"),

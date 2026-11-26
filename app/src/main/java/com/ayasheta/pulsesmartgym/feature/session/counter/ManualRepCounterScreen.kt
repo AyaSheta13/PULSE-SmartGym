@@ -339,15 +339,14 @@ fun ManualRepCounterScreenContent(
                         }
                     }
 
-                    if (uiState.showEndEarlyConfirmation) {
-                        EndWorkoutEarlyModal(
-                            recordedSetsCount = uiState.recordedSetsCount,
-                            isEnding = uiState.isEndingEarly,
-                            onKeepWorkingOut = onDismissEndEarly,
-                            onEndWorkout = onConfirmEndEarly,
-                            inWindow = renderInWindow,
-                        )
-                    }
+                    EndWorkoutEarlyModal(
+                        visible = uiState.showEndEarlyConfirmation,
+                        recordedSetsCount = uiState.recordedSetsCount,
+                        isEnding = uiState.isEndingEarly,
+                        onKeepWorkingOut = onDismissEndEarly,
+                        onEndWorkout = onConfirmEndEarly,
+                        inWindow = renderInWindow,
+                    )
                 }
             }
         }

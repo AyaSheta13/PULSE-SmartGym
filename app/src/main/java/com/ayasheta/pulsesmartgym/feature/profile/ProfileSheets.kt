@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.ayasheta.pulsesmartgym.R
+import com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseAnimatedBottomSheetHost
 import com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseAnimatedBottomSheetOverlay
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
@@ -64,27 +65,36 @@ fun ProfileModalHost(
     onConfirmUnits: () -> Unit,
     inWindow: Boolean = false,
 ) {
-    when (activeSheet) {
-        ProfileModalSheet.ACCOUNT_PREFERENCES -> AccountPreferencesSheet(
-            isGuest = isGuest,
-            onDismiss = onDismiss,
-            inWindow = inWindow,
-        )
-        ProfileModalSheet.UNITS_AND_MEASUREMENTS -> UnitsMeasurementsSheet(
-            preferredUnit = preferredUnit,
-            onConfirm = onConfirmUnits,
-            onDismiss = onDismiss,
-            inWindow = inWindow,
-        )
-        ProfileModalSheet.PRIVACY_AND_LOCAL_DATA -> PrivacyLocalDataSheet(
-            onDismiss = onDismiss,
-            inWindow = inWindow,
-        )
-        ProfileModalSheet.WORKOUT_REMINDERS_COMING_SOON -> WorkoutRemindersComingSoonSheet(
-            onDismiss = onDismiss,
-            inWindow = inWindow,
-        )
-        null -> Unit
+    PulseAnimatedBottomSheetHost(targetState = activeSheet) { sheet, visible, onExitComplete ->
+        when (sheet) {
+            ProfileModalSheet.ACCOUNT_PREFERENCES -> AccountPreferencesSheet(
+                isGuest = isGuest,
+                onDismiss = onDismiss,
+                visible = visible,
+                onExitComplete = onExitComplete,
+                inWindow = inWindow,
+            )
+            ProfileModalSheet.UNITS_AND_MEASUREMENTS -> UnitsMeasurementsSheet(
+                preferredUnit = preferredUnit,
+                onConfirm = onConfirmUnits,
+                onDismiss = onDismiss,
+                visible = visible,
+                onExitComplete = onExitComplete,
+                inWindow = inWindow,
+            )
+            ProfileModalSheet.PRIVACY_AND_LOCAL_DATA -> PrivacyLocalDataSheet(
+                onDismiss = onDismiss,
+                visible = visible,
+                onExitComplete = onExitComplete,
+                inWindow = inWindow,
+            )
+            ProfileModalSheet.WORKOUT_REMINDERS_COMING_SOON -> WorkoutRemindersComingSoonSheet(
+                onDismiss = onDismiss,
+                visible = visible,
+                onExitComplete = onExitComplete,
+                inWindow = inWindow,
+            )
+        }
     }
 }
 
@@ -92,13 +102,17 @@ fun ProfileModalHost(
 private fun ProfileModalFrame(
     onDismiss: () -> Unit,
     testTag: String,
+    visible: Boolean = true,
+    onExitComplete: () -> Unit = {},
     minHeight: Dp = 364.dp,
     inWindow: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val frameBody: @Composable () -> Unit = {
         PulseAnimatedBottomSheetOverlay(
+            visible = visible,
             onDismissRequest = onDismiss,
+            onExitComplete = onExitComplete,
             scrimAlphaMax = 0.55f,
             scrimTestTag = "${testTag}_scrim",
             modifier = Modifier.testTag("${testTag}_scrim"),
@@ -176,11 +190,15 @@ private fun SheetPrimaryButton(
 private fun AccountPreferencesSheet(
     isGuest: Boolean,
     onDismiss: () -> Unit,
+    visible: Boolean = true,
+    onExitComplete: () -> Unit = {},
     inWindow: Boolean = false,
 ) {
     ProfileModalFrame(
         onDismiss = onDismiss,
         testTag = "sheet_account_preferences",
+        visible = visible,
+        onExitComplete = onExitComplete,
         minHeight = 404.dp,
         inWindow = inWindow,
     ) {
@@ -218,12 +236,16 @@ private fun UnitsMeasurementsSheet(
     preferredUnit: WeightUnit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
+    visible: Boolean = true,
+    onExitComplete: () -> Unit = {},
     inWindow: Boolean = false,
 ) {
     val isMetricSelected = preferredUnit == WeightUnit.KG
     ProfileModalFrame(
         onDismiss = onDismiss,
         testTag = "sheet_units",
+        visible = visible,
+        onExitComplete = onExitComplete,
         minHeight = 364.dp,
         inWindow = inWindow,
     ) {
@@ -319,11 +341,15 @@ private fun UnitsMeasurementsSheet(
 @Composable
 private fun PrivacyLocalDataSheet(
     onDismiss: () -> Unit,
+    visible: Boolean = true,
+    onExitComplete: () -> Unit = {},
     inWindow: Boolean = false,
 ) {
     ProfileModalFrame(
         onDismiss = onDismiss,
         testTag = "sheet_privacy",
+        visible = visible,
+        onExitComplete = onExitComplete,
         minHeight = 404.dp,
         inWindow = inWindow,
     ) {
@@ -361,11 +387,15 @@ private fun PrivacyLocalDataSheet(
 @Composable
 private fun WorkoutRemindersComingSoonSheet(
     onDismiss: () -> Unit,
+    visible: Boolean = true,
+    onExitComplete: () -> Unit = {},
     inWindow: Boolean = false,
 ) {
     ProfileModalFrame(
         onDismiss = onDismiss,
         testTag = "sheet_reminders_coming_soon",
+        visible = visible,
+        onExitComplete = onExitComplete,
         inWindow = inWindow,
     ) {
         BasicText(

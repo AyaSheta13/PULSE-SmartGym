@@ -144,7 +144,9 @@ class WorkoutSessionLaunchCoordinator(
 fun WorkoutSessionLaunchOverlays(
     coordinator: WorkoutSessionLaunchCoordinator,
 ) {
-    coordinator.conflict?.let { active ->
+    com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseAnimatedBottomSheetHost(
+        targetState = coordinator.conflict,
+    ) { active, visible, onExitComplete ->
         Dialog(
             onDismissRequest = coordinator::dismissConflict,
             properties = DialogProperties(
@@ -153,7 +155,9 @@ fun WorkoutSessionLaunchOverlays(
             ),
         ) {
             com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseAnimatedBottomSheetOverlay(
+                visible = visible,
                 onDismissRequest = coordinator::dismissConflict,
+                onExitComplete = onExitComplete,
                 scrimAlphaMax = 0.55f,
             ) { sheetModifier ->
                 Column(
@@ -225,7 +229,9 @@ fun WorkoutSessionLaunchOverlays(
         }
     }
 
-    coordinator.errorMessage?.let { message ->
+    com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseAnimatedBottomSheetHost(
+        targetState = coordinator.errorMessage,
+    ) { message, visible, onExitComplete ->
         Dialog(
             onDismissRequest = coordinator::dismissError,
             properties = DialogProperties(
@@ -233,19 +239,17 @@ fun WorkoutSessionLaunchOverlays(
                 decorFitsSystemWindows = false,
             ),
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.55f))
-                    .clickable(onClick = coordinator::dismissError),
-                contentAlignment = Alignment.BottomCenter,
-            ) {
+            com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseAnimatedBottomSheetOverlay(
+                visible = visible,
+                onDismissRequest = coordinator::dismissError,
+                onExitComplete = onExitComplete,
+                scrimAlphaMax = 0.55f,
+            ) { sheetModifier ->
                 Column(
-                    modifier = Modifier
+                    modifier = sheetModifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
                         .background(Color.White)
-                        .clickable(enabled = false, onClick = {})
                         .navigationBarsPadding()
                         .padding(horizontal = 16.dp, vertical = 24.dp)
                         .testTag("dialog_start_session_error"),

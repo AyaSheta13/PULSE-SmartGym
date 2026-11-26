@@ -431,15 +431,14 @@ fun WorkoutPlanEditorScreenContent(
         }
     }
 
-    if (uiState.showDeleteConfirmation) {
-        DeletePlanConfirmationModal(
-            planName = uiState.draft.name.ifBlank { "this workout plan" },
-            isDeleting = uiState.isDeleting,
-            onKeepPlan = onDismissDelete,
-            onDeletePlan = onConfirmDelete,
-            inWindow = inWindowModal,
-        )
-    }
+    DeletePlanConfirmationModal(
+        visible = uiState.showDeleteConfirmation,
+        planName = uiState.draft.name.ifBlank { "this workout plan" },
+        isDeleting = uiState.isDeleting,
+        onKeepPlan = onDismissDelete,
+        onDeletePlan = onConfirmDelete,
+        inWindow = inWindowModal,
+    )
 
     if (uiState.showDiscardConfirmation) {
         DiscardChangesDialog(
@@ -1258,14 +1257,21 @@ fun DeletePlanConfirmationModal(
     onKeepPlan: () -> Unit,
     onDeletePlan: () -> Unit,
     inWindow: Boolean = false,
+    visible: Boolean = true,
 ) {
-    val modalBody: @Composable () -> Unit = {
-        com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseAnimatedBottomSheetOverlay(
-            onDismissRequest = onKeepPlan,
-            scrimAlphaMax = 0.55f,
-            dismissEnabled = !isDeleting,
-            modifier = Modifier.testTag("modal_delete_plan_scrim"),
-        ) { sheetModifier ->
+    com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseAnimatedBottomSheetHost(
+        targetState = if (visible) planName else null,
+    ) { activePlanName, sheetVisible, onExitComplete ->
+        var actionDispatched by remember(activePlanName, sheetVisible) { mutableStateOf(false) }
+        val modalBody: @Composable () -> Unit = {
+            com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseAnimatedBottomSheetOverlay(
+                visible = sheetVisible,
+                onDismissRequest = onKeepPlan,
+                onExitComplete = onExitComplete,
+                scrimAlphaMax = 0.55f,
+                dismissEnabled = !isDeleting,
+                modifier = Modifier.testTag("modal_delete_plan_scrim"),
+            ) { sheetModifier ->
             val navBarBottom = if (inWindow || LocalRenderModalsInWindow.current) {
                 0.dp
             } else {
@@ -1305,7 +1311,7 @@ fun DeletePlanConfirmationModal(
                         .height(52.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(WorkoutPalette.PrimaryCoral)
-                        .clickable(enabled = !isDeleting, onClick = onKeepPlan)
+                        .clickable(enabled = !isDeleting && sheetVisible, onClick = onKeepPlan)
                         .testTag("button_keep_plan"),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -1325,7 +1331,15 @@ fun DeletePlanConfirmationModal(
                         .alpha(if (isDeleting) 0.6f else 1f)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color(0xFFEEEAE6))
-                        .clickable(enabled = !isDeleting, onClick = onDeletePlan)
+                        .clickable(
+                            enabled = !isDeleting && sheetVisible && !actionDispatched,
+                            onClick = {
+                                if (!actionDispatched) {
+                                    actionDispatched = true
+                                    onDeletePlan()
+                                }
+                            },
+                        )
                         .testTag("button_confirm_delete_plan"),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -1360,6 +1374,7 @@ fun DeletePlanConfirmationModal(
         ) {
             modalBody()
         }
+    }
     }
 }
 

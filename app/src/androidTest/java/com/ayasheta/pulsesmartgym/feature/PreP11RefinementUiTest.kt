@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -19,12 +20,16 @@ import androidx.compose.ui.test.swipeLeft
 import com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseBottomSheet
 import com.ayasheta.pulsesmartgym.core.designsystem.component.workout.PulseRepCounterGauge
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
+import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
 import com.ayasheta.pulsesmartgym.feature.auth.login.LoginContent
 import com.ayasheta.pulsesmartgym.feature.auth.login.LoginUiState
 import com.ayasheta.pulsesmartgym.feature.auth.signup.SignUpContent
 import com.ayasheta.pulsesmartgym.feature.auth.signup.SignUpUiState
 import com.ayasheta.pulsesmartgym.feature.device.components.BluetoothRadarIndicator
 import com.ayasheta.pulsesmartgym.feature.onboarding.OnboardingContent
+import com.ayasheta.pulsesmartgym.feature.profile.ProfileModalHost
+import com.ayasheta.pulsesmartgym.feature.profile.ProfileModalSheet
+import com.ayasheta.pulsesmartgym.feature.session.dashboard.EndWorkoutEarlyModal
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -211,5 +216,73 @@ class PreP11RefinementUiTest {
         composeRule.waitForIdle()
         composeRule.runOnIdle { isAnimating = false }
         composeRule.waitForIdle()
+    }
+
+    @Test
+    fun overlayBottomSheet_animatesUpwardOnEnter_downwardOnExit_andPreventsDuplicateDestructiveAction() {
+        var activeSheet by mutableStateOf<ProfileModalSheet?>(null)
+        var showEndEarly by mutableStateOf(false)
+        var endWorkoutCalls = 0
+
+        composeRule.mainClock.autoAdvance = false
+        composeRule.setContent {
+            PulseTheme {
+                ProfileModalHost(
+                    activeSheet = activeSheet,
+                    isGuest = false,
+                    preferredUnit = WeightUnit.KG,
+                    onDismiss = { activeSheet = null },
+                    onConfirmUnits = {},
+                    inWindow = true,
+                )
+                EndWorkoutEarlyModal(
+                    visible = showEndEarly,
+                    recordedSetsCount = 2,
+                    isEnding = false,
+                    onKeepWorkingOut = { showEndEarly = false },
+                    onEndWorkout = {
+                        endWorkoutCalls += 1
+                        showEndEarly = false
+                    },
+                    inWindow = true,
+                )
+            }
+        }
+
+        // Open ProfileModalHost overlay sheet and verify intermediate enter positions
+        composeRule.runOnIdle { activeSheet = ProfileModalSheet.UNITS_AND_MEASUREMENTS }
+        composeRule.mainClock.advanceTimeBy(32L)
+        val enterStartTop = composeRule.onNodeWithTag("sheet_units").getBoundsInRoot().top
+        composeRule.mainClock.advanceTimeBy(150L)
+        val enterMidTop = composeRule.onNodeWithTag("sheet_units").getBoundsInRoot().top
+        composeRule.mainClock.advanceTimeBy(200L)
+        val enterSettledTop = composeRule.onNodeWithTag("sheet_units").getBoundsInRoot().top
+        assertTrue(
+            "Expected upward entry motion: start=$enterStartTop, mid=$enterMidTop, settled=$enterSettledTop",
+            enterStartTop > enterMidTop && enterMidTop > enterSettledTop,
+        )
+
+        // Dismiss overlay sheet and verify it remains mounted during 240ms downward exit, then unmounts
+        composeRule.runOnIdle { activeSheet = null }
+        composeRule.mainClock.advanceTimeBy(32L)
+        composeRule.mainClock.advanceTimeBy(120L)
+        val exitMidTop = composeRule.onNodeWithTag("sheet_units").getBoundsInRoot().top
+        assertTrue(
+            "Expected downward exit motion while still mounted: settled=$enterSettledTop, exitMid=$exitMidTop",
+            exitMidTop > enterSettledTop,
+        )
+        composeRule.mainClock.advanceTimeBy(200L)
+        composeRule.onNodeWithTag("sheet_units").assertDoesNotExist()
+
+        // Verify EndWorkoutEarlyModal destructive button cannot execute twice during exit
+        composeRule.runOnIdle { showEndEarly = true }
+        composeRule.mainClock.advanceTimeBy(350L)
+        composeRule.onNodeWithTag("button_confirm_end_workout").performClick()
+        composeRule.mainClock.advanceTimeBy(50L)
+        // Attempt second click while exit animation is running
+        runCatching { composeRule.onNodeWithTag("button_confirm_end_workout").performClick() }
+        composeRule.mainClock.advanceTimeBy(250L)
+        assertEquals(1, endWorkoutCalls)
+        composeRule.onNodeWithTag("modal_end_workout_early").assertDoesNotExist()
     }
 }
