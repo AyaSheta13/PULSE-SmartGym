@@ -17,3 +17,6 @@ data class ExercisePicker(
     val planId: String? = null,
     val editorSessionId: String? = null,
 ) : NavKey
+
+@Serializable
+data class ExerciseDetails(val exerciseId: String) : NavKey

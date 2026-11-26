@@ -67,6 +67,7 @@ fun ExercisePickerScreen(
     viewModel: ExercisePickerViewModel,
     onBackClick: () -> Unit,
     onSelectionConfirmed: () -> Unit,
+    onExerciseDetailsClick: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -84,6 +85,7 @@ fun ExercisePickerScreen(
                 onSelectionConfirmed()
             }
         },
+        onExerciseDetailsClick = onExerciseDetailsClick,
         modifier = modifier,
     )
 }
@@ -98,6 +100,7 @@ fun ExercisePickerScreenContent(
     onConfirmClick: () -> Unit,
     modifier: Modifier = Modifier,
     bottomInsetOverride: Dp? = null,
+    onExerciseDetailsClick: (String) -> Unit = {},
 ) {
     val filterOptions: List<MuscleGroup?> = listOf(
         null,
@@ -331,6 +334,7 @@ fun ExercisePickerScreenContent(
                             ExercisePickerRowCard(
                                 item = item,
                                 onToggle = { onToggleExercise(item.id) },
+                                onInfoClick = { onExerciseDetailsClick(item.id) },
                             )
                         }
                     }
@@ -402,6 +406,7 @@ fun ExercisePickerScreenContent(
 private fun ExercisePickerRowCard(
     item: ExercisePickerItemUiModel,
     onToggle: () -> Unit,
+    onInfoClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -488,6 +493,27 @@ private fun ExercisePickerRowCard(
                     }
                 }
             }
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(CircleShape)
+                .background(WorkoutPalette.PrimaryCoralTint)
+                .clickable(onClick = onInfoClick)
+                .testTag("picker_info_${item.id}"),
+            contentAlignment = Alignment.Center,
+        ) {
+            BasicText(
+                text = "i",
+                style = PulseTheme.typography.label.copy(
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = WorkoutPalette.PrimaryCoralDark,
+                ),
+            )
         }
 
         Spacer(modifier = Modifier.width(8.dp))

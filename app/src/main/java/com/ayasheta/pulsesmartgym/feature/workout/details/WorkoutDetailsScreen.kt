@@ -54,6 +54,7 @@ fun WorkoutDetailsScreen(
     onBackClick: () -> Unit,
     onEditPlanClick: (String) -> Unit,
     onStartWorkoutClick: (String) -> Unit = {},
+    onExerciseDetailsClick: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -63,6 +64,7 @@ fun WorkoutDetailsScreen(
         onToggleExercise = viewModel::toggleExercise,
         onEditPlanClick = onEditPlanClick,
         onStartWorkoutClick = onStartWorkoutClick,
+        onExerciseDetailsClick = onExerciseDetailsClick,
         modifier = modifier,
     )
 }
@@ -74,6 +76,7 @@ fun WorkoutDetailsScreenContent(
     onToggleExercise: (String) -> Unit,
     onEditPlanClick: (String) -> Unit,
     onStartWorkoutClick: (String) -> Unit = {},
+    onExerciseDetailsClick: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
 
@@ -253,6 +256,7 @@ fun WorkoutDetailsScreenContent(
                             exercise = exercise,
                             isExpanded = isExpanded,
                             onClick = { onToggleExercise(exercise.occurrenceId) },
+                            onExerciseDetailsClick = { onExerciseDetailsClick(exercise.exerciseId) },
                         )
                     }
                 }
@@ -336,6 +340,7 @@ private fun WorkoutDetailExerciseCard(
     exercise: WorkoutDetailExerciseUiModel,
     isExpanded: Boolean,
     onClick: () -> Unit,
+    onExerciseDetailsClick: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -491,6 +496,24 @@ private fun WorkoutDetailExerciseCard(
                                 ),
                             )
                         }
+                    }
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(WorkoutPalette.PrimaryCoralTint)
+                            .clickable(onClick = onExerciseDetailsClick)
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                            .testTag("details_exercise_guide_${exercise.exerciseId}"),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        BasicText(
+                            text = "View Exercise Guide ›",
+                            style = PulseTheme.typography.label.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = WorkoutPalette.PrimaryCoralDark,
+                            ),
+                        )
                     }
                 }
             }

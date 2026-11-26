@@ -100,6 +100,8 @@ import com.ayasheta.pulsesmartgym.feature.workout.details.WorkoutDetailsViewMode
 import com.ayasheta.pulsesmartgym.feature.workout.editor.WorkoutPlanEditorScreen
 import com.ayasheta.pulsesmartgym.feature.workout.editor.WorkoutPlanEditorViewModel
 import com.ayasheta.pulsesmartgym.feature.workout.editor.WorkoutPlanSelectionBridge
+import com.ayasheta.pulsesmartgym.feature.workout.exercise.ExerciseDetailsScreen
+import com.ayasheta.pulsesmartgym.feature.workout.exercise.ExerciseDetailsViewModel
 import com.ayasheta.pulsesmartgym.feature.workout.list.MyWorkoutsScreen
 import com.ayasheta.pulsesmartgym.feature.workout.list.MyWorkoutsViewModel
 import com.ayasheta.pulsesmartgym.feature.workout.picker.ExercisePickerScreen
@@ -111,6 +113,7 @@ import com.ayasheta.pulsesmartgym.navigation.route.DeviceAssistedRepCounter
 import com.ayasheta.pulsesmartgym.navigation.route.DeviceDiscovery
 import com.ayasheta.pulsesmartgym.navigation.route.EditProfile
 import com.ayasheta.pulsesmartgym.navigation.route.EditWorkoutPlan
+import com.ayasheta.pulsesmartgym.navigation.route.ExerciseDetails
 import com.ayasheta.pulsesmartgym.navigation.route.ExercisePicker
 import com.ayasheta.pulsesmartgym.navigation.route.ForgotPassword
 import com.ayasheta.pulsesmartgym.navigation.route.HistoryTab
@@ -487,6 +490,9 @@ fun rememberPulseEntryProvider(
             onBackClick = { navigator.navigateBack() },
             onEditPlanClick = { planId -> navigator.navigate(EditWorkoutPlan(planId)) },
             onStartWorkoutClick = { planId -> sessionLaunchCoordinator.startOrResumePlan(planId) },
+            onExerciseDetailsClick = { exerciseId ->
+                navigator.navigate(ExerciseDetails(exerciseId = exerciseId))
+            },
         )
     }
 
@@ -553,6 +559,22 @@ fun rememberPulseEntryProvider(
             viewModel = viewModel,
             onBackClick = { navigator.navigateBack() },
             onSelectionConfirmed = { navigator.navigateBack() },
+            onExerciseDetailsClick = { exerciseId ->
+                navigator.navigate(ExerciseDetails(exerciseId = exerciseId))
+            },
+        )
+    }
+
+    entry<ExerciseDetails> { key ->
+        val viewModel: com.ayasheta.pulsesmartgym.feature.workout.exercise.ExerciseDetailsViewModel = viewModel {
+            com.ayasheta.pulsesmartgym.feature.workout.exercise.ExerciseDetailsViewModel(
+                exerciseId = key.exerciseId,
+                exerciseRepository = dataContainer.exerciseRepository,
+            )
+        }
+        com.ayasheta.pulsesmartgym.feature.workout.exercise.ExerciseDetailsScreen(
+            viewModel = viewModel,
+            onBackClick = { navigator.navigateBack() },
         )
     }
 

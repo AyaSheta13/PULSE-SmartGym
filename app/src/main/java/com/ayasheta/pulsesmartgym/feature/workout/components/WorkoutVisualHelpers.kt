@@ -32,6 +32,7 @@ import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
 import com.ayasheta.pulsesmartgym.core.model.exercise.EquipmentCategory
 import com.ayasheta.pulsesmartgym.core.model.exercise.ExerciseDefinition
 import com.ayasheta.pulsesmartgym.core.model.exercise.MuscleGroup
+import com.ayasheta.pulsesmartgym.core.model.exercise.TrackingCategory
 
 internal object WorkoutPalette {
     val Background = Color(0xFFFCF9F8)
@@ -111,6 +112,12 @@ fun EquipmentCategory.displayLabel(): String = when (this) {
     EquipmentCategory.MACHINE -> "Machine"
     EquipmentCategory.BODYWEIGHT -> "Bodyweight"
     EquipmentCategory.OTHER -> "Other"
+}
+
+fun TrackingCategory.displayLabel(): String = when (this) {
+    TrackingCategory.LINEAR -> "Linear"
+    TrackingCategory.ANGULAR -> "Angular"
+    TrackingCategory.COMPOUND -> "Compound"
 }
 
 fun ExerciseDefinition.trackingSupportBadge(): String =
