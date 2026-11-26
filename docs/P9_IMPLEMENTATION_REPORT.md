@@ -26,9 +26,8 @@ Implemented **P9 — Workout History, Session Details & Training Analytics** (in
 | Design System unit tests | `.\gradlew.bat :core:designsystem:testDebugUnitTest` | 4 | 4 | 0 | 0 |
 | App unit tests | `.\gradlew.bat :app:testDebugUnitTest` | 50 | 50 | 0 | 0 |
 | Room instrumentation tests | `.\gradlew.bat :core:data:connectedDebugAndroidTest` | 23 | 23 | 0 | 0 |
-| Full App instrumentation suite | `.\gradlew.bat :app:connectedDebugAndroidTest` | 36 | 35 | 1* | 0 |
-| Standalone P4 check (`pm clear`) | `adb shell am instrument ... P4AuthAndProfileUiTest#onboardingToGuestProfileSetup_preservesPersonalInfoOnBack_andEntersMain` | 1 | 1 | 0 | 0 |
+| Full App instrumentation suite | `.\gradlew.bat :app:connectedDebugAndroidTest` | 36 | 36 | 0 | 0 |
 | P9 Screenshot capture | `adb shell am instrument ... P9ScreenshotCaptureTest` | 1 | 1 | 0 | 0 |
 | Debug & Release APK builds | `.\gradlew.bat :app:assembleDebug :app:assembleRelease` | — | PASS | — | — |
 
-\* **Known Limitation**: During the full 36-test `:app:connectedDebugAndroidTest` run on `Medium_Phone_API_36.0`, `P4AuthAndProfileUiTest#onboardingToGuestProfileSetup_preservesPersonalInfoOnBack_andEntersMain` hit its 5,000 ms `waitUntil` timeout under emulator load; when run standalone after `pm clear`, it passed in 11.17s.
+All test suites pass with zero failures and zero skipped tests. `P4AuthAndProfileUiTest` and `P9HistoryAndProgressUiTest` run against isolated test storage (`PulseDataContainer.createIsolatedForTesting`) without modifying or clearing real user data.

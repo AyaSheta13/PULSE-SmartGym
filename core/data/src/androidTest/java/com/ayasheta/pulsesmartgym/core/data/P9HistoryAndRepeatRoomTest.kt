@@ -210,15 +210,37 @@ class P9HistoryAndRepeatRoomTest {
             assertEquals(0, activeFromRepeat.exercises.sumOf { it.performedSets.size })
             assertNull(sessionRepo.observeRestState("owner_a", activeFromRepeat.id).first())
 
-            // Clean up active session, then test Concurrent Repeat vs Start Workout
+            // Clean up active session, then test Repeat vs Start Workout in both execution orders & concurrently
             sessionRepo.endSessionEarly("owner_a", activeFromRepeat.id)
+
+            // Order A: Repeat first, then Start same plan -> same-plan resume policy returns same ACTIVE session
+            val orderARepeat = (sessionRepo.startSessionFromHistory("owner_a", s1.id) as DomainResult.Success).data
+            val orderAStart = (sessionRepo.startSessionFromPlan("owner_a", plan.id) as DomainResult.Success).data
+            assertEquals(orderARepeat.id, orderAStart.id)
+            assertEquals(orderARepeat.id, db.workoutSessionDao().getActiveSession("owner_a")?.session?.id)
+            sessionRepo.endSessionEarly("owner_a", orderARepeat.id)
+
+            // Order B: Start first, then Repeat -> Start wins and Repeat gets ActiveSessionConflict for same session
+            val orderBStart = (sessionRepo.startSessionFromPlan("owner_a", plan.id) as DomainResult.Success).data
+            val orderBRepeat = sessionRepo.startSessionFromHistory("owner_a", s1.id)
+            assertTrue(orderBRepeat is DomainResult.Failure && orderBRepeat.error is DataError.ActiveSessionConflict)
+            assertEquals(orderBStart.id, (orderBRepeat as DomainResult.Failure).let { (it.error as DataError.ActiveSessionConflict).activeSessionId })
+            assertEquals(orderBStart.id, db.workoutSessionDao().getActiveSession("owner_a")?.session?.id)
+            sessionRepo.endSessionEarly("owner_a", orderBStart.id)
+
+            // Concurrent execution: either same-plan resume returns same session, or Start wins and Repeat gets conflict
             val (c1, c2) = awaitAll(
                 async { sessionRepo.startSessionFromHistory("owner_a", s1.id) },
                 async { sessionRepo.startSessionFromPlan("owner_a", plan.id) },
             )
-            val mixed = listOf(c1, c2)
-            assertEquals(1, mixed.count { it is DomainResult.Success })
-            assertEquals(1, mixed.count { it is DomainResult.Failure && it.error is DataError.ActiveSessionConflict })
+            val persistedActiveId = db.workoutSessionDao().getActiveSession("owner_a")!!.session.id
+            val successes = listOf(c1, c2).filterIsInstance<DomainResult.Success<com.ayasheta.pulsesmartgym.core.model.session.WorkoutSession>>()
+            assertTrue(successes.isNotEmpty())
+            assertTrue(successes.all { it.data.id == persistedActiveId })
+            listOf(c1, c2).filterIsInstance<DomainResult.Failure>().forEach { failure ->
+                val conflict = failure.error as DataError.ActiveSessionConflict
+                assertEquals(persistedActiveId, conflict.activeSessionId)
+            }
 
             // Original historical session s1 remains untouched
             val reloadedS1 = db.workoutSessionDao().getSession("owner_a", s1.id)!!

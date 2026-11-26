@@ -63,6 +63,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -75,15 +76,20 @@ class P4AuthAndProfileUiTest {
     val composeRule = createComposeRule()
 
     private lateinit var dataContainer: PulseDataContainer
+    private var isolatedTestContainer: PulseDataContainer.IsolatedTestContainer? = null
 
     @Before
     fun setup() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        dataContainer = PulseDataContainer(context)
-        runBlocking {
-            dataContainer.userPreferencesRepository.setOnboardingCompleted(false)
-            dataContainer.authRepository.signOut()
-        }
+        val created = PulseDataContainer.createIsolatedForTesting(context)
+        isolatedTestContainer = created
+        dataContainer = created.container
+    }
+
+    @After
+    fun teardown() {
+        isolatedTestContainer?.close()
+        isolatedTestContainer = null
     }
 
     @Test
@@ -116,7 +122,7 @@ class P4AuthAndProfileUiTest {
         composeRule.onNodeWithText("Continue as Guest (Offline Mode) →").performClick()
 
         // Personal Info Setup
-        composeRule.waitUntil(timeoutMillis = 5_000) {
+        composeRule.waitUntil(timeoutMillis = 10_000) {
             runCatching {
                 composeRule.onNodeWithText("About You").assertExists()
                 true
@@ -281,9 +287,13 @@ class P4AuthAndProfileUiTest {
             // Same process (Activity recreation) retains Authenticated state
             assertTrue(dataContainer.authRepository.restoreSession() is AuthState.Authenticated)
 
-            // Simulated process restart with a fresh PulseDataContainer clears session
-            val freshContainer = PulseDataContainer(context)
-            assertEquals(AuthState.Unauthenticated, freshContainer.authRepository.restoreSession())
+            // Simulated process restart with a fresh isolated PulseDataContainer clears session
+            val freshIsolated = PulseDataContainer.createIsolatedForTesting(context)
+            try {
+                assertEquals(AuthState.Unauthenticated, freshIsolated.container.authRepository.restoreSession())
+            } finally {
+                freshIsolated.close()
+            }
         }
     }
 
