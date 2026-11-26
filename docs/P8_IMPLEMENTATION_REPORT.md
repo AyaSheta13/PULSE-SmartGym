@@ -13,9 +13,10 @@ Implemented **P8 — Manual Rep Counter, Rest Timer & Workout Completion** on br
 
 ### Phase 2 — Manual Rep Counter (`ManualRepCounter`)
 - Replaced placeholder route with `ManualRepCounterViewModel`, `ManualRepCounterUiState`, and `ManualRepCounterScreen` (`app/src/main/java/com/ayasheta/pulsesmartgym/feature/session/counter/`).
-- Reuses `PulseRepCounterGauge` and `PulseWeightSelectorCard` from `:core:designsystem`.
-- Starts at `0` reps, supports `+1` / `-1` manual adjustments clamped `>= 0`, and adjusts actual load respecting `WeightUnit.KG` (`2.5 kg` steps) and `WeightUnit.LBS` (`5.0 lbs` steps).
-- Enforces synchronous duplicate-submission protection (`isSubmittingFlow.value = true` before launching coroutine) and persists via `WorkoutSessionRepository.recordPerformedSet` with `TrackingMode.MANUAL`, `MeasurementOrigin.MANUAL_INPUT`, `repRecords = emptyList()`, and monotonic elapsed set duration (`durationMs`).
+- Reuses `PulseRepCounterGauge` (with `animateFloatAsState`, `tween(durationMillis = 320, easing = FastOutSlowInEasing)` for smooth forward/backward arc animation) and `PulseWeightSelectorCard` from `:core:designsystem`.
+- Starts at `0` reps, supports `+1` / `-1` manual adjustments clamped `>= 0`, and adjusts actual load respecting `WeightUnit.KG` (`2.5 kg`) or `WeightUnit.LBS` (`5.0 lbs`).
+- Enforces synchronous duplicate-submission protection (`isSubmittingFlow.value = true` before launching coroutine) and persists via `WorkoutSessionRepository.recordPerformedSet` with `TrackingMode.MANUAL`, `MeasurementOrigin.MANUAL_INPUT`, `repRecords = emptyList()`, and monotonic elapsed set duration via `SystemClock.elapsedRealtime()` (injected for testability).
+- Checks `DomainResult` from `startRestTimer(...)`: if rest persistence fails, keeps the performed set recorded, emits `hasRestStarted = false` with a recoverable error message, returns to `WorkoutSession`, and keeps the next uncompleted set accessible.
 
 ### Phase 3 — Persisted Rest Timer (`PulseRestTimerCard`)
 - Added `SessionRestState` domain model (`core/model/src/main/kotlin/com/ayasheta/pulsesmartgym/core/model/session/WorkoutSessionModels.kt`) and `SessionProgression` (`SessionProgression.kt`).
@@ -28,7 +29,7 @@ Implemented **P8 — Manual Rep Counter, Rest Timer & Workout Completion** on br
 - Preserved P7 `Edit` correction (`ManualSetEntrySheet`), non-sequential set selection, early termination, hidden bottom bar, and durable terminal redirects.
 
 ## 3. Verification Summary
-- `:core:model:build`, `:core:data:testDebugUnitTest`, `:core:designsystem:testDebugUnitTest`, `:app:testDebugUnitTest`: **PASS** (including `P8ManualRepCounterAndRestUnitTest`).
+- `:core:designsystem:testDebugUnitTest`, `:core:data:testDebugUnitTest`, `:app:testDebugUnitTest`: **PASS** (including `P8ManualRepCounterAndRestUnitTest` rest-persistence failure and monotonic duration coverage).
 - `:app:assembleDebug` and `:app:assembleRelease`: **PASS**.
 - `:core:data:connectedDebugAndroidTest`: **21/21 PASS** (including `Migration2To3Test`).
-- `:app:connectedDebugAndroidTest`: **33/33 PASS** (including `P8ManualRepCounterUiTest` and `P8ScreenshotCaptureTest`).
+- `:app:connectedDebugAndroidTest`: **34/34 PASS** (including `P8ManualRepCounterUiTest` and `P8ScreenshotCaptureTest` gauge animation settlement verification).

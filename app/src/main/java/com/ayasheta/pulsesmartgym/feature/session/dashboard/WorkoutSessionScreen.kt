@@ -61,6 +61,8 @@ fun WorkoutSessionScreen(
     modifier: Modifier = Modifier,
     onStartSet: ((sessionId: String, exerciseId: String, setIndex: Int) -> Unit)? = null,
     onNavigateToNextSet: ((sessionId: String, exerciseId: String, setIndex: Int) -> Unit)? = null,
+    pendingActionError: String? = null,
+    onConsumePendingActionError: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val handledTerminalSessionId = androidx.compose.runtime.remember(viewModel) {
@@ -70,6 +72,13 @@ fun WorkoutSessionScreen(
     LifecycleResumeEffect(viewModel) {
         viewModel.refreshElapsedTime()
         onPauseOrDispose { }
+    }
+
+    LaunchedEffect(pendingActionError) {
+        if (pendingActionError != null) {
+            viewModel.setActionError(pendingActionError)
+            onConsumePendingActionError()
+        }
     }
 
     LaunchedEffect(uiState) {

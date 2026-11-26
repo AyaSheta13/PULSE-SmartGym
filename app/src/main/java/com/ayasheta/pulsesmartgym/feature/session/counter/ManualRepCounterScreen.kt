@@ -58,7 +58,7 @@ import com.ayasheta.pulsesmartgym.feature.workout.editor.LocalRenderModalsInWind
 fun ManualRepCounterScreen(
     viewModel: ManualRepCounterViewModel,
     onBackClick: () -> Unit,
-    onSetFinished: (sessionId: String, hasRestStarted: Boolean, nextTarget: SessionSetTarget?) -> Unit,
+    onSetFinished: (sessionId: String, hasRestStarted: Boolean, nextTarget: SessionSetTarget?, restErrorMessage: String?) -> Unit,
     onSessionCompleted: (String) -> Unit,
     onSessionEndedEarly: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -82,7 +82,7 @@ fun ManualRepCounterScreen(
         viewModel.events.collect { event ->
             when (event) {
                 is ManualRepCounterEvent.SetFinished -> {
-                    onSetFinished(event.sessionId, event.hasRestStarted, event.nextTarget)
+                    onSetFinished(event.sessionId, event.hasRestStarted, event.nextTarget, event.restErrorMessage)
                 }
             }
         }

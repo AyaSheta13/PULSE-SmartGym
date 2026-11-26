@@ -198,6 +198,79 @@ class P8ScreenshotCaptureTest {
         saveBitmap(composeRule.onRoot().captureToImage().asAndroidBitmap(), File(outDir, "03_session_rest_visible.png"))
     }
 
+    @Test
+    fun verifyRepCounterGaugeAnimation_incrementsDecrements_andCapturesSettledScreenshot() {
+        var reps by mutableStateOf(0)
+        var targetReps by mutableStateOf(10)
+
+        composeRule.setContent {
+            val baseDensity = LocalDensity.current
+            CompositionLocalProvider(
+                LocalDensity provides Density(density = 1f, fontScale = baseDensity.fontScale),
+                LocalRenderModalsInWindow provides false,
+            ) {
+                PulseTheme {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 390.dp, height = 884.dp)
+                            .consumeWindowInsets(WindowInsets.systemBars),
+                    ) {
+                        ManualRepCounterScreenContent(
+                            uiState = ManualRepCounterUiState.Active(
+                                sessionId = "s1",
+                                exerciseId = "e1",
+                                setIndex = 2,
+                                totalSetsForExercise = 4,
+                                planName = "Upper Body Power",
+                                exerciseName = "Barbell Bench Press",
+                                targetReps = targetReps,
+                                targetLoad = WeightLoad.fromKilograms(80.0),
+                                targetRestSeconds = 90,
+                                preferredWeightUnit = WeightUnit.KG,
+                                currentReps = reps,
+                                actualLoad = WeightLoad.fromKilograms(80.0),
+                            ),
+                            onBackClick = {},
+                            onIncrementRep = { reps++ },
+                            onDecrementRep = { if (reps > 0) reps-- },
+                            onIncrementWeight = {},
+                            onDecrementWeight = {},
+                            onFinishSet = {},
+                            onRequestEndEarly = {},
+                            onDismissEndEarly = {},
+                            onConfirmEndEarly = {},
+                        )
+                    }
+                }
+            }
+        }
+
+        composeRule.waitForIdle()
+        // Rapid successive increments (0 -> 3 -> 7 -> 9) then decrement (9 -> 8)
+        reps = 3
+        composeRule.mainClock.advanceTimeBy(120L)
+        reps = 7
+        composeRule.mainClock.advanceTimeBy(120L)
+        reps = 9
+        composeRule.mainClock.advanceTimeBy(120L)
+        reps = 8
+        composeRule.mainClock.advanceTimeBy(500L)
+        composeRule.waitForIdle()
+
+        val outDir = File(ApplicationProvider.getApplicationContext<Context>().filesDir, "p8_screenshots").apply {
+            mkdirs()
+        }
+        saveBitmap(
+            composeRule.onRoot().captureToImage().asAndroidBitmap(),
+            File(outDir, "04_manual_rep_counter_animated_settled.png"),
+        )
+
+        // Verify targetReps <= 0 handles safely
+        targetReps = 0
+        composeRule.mainClock.advanceTimeBy(400L)
+        composeRule.waitForIdle()
+    }
+
     private fun saveBitmap(bitmap: Bitmap, file: File) {
         FileOutputStream(file).use { out ->
             bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)

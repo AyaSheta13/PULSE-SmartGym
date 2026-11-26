@@ -124,7 +124,7 @@ class P8ManualRepCounterAndRestUnitTest {
             authRepository = authRepo,
             workoutSessionRepository = sessionRepo,
             userPreferencesRepository = prefsRepo,
-            clockMs = { nowMs },
+            elapsedRealtimeMs = { nowMs },
         )
 
         val initial = withTimeout(5_000) {
@@ -317,6 +317,74 @@ class P8ManualRepCounterAndRestUnitTest {
         collectJob.cancel()
     }
 
+    @Test
+    fun manualRepCounter_whenRestTimerPersistenceFails_keepsSetRecorded_emitsHasRestStartedFalse_andSurfacesError() = runBlocking {
+        var nowMs = 5_000L
+        val sessionRepo = FakeP8SessionRepository(clockMs = { nowMs }).apply {
+            failStartRest = true
+        }
+        val authRepo = FakeP8AuthRepository("user_1")
+        val prefsRepo = FakeP8PreferencesRepository()
+        sessionRepo.putSession(sampleSession())
+
+        val vm = ManualRepCounterViewModel(
+            sessionId = "sess_1",
+            exerciseId = "ex_1",
+            setIndex = 1,
+            authRepository = authRepo,
+            workoutSessionRepository = sessionRepo,
+            userPreferencesRepository = prefsRepo,
+            elapsedRealtimeMs = { nowMs },
+        )
+        withTimeout(5_000) {
+            vm.uiState.first { it is ManualRepCounterUiState.Active }
+        }
+        repeat(6) { vm.incrementRep() }
+
+        val events = mutableListOf<ManualRepCounterEvent>()
+        val collectJob = launch(start = CoroutineStart.UNDISPATCHED) { vm.events.collect { events += it } }
+        nowMs = 17_500L
+        vm.finishSet()
+        withTimeout(5_000) {
+            while (events.isEmpty()) kotlinx.coroutines.delay(10)
+        }
+        collectJob.cancel()
+
+        // Performed set remains recorded and is never re-recorded
+        assertEquals(1, sessionRepo.recordCalls)
+        val savedSession = sessionRepo.getSession("user_1", "sess_1")!!
+        val performed = savedSession.exercises.first().performedSets.single()
+        assertEquals(6, performed.fullReps)
+        assertEquals(12_500L, performed.durationMs)
+
+        // Never claim rest started; emit error + keep next uncompleted set accessible
+        val finished = events.single() as ManualRepCounterEvent.SetFinished
+        assertFalse(finished.hasRestStarted)
+        assertNotNull(finished.restErrorMessage)
+        assertTrue(finished.restErrorMessage!!.contains("rest timer could not be started", ignoreCase = true))
+        assertEquals("ex_1", finished.nextTarget?.exerciseId)
+        assertEquals(2, finished.nextTarget?.setIndex)
+        assertNull(sessionRepo.observeRestState("user_1", "sess_1").first())
+
+        // Dashboard displays recoverable error while next uncompleted set remains accessible
+        val dashboardVm = WorkoutSessionViewModel(
+            sessionId = "sess_1",
+            authRepository = authRepo,
+            workoutSessionRepository = sessionRepo,
+            userPreferencesRepository = prefsRepo,
+            clockMs = { nowMs },
+        )
+        dashboardVm.setActionError(finished.restErrorMessage!!)
+        val dashboardState = withTimeout(5_000) {
+            dashboardVm.uiState.first {
+                it is WorkoutSessionUiState.Active && it.actionError != null
+            } as WorkoutSessionUiState.Active
+        }
+        assertEquals(finished.restErrorMessage, dashboardState.actionError)
+        assertNull(dashboardState.restTimer)
+        assertNull(dashboardState.exercises.first().sets.first { it.setIndex == 2 }.performed)
+    }
+
     private fun sampleSession(): WorkoutSession = WorkoutSession(
         id = "sess_1",
         ownerProfileId = "user_1",
@@ -395,6 +463,7 @@ private class FakeP8SessionRepository(
     private val sessions = MutableStateFlow<Map<String, WorkoutSession>>(emptyMap())
     private val restStates = MutableStateFlow<Map<String, SessionRestState>>(emptyMap())
     var recordCalls = 0
+    var failStartRest = false
 
     fun putSession(session: WorkoutSession) {
         sessions.value = sessions.value + (session.id to session)
@@ -475,6 +544,9 @@ private class FakeP8SessionRepository(
         nextExerciseId: String?,
         nextSetIndex: Int?,
     ): DomainResult<SessionRestState> {
+        if (failStartRest) {
+            return DomainResult.Failure(DataError.StorageError("Simulated rest persistence failure"))
+        }
         val rest = SessionRestState(
             sessionId = sessionId,
             exerciseId = exerciseId,

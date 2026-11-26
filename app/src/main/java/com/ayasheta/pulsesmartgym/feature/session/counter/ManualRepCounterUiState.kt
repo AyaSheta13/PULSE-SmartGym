@@ -45,5 +45,6 @@ sealed interface ManualRepCounterEvent {
         val sessionId: String,
         val hasRestStarted: Boolean,
         val nextTarget: SessionSetTarget?,
+        val restErrorMessage: String? = null,
     ) : ManualRepCounterEvent
 }

@@ -1,5 +1,8 @@
 package com.ayasheta.pulsesmartgym.core.designsystem.component.workout
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -18,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,7 +49,12 @@ fun PulseRepCounterGauge(
     goalPrefixLabel: String = "GOAL",
     adjustLabel: String = "Adjust count",
 ) {
-    val progress = if (targetReps <= 0) 0f else (currentReps.toFloat() / targetReps.toFloat()).coerceIn(0f, 1f)
+    val targetProgress = if (targetReps <= 0) 0f else (currentReps.toFloat() / targetReps.toFloat()).coerceIn(0f, 1f)
+    val animatedProgress by animateFloatAsState(
+        targetValue = targetProgress,
+        animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+        label = "rep_counter_progress",
+    )
     val trackColor = PulseTheme.color.surfaceMuted
     val arcColor = PulseTheme.color.primary
 
@@ -71,11 +80,11 @@ fun PulseRepCounterGauge(
                         useCenter = false,
                         style = stroke,
                     )
-                    if (progress > 0f) {
+                    if (animatedProgress > 0f) {
                         drawArc(
                             color = arcColor,
                             startAngle = -90f,
-                            sweepAngle = 360f * progress,
+                            sweepAngle = 360f * animatedProgress,
                             useCenter = false,
                             style = stroke,
                         )

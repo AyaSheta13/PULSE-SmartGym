@@ -38,7 +38,7 @@ class ManualRepCounterViewModel(
     private val authRepository: AuthRepository,
     private val workoutSessionRepository: WorkoutSessionRepository,
     private val userPreferencesRepository: UserPreferencesRepository,
-    private val clockMs: () -> Long = { System.currentTimeMillis() },
+    private val elapsedRealtimeMs: () -> Long = { android.os.SystemClock.elapsedRealtime() },
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<ManualRepCounterUiState>(ManualRepCounterUiState.Loading)
@@ -57,7 +57,7 @@ class ManualRepCounterViewModel(
     private var activeOwnerId: String? = null
     private var hasInitializedLoad = false
     private var latestSession: WorkoutSession? = null
-    private val setStartedAtEpochMs: Long = clockMs()
+    private val setStartedAtElapsedMs: Long = elapsedRealtimeMs()
 
     init {
         observeState()
@@ -219,7 +219,7 @@ class ManualRepCounterViewModel(
         val ownerId = activeOwnerId ?: return
         if (isSubmittingFlow.value || isEndingEarlyFlow.value) return
 
-        val elapsedMs = (clockMs() - setStartedAtEpochMs).coerceAtLeast(0L)
+        val elapsedMs = (elapsedRealtimeMs() - setStartedAtElapsedMs).coerceAtLeast(0L)
         val request = RecordSetRequest(
             sessionId = active.sessionId,
             sessionExerciseId = active.exerciseId,
@@ -254,23 +254,33 @@ class ManualRepCounterViewModel(
                     }
                     val restSeconds = active.targetRestSeconds ?: 0
                     val shouldStartRest = restSeconds > 0 && nextTarget != null
-                    if (shouldStartRest) {
-                        workoutSessionRepository.startRestTimer(
-                            ownerId = ownerId,
-                            sessionId = active.sessionId,
-                            exerciseId = active.exerciseId,
-                            exerciseName = active.exerciseName,
-                            completedSetIndex = active.setIndex,
-                            durationSeconds = restSeconds,
-                            nextExerciseId = nextTarget?.exerciseId,
-                            nextSetIndex = nextTarget?.setIndex,
-                        )
+                    val (hasRestStarted, restErrorMessage) = if (shouldStartRest) {
+                        when (
+                            val restResult = workoutSessionRepository.startRestTimer(
+                                ownerId = ownerId,
+                                sessionId = active.sessionId,
+                                exerciseId = active.exerciseId,
+                                exerciseName = active.exerciseName,
+                                completedSetIndex = active.setIndex,
+                                durationSeconds = restSeconds,
+                                nextExerciseId = nextTarget?.exerciseId,
+                                nextSetIndex = nextTarget?.setIndex,
+                            )
+                        ) {
+                            is DomainResult.Success -> true to null
+                            is DomainResult.Failure -> {
+                                false to "Set saved, but rest timer could not be started: ${restResult.error.userMessage()}"
+                            }
+                        }
+                    } else {
+                        false to null
                     }
                     _events.tryEmit(
                         ManualRepCounterEvent.SetFinished(
                             sessionId = active.sessionId,
-                            hasRestStarted = shouldStartRest,
+                            hasRestStarted = hasRestStarted,
                             nextTarget = nextTarget,
+                            restErrorMessage = restErrorMessage,
                         ),
                     )
                 }

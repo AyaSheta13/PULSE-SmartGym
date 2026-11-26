@@ -1,8 +1,12 @@
 package com.ayasheta.pulsesmartgym.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelStoreOwner
@@ -418,6 +422,8 @@ fun rememberPulseEntryProvider(
     }
 
     // --- Workout Execution & Summaries (P7) ---
+    var pendingSessionError by rememberSaveable { mutableStateOf<String?>(null) }
+
     entry<WorkoutSession> { key ->
         val viewModel: WorkoutSessionViewModel = viewModel {
             WorkoutSessionViewModel(
@@ -448,6 +454,8 @@ fun rememberPulseEntryProvider(
                     ),
                 )
             },
+            pendingActionError = pendingSessionError,
+            onConsumePendingActionError = { pendingSessionError = null },
             onSessionCompleted = { completedSessionId ->
                 navigator.completeWorkoutFlow(WorkoutComplete(sessionId = completedSessionId))
             },
@@ -503,12 +511,15 @@ fun rememberPulseEntryProvider(
         com.ayasheta.pulsesmartgym.feature.session.counter.ManualRepCounterScreen(
             viewModel = viewModel,
             onBackClick = { navigator.navigateBack() },
-            onSetFinished = { sessionId, hasRestStarted, nextTarget ->
+            onSetFinished = { sessionId, hasRestStarted, nextTarget, restErrorMessage ->
+                if (restErrorMessage != null) {
+                    pendingSessionError = restErrorMessage
+                }
                 navigator.finishSetAndReturnToSession(
                     sessionId = sessionId,
                     nextExerciseId = nextTarget?.exerciseId,
                     nextSetIndex = nextTarget?.setIndex,
-                    openNextSetImmediately = !hasRestStarted && nextTarget != null,
+                    openNextSetImmediately = restErrorMessage == null && !hasRestStarted && nextTarget != null,
                 )
             },
             onSessionCompleted = { completedSessionId ->

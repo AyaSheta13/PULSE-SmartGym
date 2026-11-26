@@ -237,6 +237,10 @@ class WorkoutSessionViewModel(
         }
     }
 
+    fun setActionError(message: String) {
+        actionErrorFlow.value = message
+    }
+
     fun skipRestTimer() {
         val active = _uiState.value as? WorkoutSessionUiState.Active ?: return
         val rest = active.restTimer ?: return
