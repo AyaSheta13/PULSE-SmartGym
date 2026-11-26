@@ -1,11 +1,6 @@
 # P9 Visual QA Report
 
-All 9 P9 screen states were re-captured on `Medium_Phone_API_36.0` (`emulator-5554`) at `390 × 884` via `P9ScreenshotCaptureTest` after applying the P9 Final Acceptance Patch visual fixes and compared against the Figma exports in `docs/visual-qa/p9/figma/`.
-
-## Visual Fixes Applied
-- **Session Details (`SessionDetailsScreen.kt`) & Workout Summary (`WorkoutResultScreen.kt`)**: Replaced fixed-weight chip `Row`s with `FlowRow` and removed `maxLines = 1, Ellipsis` clipping so `16 sets`, `140 repetitions`, `7,472 kg volume`, and `16 completed sets` render completely without truncation and wrap cleanly for large KG/LBS or `(partial)` values.
-- **Training Progress (`TrainingProgressScreen.kt`)**: Updated `ProgressMetricCard` to use `FlowRow` for value + unit and `maxLines = 2` on unit and delta labels so `tonnes (14,872 kg)` and `No prior volume • 75% weekly target` display without ellipsis truncation.
-- **PR Fixture Dates (`P9ScreenshotCaptureTest.kt`)**: Passed each sample session's real October timestamp (`Oct 24`, `Oct 22`, `Oct 19`) instead of `1_000L` (`Jan 1, 1970`).
+All 9 P9 screen states were re-captured on `Medium_Phone_API_36.0` (`emulator-5554`) at `390 × 884` via `P9ScreenshotCaptureTest` after the P9 Final Acceptance Patch and compared against the Figma exports in `docs/visual-qa/p9/figma/`.
 
 ## Pixel-Tolerance Comparison (`±16` RGB tolerance)
 
@@ -20,3 +15,8 @@ All 9 P9 screen states were re-captured on `Medium_Phone_API_36.0` (`emulator-55
 | `07_progress_empty.png` | `390 × 884` | `86.89%` | `docs/visual-qa/p9/comparison/07_progress_empty_compare.png` |
 | `08_workout_complete_summary.png` | `390 × 884` | `86.06%` | `docs/visual-qa/p9/comparison/08_workout_complete_summary_compare.png` |
 | `09_partial_workout_summary.png` | `390 × 884` | `86.22%` | `docs/visual-qa/p9/comparison/09_partial_workout_summary_compare.png` |
+
+## Visual Fixes Verified
+- **Training Progress (`06_progress_populated.png`)**: `14.9 tonnes (14,872 kg)` and `No prior volume • 75% weekly target` now wrap cleanly with zero ellipsis truncation; Key Lift PRs display real October dates (`Oct 22`, `Oct 19`, `Oct 24`) instead of epoch-zero (`Jan 1, 1970`).
+- **Session Details (`04_session_details_complete.png`)**: `16 sets`, `140 repetitions`, and `7,472 kg volume` render in a `FlowRow` on a single row with zero truncation, and wrap cleanly for larger KG/LBS or partial labels.
+- **Workout Summary (`08_workout_complete_summary.png`)**: `42m 15s`, `16 completed sets`, and `7,472 kg volume` render in a `FlowRow` with zero truncation.
