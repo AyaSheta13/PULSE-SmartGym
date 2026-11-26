@@ -272,6 +272,9 @@ fun rememberPulseEntryProvider(
             onSeeAllPlansClick = { navigator.selectTab(PulseTab.WORKOUTS) },
             onPlanClick = { planId -> navigator.openWorkoutDetails(planId = planId) },
             onStartPlanClick = { planId -> sessionLaunchCoordinator.startOrResumePlan(planId) },
+            onResumeSessionClick = { planId, sessionId ->
+                navigator.startWorkoutSession(planId = planId, sessionId = sessionId)
+            },
             onProgressClick = { navigator.selectTab(PulseTab.PROGRESS) },
             onLastSessionClick = { sessionId -> navigator.navigate(SessionDetails(sessionId = sessionId)) },
         )

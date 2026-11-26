@@ -92,7 +92,7 @@ fun SessionProgressCard(
                 )
             }
         }
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         BasicText(
             text = "$recordedSetsCount / $plannedSetsCount Sets Completed",
             style = PulseTheme.typography.contentPrimary.copy(
@@ -102,7 +102,7 @@ fun SessionProgressCard(
             ),
             modifier = Modifier.testTag("session_overall_progress_text"),
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         SessionProgressBar(
             progressFraction = progressFraction,
             heightDp = 6,

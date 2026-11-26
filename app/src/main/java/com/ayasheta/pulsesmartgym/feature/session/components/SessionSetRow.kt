@@ -117,7 +117,7 @@ fun SessionSetRow(
                 .clip(RoundedCornerShape(12.dp))
                 .background(Color(0xFFFFF5F2))
                 .border(BorderStroke(1.dp, Color(0xFFFF8A6E)), RoundedCornerShape(12.dp))
-                .padding(horizontal = 12.dp, vertical = 11.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
                 .testTag("session_set_row_${row.sessionExerciseId}_${row.setIndex}"),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -180,14 +180,14 @@ fun SessionSetRow(
                     .background(Color.White)
                     .border(BorderStroke(1.dp, Color(0xFFEAE3DC)), RoundedCornerShape(8.dp))
                     .clickable(enabled = enabled, onClick = onActionClick)
-                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
                     .testTag("session_set_edit_${row.sessionExerciseId}_${row.setIndex}"),
                 contentAlignment = Alignment.Center,
             ) {
                 BasicText(
                     text = "Edit",
                     style = PulseTheme.typography.contentPrimary.copy(
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = Color(0xFF5A5754),
                     ),

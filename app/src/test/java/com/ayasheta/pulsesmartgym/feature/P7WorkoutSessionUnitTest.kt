@@ -224,6 +224,58 @@ class P7WorkoutSessionUnitTest {
         assertEquals(0, abandonedUi.totalFullReps)
         assertEquals("0 kg volume", abandonedUi.volumeChipText)
     }
+
+    @Test
+    fun terminalSessions_emitDurableTerminalStateWithoutActiveOrPermanentLoading() = runBlocking {
+        val authRepo = FakeSessionAuthRepo(AuthState.Authenticated(user("owner_a")))
+        val sessionRepo = FakeWorkoutSessionRepo()
+        val prefsRepo = FakePrefsRepo()
+
+        for (status in listOf(SessionStatus.COMPLETED, SessionStatus.PARTIALLY_COMPLETED, SessionStatus.ABANDONED)) {
+            val sid = "sess_${status.name}"
+            sessionRepo.putSession(
+                WorkoutSession(
+                    id = sid,
+                    ownerProfileId = "owner_a",
+                    sourcePlanId = "plan_1",
+                    planNameSnapshot = "Push Day",
+                    startedAtEpochMs = 1_000L,
+                    endedAtEpochMs = 5_000L,
+                    status = status,
+                    exercises = emptyList(),
+                ),
+            )
+            // ViewModel loads terminal session BEFORE any UI collector attaches
+            val vm = WorkoutSessionViewModel(
+                sessionId = sid,
+                authRepository = authRepo,
+                workoutSessionRepository = sessionRepo,
+                userPreferencesRepository = prefsRepo,
+            )
+            val state = vm.uiState.awaitValue { it !is WorkoutSessionUiState.Loading }
+            assertTrue("Expected Terminal for $status, got $state", state is WorkoutSessionUiState.Terminal)
+            val terminal = state as WorkoutSessionUiState.Terminal
+            assertEquals(sid, terminal.sessionId)
+            assertEquals(status, terminal.status)
+
+            // Re-reading state after collector stop/restart still yields durable Terminal state
+            val recollected = vm.uiState.first()
+            assertEquals(terminal, recollected)
+        }
+
+        // Null sessionId route must return Missing rather than resolving an unrelated active session
+        sessionRepo.putSession(
+            WorkoutSession("sess_active", "owner_a", "plan_1", "Active", 1_000L, null, SessionStatus.ACTIVE, emptyList()),
+        )
+        val nullRouteVm = WorkoutSessionViewModel(
+            sessionId = null,
+            authRepository = authRepo,
+            workoutSessionRepository = sessionRepo,
+            userPreferencesRepository = prefsRepo,
+        )
+        val nullState = nullRouteVm.uiState.awaitValue { it !is WorkoutSessionUiState.Loading }
+        assertTrue(nullState is WorkoutSessionUiState.Missing)
+    }
 }
 
 private fun user(id: String) = AuthUser(id = id, displayName = "Athlete $id", email = "$id@pulse.local", isGuest = false, isDemoUser = false)

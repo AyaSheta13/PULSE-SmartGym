@@ -62,7 +62,6 @@ class WorkoutSessionViewModel(
     private val isEndingEarlyFlow = MutableStateFlow(false)
 
     private var activeOwnerId: String? = null
-    private var redirectedTerminalSessionId: String? = null
 
     init {
         observeSession()
@@ -85,39 +84,37 @@ class WorkoutSessionViewModel(
                         val ownerId = authState.user.id
                         if (activeOwnerId != null && activeOwnerId != ownerId) {
                             clearTransientDialogs()
-                            redirectedTerminalSessionId = null
                         }
                         activeOwnerId = ownerId
-                        val sessionFlow = if (sessionId != null) {
-                            workoutSessionRepository.observeSession(ownerId, sessionId)
+                        if (sessionId == null) {
+                            flowOf(WorkoutSessionUiState.Missing("Workout session ID is missing."))
                         } else {
-                            workoutSessionRepository.observeActiveSession(ownerId)
-                        }
-                        val tickerFlow: Flow<Long> = flow {
-                            while (true) {
-                                emit(clockMs())
-                                delay(1_000L)
-                            }
-                        }
-                        combine(
-                            sessionFlow,
-                            userPreferencesRepository.observePreferences(),
-                            tickerFlow,
-                        ) { session, prefs, nowMs ->
-                            if (session == null) {
-                                WorkoutSessionUiState.Missing("Workout session not found or no longer active.")
-                            } else if (session.status != SessionStatus.ACTIVE) {
-                                if (redirectedTerminalSessionId != session.id) {
-                                    redirectedTerminalSessionId = session.id
-                                    _events.tryEmit(WorkoutSessionEvent.RedirectToSummary(session.id, session.status))
+                            val sessionFlow = workoutSessionRepository.observeSession(ownerId, sessionId)
+                            val tickerFlow: Flow<Long> = flow {
+                                while (true) {
+                                    emit(clockMs())
+                                    delay(1_000L)
                                 }
-                                WorkoutSessionUiState.Loading
-                            } else {
-                                SessionUiMapper.mapToActiveUiState(
-                                    session = session,
-                                    preferredWeightUnit = prefs.preferredWeightUnit,
-                                    nowEpochMs = nowMs,
-                                )
+                            }
+                            combine(
+                                sessionFlow,
+                                userPreferencesRepository.observePreferences(),
+                                tickerFlow,
+                            ) { session, prefs, nowMs ->
+                                if (session == null) {
+                                    WorkoutSessionUiState.Missing("Workout session not found or no longer active.")
+                                } else if (session.status != SessionStatus.ACTIVE) {
+                                    WorkoutSessionUiState.Terminal(
+                                        sessionId = session.id,
+                                        status = session.status,
+                                    )
+                                } else {
+                                    SessionUiMapper.mapToActiveUiState(
+                                        session = session,
+                                        preferredWeightUnit = prefs.preferredWeightUnit,
+                                        nowEpochMs = nowMs,
+                                    )
+                                }
                             }
                         }
                     }
@@ -326,15 +323,14 @@ class WorkoutSessionViewModel(
         viewModelScope.launch {
             isCompletingFlow.value = true
             actionErrorFlow.value = null
-            redirectedTerminalSessionId = active.sessionId
             when (val result = workoutSessionRepository.completeSession(ownerId, active.sessionId)) {
                 is DomainResult.Success -> {
                     if (activeOwnerId == ownerId) {
+                        _uiState.value = WorkoutSessionUiState.Terminal(result.data.id, result.data.status)
                         _events.emit(WorkoutSessionEvent.Completed(result.data.id))
                     }
                 }
                 is DomainResult.Failure -> {
-                    redirectedTerminalSessionId = null
                     if (activeOwnerId == ownerId) {
                         actionErrorFlow.value = result.error.userMessage()
                     }
@@ -365,16 +361,15 @@ class WorkoutSessionViewModel(
         viewModelScope.launch {
             isEndingEarlyFlow.value = true
             actionErrorFlow.value = null
-            redirectedTerminalSessionId = active.sessionId
             when (val result = workoutSessionRepository.endSessionEarly(ownerId, active.sessionId)) {
                 is DomainResult.Success -> {
                     if (activeOwnerId == ownerId) {
                         showEndEarlyModalFlow.value = false
+                        _uiState.value = WorkoutSessionUiState.Terminal(result.data.id, result.data.status)
                         _events.emit(WorkoutSessionEvent.EndedEarly(result.data.id, result.data.status))
                     }
                 }
                 is DomainResult.Failure -> {
-                    redirectedTerminalSessionId = null
                     if (activeOwnerId == ownerId) {
                         showEndEarlyModalFlow.value = false
                         actionErrorFlow.value = result.error.userMessage()

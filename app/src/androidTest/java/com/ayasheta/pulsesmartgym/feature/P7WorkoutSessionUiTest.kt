@@ -244,6 +244,88 @@ class P7WorkoutSessionUiTest {
             assertNull(saved)
         }
     }
+
+    @Test
+    fun resumeActiveSessionFromHome_whenSourcePlanDeletedAndAcrossSignOutSignIn() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        PulseDataContainer.createIsolatedForTesting(context).use { isolated ->
+            val container = isolated.container
+            val (ownerId, planId, sessionId) = runBlocking {
+                container.userPreferencesRepository.setOnboardingCompleted(true)
+                val acc = (container.authRepository.registerLocalAccount("Alex", "resume@pulse.local", "Password123!") as DomainResult.Success).data
+                container.userProfileRepository.saveCompletedProfile(
+                    ownerId = acc.id,
+                    personalInfo = PersonalInfoDraft("Alex", GenderIdentity.MALE, 26, 178, 76.0),
+                    goals = FitnessGoalsDraft(FitnessGoal.HYPERTROPHY, ExperienceLevel.INTERMEDIATE, 4),
+                )
+                container.exerciseRepository.observeAll().first()
+                val plan = (container.workoutPlanRepository.createPlan(
+                    acc.id,
+                    WorkoutPlanDraft(
+                        name = "Deleted Source Plan",
+                        exercises = listOf(
+                            PlanExerciseDraft("ex_bench_press", 0, plannedSets = (1..2).map { PlannedSetDraft(it, 10, WeightLoad.fromKilograms(80.0), 90) }),
+                        ),
+                    ),
+                ) as DomainResult.Success).data
+                val started = (container.workoutSessionRepository.startSessionFromPlan(acc.id, plan.id) as DomainResult.Success).data
+                container.workoutSessionRepository.recordPerformedSet(
+                    acc.id,
+                    com.ayasheta.pulsesmartgym.core.model.session.RecordSetRequest(
+                        sessionId = started.id,
+                        sessionExerciseId = started.exercises.first().id,
+                        setIndex = 1,
+                        fullReps = 10,
+                        partialReps = 0,
+                        actualLoad = WeightLoad.fromKilograms(80.0),
+                    ),
+                )
+                // Delete original plan while session remains ACTIVE
+                container.workoutPlanRepository.deletePlan(acc.id, plan.id)
+                Triple(acc.id, plan.id, started.id)
+            }
+
+            composeRule.setContent {
+                PulseApp(
+                    isDebugEntryEnabled = true,
+                    initialFlow = AppEntryFlow.MAIN,
+                    initialTab = PulseTab.HOME,
+                    dataContainer = container,
+                )
+            }
+
+            // Home must still offer Resume Workout using planNameSnapshot even though source plan was deleted
+            composeRule.waitUntil(5_000) {
+                runCatching {
+                    composeRule.onNodeWithText("Resume Workout").assertExists()
+                    composeRule.onNodeWithText("Deleted Source Plan").assertExists()
+                    true
+                }.getOrDefault(false)
+            }
+            composeRule.onNodeWithText("Resume Workout").performClick()
+
+            composeRule.waitUntil(5_000) {
+                runCatching {
+                    composeRule.onNodeWithText("1 / 2 Sets Completed").assertExists()
+                    composeRule.onNodeWithText("Set 1 • 10 reps done").assertExists()
+                    true
+                }.getOrDefault(false)
+            }
+            val currentSession = runBlocking { container.workoutSessionRepository.observeActiveSession(ownerId).first()!! }
+            assertEquals(sessionId, currentSession.id)
+            assertNull(currentSession.sourcePlanId)
+
+            // Sign out & sign back in -> Home still offers Resume Workout for original sessionId
+            runBlocking { container.authRepository.signOut() }
+            composeRule.waitUntil(5_000) {
+                runCatching { composeRule.onNodeWithTag("session_signed_out").assertExists(); true }.getOrDefault(false)
+            }
+            runBlocking { container.authRepository.signInWithEmail("resume@pulse.local", "Password123!", false) }
+            composeRule.waitUntil(5_000) {
+                runCatching { composeRule.onNodeWithText("1 / 2 Sets Completed").assertExists(); true }.getOrDefault(false)
+            }
+        }
+    }
 }
 
 @RunWith(AndroidJUnit4::class)

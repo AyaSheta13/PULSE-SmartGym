@@ -99,14 +99,14 @@ fun SessionExerciseCard(
             heightDp = 4,
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(1.dp)
                 .background(Color(0xFFF3F0EC)),
         )
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             exercise.sets.forEach { setRow ->
                 SessionSetRow(

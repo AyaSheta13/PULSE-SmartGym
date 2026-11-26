@@ -48,6 +48,10 @@ sealed interface WorkoutSessionUiState {
     data object SignedOut : WorkoutSessionUiState
     data class Missing(val message: String) : WorkoutSessionUiState
     data class Error(val message: String) : WorkoutSessionUiState
+    data class Terminal(
+        val sessionId: String,
+        val status: com.ayasheta.pulsesmartgym.core.model.session.SessionStatus,
+    ) : WorkoutSessionUiState
 
     data class Active(
         val sessionId: String,

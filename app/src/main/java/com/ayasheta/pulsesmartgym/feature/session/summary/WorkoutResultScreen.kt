@@ -200,7 +200,7 @@ fun WorkoutResultScreenContent(
                                 BasicText(
                                     text = uiState.statusSubtitle,
                                     style = PulseTheme.typography.contentPrimary.copy(
-                                        fontSize = 13.sp,
+                                        fontSize = 12.sp,
                                         color = Color(0xFF7A7570),
                                     ),
                                     modifier = Modifier.testTag("summary_subtitle"),
@@ -324,7 +324,7 @@ fun WorkoutResultScreenContent(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(vertical = 10.dp),
+                                        .padding(vertical = 8.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
@@ -371,6 +371,22 @@ fun WorkoutResultScreenContent(
                                                             fontSize = 11.sp,
                                                             fontWeight = FontWeight.SemiBold,
                                                             color = Color(0xFF008A5B),
+                                                        ),
+                                                    )
+                                                }
+                                            } else if (item.isSkipped) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .background(Color(0xFFF1F7F4))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                                                ) {
+                                                    BasicText(
+                                                        text = "—",
+                                                        style = PulseTheme.typography.contentPrimary.copy(
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            color = Color(0xFF6E7D76),
                                                         ),
                                                     )
                                                 }

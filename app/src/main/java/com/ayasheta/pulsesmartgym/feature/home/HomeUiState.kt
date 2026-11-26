@@ -13,6 +13,15 @@ data class HomePlanItemUiModel(
     val plannedSetsCount: Int,
 )
 
+data class HomeActiveSessionUiModel(
+    val sessionId: String,
+    val sourcePlanId: String?,
+    val planName: String,
+    val exerciseCount: Int,
+    val plannedSetsCount: Int,
+    val completedSetsCount: Int,
+)
+
 data class HomeLastSessionUiModel(
     val sessionId: String,
     val planName: String,
@@ -39,6 +48,7 @@ sealed interface HomeUiState {
         val currentDate: LocalDate,
         val featuredPlan: HomePlanItemUiModel?,
         val activeSession: WorkoutSession?,
+        val activeSessionCard: HomeActiveSessionUiModel? = null,
         val plans: List<HomePlanItemUiModel>,
         val weeklyProgress: WeeklyProgressSummary,
         val lastSession: HomeLastSessionUiModel?,

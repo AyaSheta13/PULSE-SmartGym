@@ -104,6 +104,16 @@ class HomeViewModel(
             currentDate = today,
             featuredPlan = featuredPlan?.toUiModel(),
             activeSession = activeSession,
+            activeSessionCard = activeSession?.let { session ->
+                HomeActiveSessionUiModel(
+                    sessionId = session.id,
+                    sourcePlanId = session.sourcePlanId,
+                    planName = session.planNameSnapshot,
+                    exerciseCount = session.exercises.size,
+                    plannedSetsCount = session.exercises.sumOf { it.plannedSets.size },
+                    completedSetsCount = session.exercises.sumOf { it.performedSets.size },
+                )
+            },
             plans = plans.map { it.toUiModel() },
             weeklyProgress = weeklyProgress,
             lastSession = lastFinished?.toUiModel(zoneId),

@@ -76,6 +76,7 @@ fun HomeScreen(
     onSeeAllPlansClick: () -> Unit,
     onPlanClick: (String) -> Unit,
     onStartPlanClick: (String) -> Unit = {},
+    onResumeSessionClick: (planId: String, sessionId: String) -> Unit = { _, _ -> },
     onProgressClick: () -> Unit,
     onLastSessionClick: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -88,6 +89,7 @@ fun HomeScreen(
         onSeeAllPlansClick = onSeeAllPlansClick,
         onPlanClick = onPlanClick,
         onStartPlanClick = onStartPlanClick,
+        onResumeSessionClick = onResumeSessionClick,
         onProgressClick = onProgressClick,
         onLastSessionClick = onLastSessionClick,
         modifier = modifier,
@@ -102,6 +104,7 @@ fun HomeScreenContent(
     onSeeAllPlansClick: () -> Unit,
     onPlanClick: (String) -> Unit,
     onStartPlanClick: (String) -> Unit = {},
+    onResumeSessionClick: (planId: String, sessionId: String) -> Unit = { _, _ -> },
     onProgressClick: () -> Unit,
     onLastSessionClick: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -176,10 +179,27 @@ fun HomeScreenContent(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     item(key = "featured_hero") {
-                        if (uiState.isPopulatedState && uiState.featuredPlan != null) {
+                        val activeCard = uiState.activeSessionCard
+                        if (activeCard != null) {
+                            PopulatedFeaturedWorkoutCard(
+                                plan = HomePlanItemUiModel(
+                                    id = activeCard.sourcePlanId ?: activeCard.sessionId,
+                                    name = activeCard.planName,
+                                    exerciseCount = activeCard.exerciseCount,
+                                    plannedSetsCount = activeCard.plannedSetsCount,
+                                ),
+                                hasActiveSession = true,
+                                onStartClick = {
+                                    onResumeSessionClick(
+                                        activeCard.sourcePlanId.orEmpty(),
+                                        activeCard.sessionId,
+                                    )
+                                },
+                            )
+                        } else if (uiState.isPopulatedState && uiState.featuredPlan != null) {
                             PopulatedFeaturedWorkoutCard(
                                 plan = uiState.featuredPlan,
-                                hasActiveSession = uiState.activeSession != null,
+                                hasActiveSession = false,
                                 onStartClick = { onStartPlanClick(uiState.featuredPlan.id) },
                             )
                         } else {

@@ -60,22 +60,50 @@ fun WorkoutSessionScreen(
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val handledTerminalSessionId = androidx.compose.runtime.remember(viewModel) {
+        androidx.compose.runtime.mutableStateOf<String?>(null)
+    }
 
     LifecycleResumeEffect(viewModel) {
         viewModel.refreshElapsedTime()
         onPauseOrDispose { }
     }
 
+    LaunchedEffect(uiState) {
+        val terminal = uiState as? WorkoutSessionUiState.Terminal ?: return@LaunchedEffect
+        if (handledTerminalSessionId.value != terminal.sessionId) {
+            handledTerminalSessionId.value = terminal.sessionId
+            if (terminal.status == SessionStatus.COMPLETED) {
+                onSessionCompleted(terminal.sessionId)
+            } else {
+                onSessionEndedEarly(terminal.sessionId)
+            }
+        }
+    }
+
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
             when (event) {
-                is WorkoutSessionEvent.Completed -> onSessionCompleted(event.sessionId)
-                is WorkoutSessionEvent.EndedEarly -> onSessionEndedEarly(event.sessionId)
-                is WorkoutSessionEvent.RedirectToSummary -> {
-                    if (event.status == SessionStatus.COMPLETED) {
+                is WorkoutSessionEvent.Completed -> {
+                    if (handledTerminalSessionId.value != event.sessionId) {
+                        handledTerminalSessionId.value = event.sessionId
                         onSessionCompleted(event.sessionId)
-                    } else {
+                    }
+                }
+                is WorkoutSessionEvent.EndedEarly -> {
+                    if (handledTerminalSessionId.value != event.sessionId) {
+                        handledTerminalSessionId.value = event.sessionId
                         onSessionEndedEarly(event.sessionId)
+                    }
+                }
+                is WorkoutSessionEvent.RedirectToSummary -> {
+                    if (handledTerminalSessionId.value != event.sessionId) {
+                        handledTerminalSessionId.value = event.sessionId
+                        if (event.status == SessionStatus.COMPLETED) {
+                            onSessionCompleted(event.sessionId)
+                        } else {
+                            onSessionEndedEarly(event.sessionId)
+                        }
                     }
                 }
             }
@@ -124,7 +152,7 @@ fun WorkoutSessionScreenContent(
             )
 
             when (uiState) {
-                WorkoutSessionUiState.Loading -> {
+                WorkoutSessionUiState.Loading, is WorkoutSessionUiState.Terminal -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center,
