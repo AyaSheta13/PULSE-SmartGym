@@ -691,10 +691,10 @@ fun rememberPulseEntryProvider(
                 navigator.exitWorkoutSummaryToHome()
             },
         ) { scopedContainer ->
-            val viewModel: com.ayasheta.pulsesmartgym.feature.session.ready.ReadyStartSetViewModel = viewModel(
-                key = "rss_${key.environment.name}_${key.sessionId}_${key.exerciseId}_${key.setIndex}",
+            val viewModel: com.ayasheta.pulsesmartgym.feature.session.execution.SetExecutionViewModel = viewModel(
+                key = "set_exec_${key.environment.name}_${key.sessionId}_${key.exerciseId}_${key.setIndex}",
             ) {
-                com.ayasheta.pulsesmartgym.feature.session.ready.ReadyStartSetViewModel(
+                com.ayasheta.pulsesmartgym.feature.session.execution.SetExecutionViewModel(
                     sessionId = key.sessionId,
                     exerciseId = key.exerciseId,
                     setIndex = key.setIndex,
@@ -702,30 +702,25 @@ fun rememberPulseEntryProvider(
                     workoutSessionRepository = scopedContainer.workoutSessionRepository,
                     userPreferencesRepository = scopedContainer.userPreferencesRepository,
                     deviceRepository = dataContainer.deviceRepository,
+                    fakeDeviceDataSource = dataContainer.fakeDeviceDataSource,
+                    setDraftStore = setDraftStore,
+                    savedStateHandle = createSavedStateHandle(),
                     executionEnvironment = key.environment,
                 )
             }
-            com.ayasheta.pulsesmartgym.feature.session.ready.ReadyStartSetScreen(
+            com.ayasheta.pulsesmartgym.feature.session.execution.SetExecutionScreen(
                 viewModel = viewModel,
                 onBackClick = { navigator.navigateBack() },
-                onStartSetClick = { sessionId, exerciseId, setIndex ->
-                    navigator.navigate(
-                        ManualRepCounter(
-                            sessionId = sessionId,
-                            exerciseId = exerciseId,
-                            setIndex = setIndex,
-                            environment = key.environment,
-                        ),
-                    )
-                },
-                onStartDeviceAssistedClick = { sessionId, exerciseId, setIndex ->
-                    navigator.navigate(
-                        DeviceAssistedRepCounter(
-                            sessionId = sessionId,
-                            exerciseId = exerciseId,
-                            setIndex = setIndex,
-                            environment = key.environment,
-                        ),
+                onSetFinished = { sessionId, _, nextTarget, restErrorMessage ->
+                    if (restErrorMessage != null) {
+                        pendingSessionError = restErrorMessage
+                    }
+                    navigator.finishSetAndReturnToSession(
+                        sessionId = sessionId,
+                        nextExerciseId = nextTarget?.exerciseId,
+                        nextSetIndex = nextTarget?.setIndex,
+                        openNextSetImmediately = false,
+                        environment = key.environment,
                     )
                 },
                 onSessionCompleted = { completedSessionId ->

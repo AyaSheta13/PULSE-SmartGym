@@ -375,7 +375,7 @@ fun WorkoutSessionScreenContent(
                                 preferredWeightUnit = uiState.preferredWeightUnit,
                                 actionsEnabled = !uiState.isSavingSet && !uiState.isCompletingSession && !uiState.isEndingEarly,
                                 onSetActionClick = onSetActionClick,
-                                onHowToPerformClick = onHowToPerformClick,
+                                onExerciseDetailsClick = onHowToPerformClick,
                             )
                         }
                     }

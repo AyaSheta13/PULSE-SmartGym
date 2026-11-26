@@ -12,9 +12,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
@@ -41,7 +41,7 @@ fun SessionExerciseCard(
     actionsEnabled: Boolean,
     onSetActionClick: (sessionExerciseId: String, setIndex: Int) -> Unit,
     modifier: Modifier = Modifier,
-    onHowToPerformClick: (sessionExerciseId: String) -> Unit = {},
+    onExerciseDetailsClick: (sessionExerciseId: String) -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -53,8 +53,14 @@ fun SessionExerciseCard(
             .testTag("session_exercise_card_${exercise.sessionExerciseId}"),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .clickable { onExerciseDetailsClick(exercise.sessionExerciseId) }
+                .padding(vertical = 4.dp)
+                .testTag("session_exercise_title_${exercise.sessionExerciseId}"),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BasicText(
@@ -95,69 +101,22 @@ fun SessionExerciseCard(
                     )
                 }
             }
+            BasicText(
+                text = "›",
+                style = PulseTheme.typography.cardTitle.copy(
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = WorkoutPalette.TextMuted,
+                ),
+                modifier = Modifier.testTag("session_exercise_chevron_${exercise.sessionExerciseId}"),
+            )
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         SessionProgressBar(
             progressFraction = exercise.progressFraction,
             heightDp = 4,
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            BasicText(
-                text = if (exercise.isCompleted) {
-                    "${exercise.completedSetsCount} of ${exercise.totalPlannedSetsCount} completed ✓"
-                } else {
-                    "${exercise.completedSetsCount} of ${exercise.totalPlannedSetsCount} sets completed"
-                },
-                style = PulseTheme.typography.contentPrimary.copy(
-                    fontSize = 12.sp,
-                    fontWeight = if (exercise.isCompleted) FontWeight.SemiBold else FontWeight.Medium,
-                    color = if (exercise.isCompleted) Color(0xFF1F7A4D) else WorkoutPalette.TextMuted,
-                ),
-                modifier = Modifier.weight(1f),
-            )
-            Row(
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(WorkoutPalette.PrimaryCoralTint)
-                    .border(BorderStroke(1.dp, Color(0xFFFFD1C7)), CircleShape)
-                    .clickable { onHowToPerformClick(exercise.sessionExerciseId) }
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                    .testTag("session_how_to_perform_${exercise.sessionExerciseId}"),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(13.dp)
-                        .clip(CircleShape)
-                        .background(WorkoutPalette.PrimaryCoral),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    BasicText(
-                        text = "i",
-                        style = PulseTheme.typography.label.copy(
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                        ),
-                    )
-                }
-                BasicText(
-                    text = "How to perform ›",
-                    style = PulseTheme.typography.label.copy(
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = WorkoutPalette.PrimaryCoral,
-                    ),
-                )
-            }
-        }
         Spacer(modifier = Modifier.height(10.dp))
         Box(
             modifier = Modifier

@@ -12,8 +12,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -26,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.ayasheta.pulsesmartgym.core.data.local.database.ExerciseCatalogSeed
+import com.ayasheta.pulsesmartgym.core.designsystem.component.chips.PulseBluetoothChipStatus
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
 import com.ayasheta.pulsesmartgym.core.model.common.WeightLoad
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
@@ -39,6 +42,9 @@ import com.ayasheta.pulsesmartgym.feature.session.dashboard.SessionRestTimerUiMo
 import com.ayasheta.pulsesmartgym.feature.session.dashboard.SessionSetRowUiModel
 import com.ayasheta.pulsesmartgym.feature.session.dashboard.WorkoutSessionScreenContent
 import com.ayasheta.pulsesmartgym.feature.session.dashboard.WorkoutSessionUiState
+import com.ayasheta.pulsesmartgym.feature.session.execution.SetExecutionPhase
+import com.ayasheta.pulsesmartgym.feature.session.execution.SetExecutionScreenContent
+import com.ayasheta.pulsesmartgym.feature.session.execution.SetExecutionUiState
 import com.ayasheta.pulsesmartgym.feature.workout.components.displayLabel
 import com.ayasheta.pulsesmartgym.feature.workout.components.resolveExerciseThumbnailRes
 import com.ayasheta.pulsesmartgym.feature.workout.exercise.ExerciseDetailsScreenContent
@@ -209,14 +215,20 @@ class PreP11SessionGuideAndOnboardingUiTest {
             }
         }
 
-        // Scroll to verify long exercise name & How to perform visibility + capture session screenshot
-        composeRule.onNodeWithTag("session_how_to_perform_se_bench").assertIsDisplayed()
-        composeRule.onNodeWithTag("session_how_to_perform_se_incline").assertIsDisplayed()
-        composeRule.onNodeWithTag("session_exercise_complete_se_incline").assertIsDisplayed()
-        saveScreenshot("android_workout_session_how_to_perform.png")
+        // Verify no "How to perform" pill exists and title rows with chevrons are displayed
+        assertEquals(
+            0,
+            composeRule.onAllNodesWithText("How to perform", substring = true).fetchSemanticsNodes().size,
+        )
+        composeRule.onNodeWithTag("session_exercise_title_se_bench").assertIsDisplayed()
+        composeRule.onNodeWithTag("session_exercise_chevron_se_bench", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("session_exercise_title_se_incline").assertIsDisplayed()
+        composeRule.onNodeWithTag("session_exercise_complete_se_incline", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("session_exercise_chevron_se_incline", useUnmergedTree = true).assertIsDisplayed()
+        saveScreenshot("android_session_title_chevron.png")
 
-        // Open Incline DB Press guide (must NOT open Barbell Bench Press)
-        composeRule.onNodeWithTag("session_how_to_perform_se_incline").performClick()
+        // Tap DB Incline Press title row -> opens DB Incline Press (must NOT open Barbell Bench Press)
+        composeRule.onNodeWithTag("session_exercise_title_se_incline").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText(inclineDb.name).assertIsDisplayed()
         composeRule.onNodeWithTag("exercise_details_instructions").assertIsDisplayed()
@@ -231,6 +243,99 @@ class PreP11SessionGuideAndOnboardingUiTest {
         composeRule.onNodeWithText("2 / 6 Sets Completed").assertIsDisplayed()
         assertFalse(endEarlyRequested)
         saveScreenshot("android_workout_session_returned.png")
+    }
+
+    @Test
+    fun setExecution_readyToInProgress_keepsIdenticalCoordinates_andTransitionsButton() {
+        var phase by mutableStateOf(SetExecutionPhase.Ready)
+        var fullReps by mutableIntStateOf(0)
+        var isDeviceAssisted by mutableStateOf(false)
+        var isFallbackManual by mutableStateOf(false)
+
+        composeRule.setContent {
+            PulseTheme {
+                SetExecutionScreenContent(
+                    uiState = SetExecutionUiState.Active(
+                        phase = phase,
+                        sessionId = "sess_1",
+                        ownerId = "owner_1",
+                        planName = "Upper Body Power",
+                        exerciseId = "se_1",
+                        exerciseName = "Barbell Bench Press",
+                        setIndex = 1,
+                        totalSetsForExercise = 4,
+                        targetReps = 10,
+                        targetLoad = WeightLoad(80_000L),
+                        targetRestSeconds = 90,
+                        preferredWeightUnit = WeightUnit.KG,
+                        recordedSetsCount = 0,
+                        actualLoad = WeightLoad(82_500L),
+                        fullReps = fullReps,
+                        partialReps = 0,
+                        isDeviceAssisted = isDeviceAssisted && !isFallbackManual,
+                        canStartDeviceAssisted = false,
+                        isFallbackManual = isFallbackManual,
+                        modeLabel = if (isDeviceAssisted && !isFallbackManual) "Device Connected" else "Manual",
+                        bluetoothChipStatus = if (isDeviceAssisted && !isFallbackManual) {
+                            PulseBluetoothChipStatus.CONNECTED
+                        } else {
+                            PulseBluetoothChipStatus.DISCONNECTED
+                        },
+                        trackingCompatibilityNotice = null,
+                        startedElapsedRealtimeMs = if (phase == SetExecutionPhase.Ready) null else 1000L,
+                        errorMessage = null,
+                        isReconnecting = false,
+                        reconnectError = null,
+                        showEndEarlyConfirmation = false,
+                        isEndingEarly = false,
+                        showSimulateButtons = isDeviceAssisted && !isFallbackManual && phase == SetExecutionPhase.InProgress,
+                    ),
+                    onBackClick = {},
+                    onStartSetClick = { phase = SetExecutionPhase.InProgress },
+                    onFinishSetClick = {},
+                    onIncrementRep = { fullReps++ },
+                    onDecrementRep = { if (fullReps > 0) fullReps-- },
+                    onIncrementWeight = {},
+                    onDecrementWeight = {},
+                    onContinueManually = {
+                        isFallbackManual = true
+                        phase = SetExecutionPhase.InProgress
+                    },
+                )
+            }
+        }
+
+        // Ready state geometry
+        composeRule.onNodeWithText("Start Set").assertIsDisplayed()
+        val readyCounterBounds = composeRule.onNodeWithTag("set_execution_counter_card").getUnclippedBoundsInRoot()
+        val readyWeightBounds = composeRule.onNodeWithTag("set_execution_weight_card").getUnclippedBoundsInRoot()
+        val readyBtnBounds = composeRule.onNodeWithTag("button_set_execution_primary").getUnclippedBoundsInRoot()
+        saveScreenshot("android_set_execution_ready.png")
+
+        // Tap Start Set -> seamless transition to InProgress at identical coordinates
+        composeRule.onNodeWithTag("button_set_execution_primary").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Finish Set").assertIsDisplayed()
+        val inProgCounterBounds = composeRule.onNodeWithTag("set_execution_counter_card").getUnclippedBoundsInRoot()
+        val inProgWeightBounds = composeRule.onNodeWithTag("set_execution_weight_card").getUnclippedBoundsInRoot()
+        val inProgBtnBounds = composeRule.onNodeWithTag("button_set_execution_primary").getUnclippedBoundsInRoot()
+
+        assertEquals(readyCounterBounds, inProgCounterBounds)
+        assertEquals(readyWeightBounds, inProgWeightBounds)
+        assertEquals(readyBtnBounds, inProgBtnBounds)
+        saveScreenshot("android_set_execution_in_progress.png")
+
+        // Device-assisted InProgress screenshot
+        isDeviceAssisted = true
+        fullReps = 6
+        composeRule.waitForIdle()
+        saveScreenshot("android_set_execution_device.png")
+
+        // Manual fallback preserves progress screenshot
+        isFallbackManual = true
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Adjust count").assertIsDisplayed()
+        saveScreenshot("android_set_execution_manual_fallback.png")
     }
 
     @Test
