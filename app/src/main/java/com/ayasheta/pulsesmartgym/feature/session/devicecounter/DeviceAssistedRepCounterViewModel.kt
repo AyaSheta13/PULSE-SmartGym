@@ -344,23 +344,31 @@ class DeviceAssistedRepCounterViewModel(
                     isAcceptingEvents = !isDisposed && !isEndingEarlyFlow.value && !isFallbackActiveFlow.value,
                     expectedEnvironment = executionEnvironment,
                 )
-                if (normalized is NormalizedRepResult.Accepted) {
-                    recordAcceptedEventId(event.rep.eventId)
-                    val updatedLedger = ledgerFlow.value + normalized.measurement
-                    ledgerFlow.value = updatedLedger
-                    fullRepsFlow.value = updatedLedger.count { it.classification == RepClassification.FULL }
-                    partialRepsFlow.value = updatedLedger.count { it.classification == RepClassification.PARTIAL }
-                    persistDraft()
+                when (normalized) {
+                    is NormalizedRepResult.Accepted -> {
+                        recordAcceptedEventId(event.rep.eventId)
+                        val updatedLedger = ledgerFlow.value + normalized.measurement
+                        ledgerFlow.value = updatedLedger
+                        fullRepsFlow.value = updatedLedger.count { it.classification == RepClassification.FULL }
+                        partialRepsFlow.value = updatedLedger.count { it.classification == RepClassification.PARTIAL }
+                        persistDraft()
+                    }
+                    is NormalizedRepResult.Rejected -> {
+                        if (normalized.reason.startsWith("Exceeded maximum accepted events") ||
+                            normalized.reason.startsWith("Retained event-ID capacity")
+                        ) {
+                            errorMessageFlow.value =
+                                "Maximum of ${DeviceEventNormalizer.MAX_ACCEPTED_EVENTS_PER_SET} tracked repetitions reached for this set."
+                        }
+                    }
                 }
             }
         }
     }
 
     private fun recordAcceptedEventId(eventId: String) {
-        seenEventIds.add(eventId)
-        while (seenEventIds.size > DeviceEventNormalizer.MAX_RETAINED_EVENT_IDS) {
-            val first = seenEventIds.firstOrNull() ?: break
-            seenEventIds.remove(first)
+        if (seenEventIds.size < DeviceEventNormalizer.MAX_RETAINED_EVENT_IDS) {
+            seenEventIds.add(eventId)
         }
     }
 
@@ -408,7 +416,11 @@ class DeviceAssistedRepCounterViewModel(
 
     fun incrementManualFullRep() {
         if (isSubmittingFlow.value || completionStateFlow.value != null || isFallbackActiveFlow.value) return
-        if (ledgerFlow.value.size >= DeviceEventNormalizer.MAX_ACCEPTED_EVENTS_PER_SET) return
+        if (ledgerFlow.value.size >= DeviceEventNormalizer.MAX_ACCEPTED_EVENTS_PER_SET) {
+            errorMessageFlow.value =
+                "Maximum of ${DeviceEventNormalizer.MAX_ACCEPTED_EVENTS_PER_SET} tracked repetitions reached for this set."
+            return
+        }
         errorMessageFlow.value = null
         val updatedLedger = ledgerFlow.value + RepMeasurement(
             repIndex = ledgerFlow.value.size + 1,
@@ -423,7 +435,11 @@ class DeviceAssistedRepCounterViewModel(
 
     fun incrementManualPartialRep() {
         if (isSubmittingFlow.value || completionStateFlow.value != null || isFallbackActiveFlow.value) return
-        if (ledgerFlow.value.size >= DeviceEventNormalizer.MAX_ACCEPTED_EVENTS_PER_SET) return
+        if (ledgerFlow.value.size >= DeviceEventNormalizer.MAX_ACCEPTED_EVENTS_PER_SET) {
+            errorMessageFlow.value =
+                "Maximum of ${DeviceEventNormalizer.MAX_ACCEPTED_EVENTS_PER_SET} tracked repetitions reached for this set."
+            return
+        }
         errorMessageFlow.value = null
         val updatedLedger = ledgerFlow.value + RepMeasurement(
             repIndex = ledgerFlow.value.size + 1,

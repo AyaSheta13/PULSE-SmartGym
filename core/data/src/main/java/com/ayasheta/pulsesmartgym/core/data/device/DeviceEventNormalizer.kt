@@ -33,6 +33,7 @@ object DeviceEventNormalizer {
         isAcceptingEvents: Boolean = true,
         expectedEnvironment: ExecutionEnvironmentKind = ExecutionEnvironmentKind.DEMO,
         maxAcceptedEvents: Int = MAX_ACCEPTED_EVENTS_PER_SET,
+        maxRetainedEventIds: Int = MAX_RETAINED_EVENT_IDS,
     ): NormalizedRepResult {
         if (!isOwnerAuthenticated) {
             return NormalizedRepResult.Rejected("Owner is not authenticated")
@@ -54,6 +55,9 @@ object DeviceEventNormalizer {
         }
         if (nextRepIndex > maxAcceptedEvents) {
             return NormalizedRepResult.Rejected("Exceeded maximum accepted events ($maxAcceptedEvents) for set")
+        }
+        if (seenEventIds.size >= maxRetainedEventIds) {
+            return NormalizedRepResult.Rejected("Retained event-ID capacity ($maxRetainedEventIds) reached for set")
         }
         if (event.providerType != expectedProviderType) {
             return NormalizedRepResult.Rejected("Provider mismatch")

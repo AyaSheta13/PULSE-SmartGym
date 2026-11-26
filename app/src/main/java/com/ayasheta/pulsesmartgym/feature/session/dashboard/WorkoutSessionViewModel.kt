@@ -412,6 +412,8 @@ class WorkoutSessionViewModel(
             existingFullReps = performed?.fullReps,
             existingPartialReps = performed?.partialReps,
             existingLoad = performed?.actualLoad,
+            hasDetailedMeasurements = performed?.hasDetailedMeasurements == true,
+            existingTrackingMode = performed?.trackingMode,
         )
     }
 
@@ -463,6 +465,14 @@ class WorkoutSessionViewModel(
             }
         }
 
+        val countsUnchanged = target.isCorrection &&
+            fullReps == target.existingFullReps &&
+            partialReps == target.existingPartialReps
+        val correctionPolicy = if (countsUnchanged) {
+            com.ayasheta.pulsesmartgym.core.model.session.RepCorrectionPolicy.PRESERVE_IF_COUNTS_MATCH
+        } else {
+            com.ayasheta.pulsesmartgym.core.model.session.RepCorrectionPolicy.INVALIDATE_LEDGER
+        }
         val request = RecordSetRequest(
             sessionId = active.sessionId,
             sessionExerciseId = target.sessionExerciseId,
@@ -470,10 +480,19 @@ class WorkoutSessionViewModel(
             fullReps = fullReps,
             partialReps = partialReps,
             actualLoad = parsedLoad,
-            trackingMode = TrackingMode.MANUAL,
-            origin = MeasurementOrigin.MANUAL_INPUT,
+            trackingMode = if (countsUnchanged) {
+                target.existingTrackingMode ?: TrackingMode.MANUAL
+            } else {
+                TrackingMode.MANUAL
+            },
+            origin = if (target.isCorrection && !countsUnchanged) {
+                MeasurementOrigin.MANUAL_CORRECTION
+            } else {
+                MeasurementOrigin.MANUAL_INPUT
+            },
             durationMs = null,
             repRecords = emptyList(),
+            repCorrectionPolicy = correctionPolicy,
         )
 
         viewModelScope.launch {

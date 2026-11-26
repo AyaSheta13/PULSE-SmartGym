@@ -88,9 +88,13 @@ object SetDraftSavedStateCodec {
         s.replace("%2C", ",").replace("%3B", ";").replace("%7C", "|").replace("%25", "%")
 
     fun encode(draft: SetExecutionDraft): String {
-        val boundedReps = draft.repRecords.takeLast(MAX_SAVED_LEDGER_RECORDS)
-        val boundedEvents = draft.acceptedEventIds.toList().takeLast(MAX_SAVED_EVENT_IDS)
-        val repsEncoded = boundedReps.joinToString(";") { r ->
+        require(draft.repRecords.size <= MAX_SAVED_LEDGER_RECORDS) {
+            "Repetition ledger size (${draft.repRecords.size}) exceeds limit ($MAX_SAVED_LEDGER_RECORDS)"
+        }
+        require(draft.acceptedEventIds.size <= MAX_SAVED_EVENT_IDS) {
+            "Accepted event ID count (${draft.acceptedEventIds.size}) exceeds limit ($MAX_SAVED_EVENT_IDS)"
+        }
+        val repsEncoded = draft.repRecords.joinToString(";") { r ->
             listOf(
                 r.repIndex.toString(),
                 r.classification.name,
@@ -102,7 +106,7 @@ object SetDraftSavedStateCodec {
                 r.origin.name,
             ).joinToString(",")
         }
-        val eventsEncoded = boundedEvents.joinToString(";") { enc(it) }
+        val eventsEncoded = draft.acceptedEventIds.joinToString(";") { enc(it) }
         return listOf(
             VERSION,
             enc(draft.ownerId),
@@ -170,6 +174,7 @@ object SetDraftSavedStateCodec {
         val parsedReps = ArrayList<RepMeasurement>()
         if (parts[16].isNotEmpty()) {
             val repTokens = parts[16].split(";")
+            if (repTokens.size > MAX_SAVED_LEDGER_RECORDS) return null
             for (token in repTokens) {
                 val f = token.split(",")
                 if (f.size != 8) return null
@@ -203,7 +208,9 @@ object SetDraftSavedStateCodec {
         val eventIds = if (parts[17].isEmpty()) {
             emptySet()
         } else {
-            parts[17].split(";").map { dec(it) }.filter { it.isNotBlank() }.toSet()
+            val rawIds = parts[17].split(";").map { dec(it) }.filter { it.isNotBlank() }
+            if (rawIds.size > MAX_SAVED_EVENT_IDS) return null
+            rawIds.toSet()
         }
 
         val safeStartElapsedMs = if (startElapsedMs in 0L..currentElapsedMs) {

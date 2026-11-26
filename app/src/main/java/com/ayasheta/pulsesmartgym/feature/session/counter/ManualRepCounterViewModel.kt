@@ -323,11 +323,17 @@ class ManualRepCounterViewModel(
 
     fun incrementRep() {
         if (_uiState.value !is ManualRepCounterUiState.Active || isSubmittingFlow.value) return
-        errorMessageFlow.value = null
-        currentRepsFlow.update { next ->
-            (next + 1).coerceAtMost(999).also { savedStateHandle[repsKey] = it }
-        }
         if (hadDeviceTracking) {
+            if (preservedLedger.size >= com.ayasheta.pulsesmartgym.core.data.device.DeviceEventNormalizer.MAX_ACCEPTED_EVENTS_PER_SET) {
+                errorMessageFlow.value =
+                    "Maximum of ${com.ayasheta.pulsesmartgym.core.data.device.DeviceEventNormalizer.MAX_ACCEPTED_EVENTS_PER_SET} tracked repetitions reached for this set."
+                return
+            }
+            errorMessageFlow.value = null
+            currentRepsFlow.update { next ->
+                (next + 1).coerceAtMost(com.ayasheta.pulsesmartgym.core.data.device.DeviceEventNormalizer.MAX_ACCEPTED_EVENTS_PER_SET)
+                    .also { savedStateHandle[repsKey] = it }
+            }
             preservedLedger.add(
                 RepMeasurement(
                     repIndex = preservedLedger.size + 1,
@@ -336,6 +342,11 @@ class ManualRepCounterViewModel(
                 ),
             )
             persistFallbackDraftToSavedState()
+        } else {
+            errorMessageFlow.value = null
+            currentRepsFlow.update { next ->
+                (next + 1).coerceAtMost(999).also { savedStateHandle[repsKey] = it }
+            }
         }
     }
 

@@ -97,6 +97,9 @@ class P5HomeAndProfileUiTest {
         // Home -> Workouts via See all
         composeRule.onNodeWithText("See all ›").performClick()
         composeRule.onNodeWithText("My Workouts").assertIsDisplayed()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("Upper Body Power").fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithText("Upper Body Power").assertIsDisplayed()
 
         // Home -> Progress via View Training Progress & PRs

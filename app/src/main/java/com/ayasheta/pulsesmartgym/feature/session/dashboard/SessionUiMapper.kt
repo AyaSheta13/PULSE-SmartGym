@@ -95,6 +95,7 @@ object SessionUiMapper {
                         partialReps = rec.partialReps,
                         actualLoad = rec.actualLoad,
                         trackingMode = rec.trackingMode,
+                        hasDetailedMeasurements = rec.repRecords.isNotEmpty(),
                     )
                 }
                 SessionSetRowUiModel(

@@ -151,6 +151,25 @@ fun ManualSetEntrySheet(
                     modifier = Modifier.fillMaxWidth(),
                 )
 
+                if (target.isCorrection && target.hasDetailedMeasurements) {
+                    val editedFull = fullRepsText.trim().toIntOrNull()
+                    val editedPartial = if (partialRepsText.isBlank()) 0 else partialRepsText.trim().toIntOrNull()
+                    val countsChanged = editedFull != target.existingFullReps || editedPartial != target.existingPartialReps
+                    BasicText(
+                        text = if (countsChanged) {
+                            "Changing rep counts will clear per-rep device measurements and save an aggregate manual correction."
+                        } else {
+                            "Weight-only edit preserves device tracking provenance and per-rep measurements."
+                        },
+                        style = PulseTheme.typography.contentPrimary.copy(
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (countsChanged) Color(0xFFB45309) else WorkoutPalette.TextMuted,
+                        ),
+                        modifier = Modifier.testTag("manual_set_correction_notice"),
+                    )
+                }
+
                 if (errorMessage != null) {
                     BasicText(
                         text = errorMessage,

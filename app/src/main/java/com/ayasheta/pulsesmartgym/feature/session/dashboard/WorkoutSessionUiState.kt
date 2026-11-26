@@ -9,6 +9,7 @@ data class PerformedSetUiModel(
     val partialReps: Int,
     val actualLoad: WeightLoad?,
     val trackingMode: TrackingMode,
+    val hasDetailedMeasurements: Boolean = false,
 )
 
 data class SessionSetRowUiModel(
@@ -41,6 +42,8 @@ data class ManualSetEntryTarget(
     val existingFullReps: Int? = null,
     val existingPartialReps: Int? = null,
     val existingLoad: WeightLoad? = null,
+    val hasDetailedMeasurements: Boolean = false,
+    val existingTrackingMode: com.ayasheta.pulsesmartgym.core.model.device.TrackingMode? = null,
 )
 
 data class SessionRestTimerUiModel(

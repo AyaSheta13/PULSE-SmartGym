@@ -529,6 +529,175 @@ class P10DeviceAndCounterUnitTest {
         assertFalse(readyState.canStartDeviceAssisted)
     }
 
+    @Test
+    fun ledgerBoundary_enforces100AcrossDeviceManualFallbackAndCodec_andPreservesOrdinaryManual() = runBlocking {
+        val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val fake = FakeDeviceDataSource(scope = ioScope, scanDelayMs = 0L, connectStepDelayMs = 0L)
+        val deviceRepo = DefaultDeviceRepository(fakeDataSource = fake, scope = ioScope)
+        deviceRepo.connect(SimulatedDeviceCatalog.pulse001.id)
+
+        val auth = FakeP10AuthRepo("owner_a")
+        val sessionRepo = FakeP10SessionRepo(sampleActiveSession("s1", "owner_a"))
+        val prefs = FakeP10PrefsRepo()
+        val draftStore = SetDraftStore()
+        val deviceSaved = SavedStateHandle()
+
+        val deviceVm = DeviceAssistedRepCounterViewModel(
+            sessionId = "s1",
+            exerciseId = "ex1",
+            setIndex = 1,
+            authRepository = auth,
+            workoutSessionRepository = sessionRepo,
+            userPreferencesRepository = prefs,
+            deviceRepository = deviceRepo,
+            fakeDeviceDataSource = fake,
+            setDraftStore = draftStore,
+            savedStateHandle = deviceSaved,
+            elapsedRealtimeMs = { 10_000L },
+            executionEnvironment = com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind.DEMO,
+        )
+        awaitUntil { deviceVm.uiState.value is DeviceAssistedRepCounterUiState.Active }
+
+        repeat(100) { idx ->
+            fake.emitSimulatedRep("s1_ex1_1", RepClassification.FULL, eventId = "cap_$idx")
+        }
+        awaitUntil { (deviceVm.uiState.value as? DeviceAssistedRepCounterUiState.Active)?.fullReps == 100 }
+
+        // 101st auto rep is rejected with clear message
+        fake.emitSimulatedRep("s1_ex1_1", RepClassification.FULL, eventId = "cap_101")
+        awaitUntil { (deviceVm.uiState.value as? DeviceAssistedRepCounterUiState.Active)?.errorMessage != null }
+        val afterAutoCap = deviceVm.uiState.value as DeviceAssistedRepCounterUiState.Active
+        assertEquals(100, afterAutoCap.fullReps)
+        assertTrue(afterAutoCap.errorMessage!!.contains("100"))
+
+        // Manual +1 on device counter also respects 100 limit
+        deviceVm.incrementManualFullRep()
+        assertEquals(100, (deviceVm.uiState.value as DeviceAssistedRepCounterUiState.Active).fullReps)
+
+        // Codec never silently truncates > 100 reps
+        val oversizedDraft = com.ayasheta.pulsesmartgym.feature.session.counter.SetExecutionDraft(
+            ownerId = "owner_a",
+            environment = com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind.DEMO,
+            sessionId = "s1",
+            exerciseId = "ex1",
+            setIndex = 1,
+            fullReps = 101,
+            partialReps = 0,
+            repRecords = (1..101).map { com.ayasheta.pulsesmartgym.core.model.device.RepMeasurement(it, RepClassification.FULL) },
+            actualLoad = null,
+            setStartedAtElapsedMs = 10_000L,
+            hadDeviceTracking = true,
+        )
+        val threwOnOversized = runCatching {
+            com.ayasheta.pulsesmartgym.feature.session.counter.SetDraftSavedStateCodec.encode(oversizedDraft)
+        }.isFailure
+        assertTrue(threwOnOversized)
+
+        // Continue manually -> recreate ManualRepCounterViewModel -> verify 100 limit & finish with 100 records
+        deviceVm.continueManually()
+        val manualSaved = SavedStateHandle()
+        val manualVm1 = ManualRepCounterViewModel(
+            sessionId = "s1",
+            exerciseId = "ex1",
+            setIndex = 1,
+            authRepository = auth,
+            workoutSessionRepository = sessionRepo,
+            userPreferencesRepository = prefs,
+            savedStateHandle = manualSaved,
+            elapsedRealtimeMs = { 12_000L },
+            setDraftStore = draftStore,
+            executionEnvironment = com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind.DEMO,
+        )
+        awaitUntil { (manualVm1.uiState.value as? ManualRepCounterUiState.Active)?.currentReps == 100 }
+        val manualRestored = ManualRepCounterViewModel(
+            sessionId = "s1",
+            exerciseId = "ex1",
+            setIndex = 1,
+            authRepository = auth,
+            workoutSessionRepository = sessionRepo,
+            userPreferencesRepository = prefs,
+            savedStateHandle = SavedStateHandle(manualSaved.keys().associateWith { k -> manualSaved.get<Any?>(k) }),
+            elapsedRealtimeMs = { 15_000L },
+            setDraftStore = draftStore,
+            executionEnvironment = com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind.DEMO,
+        )
+        awaitUntil { (manualRestored.uiState.value as? ManualRepCounterUiState.Active)?.currentReps == 100 }
+        manualRestored.incrementRep()
+        awaitUntil { (manualRestored.uiState.value as? ManualRepCounterUiState.Active)?.errorMessage != null }
+        assertEquals(100, (manualRestored.uiState.value as ManualRepCounterUiState.Active).currentReps)
+        manualRestored.finishSet()
+        awaitUntil { sessionRepo.lastRecordedRequest != null }
+        assertEquals(100, sessionRepo.lastRecordedRequest!!.repRecords.size)
+
+        // Ordinary manual counter (hadDeviceTracking = false) still allows > 100 reps
+        val ordinaryManual = ManualRepCounterViewModel(
+            sessionId = "s1",
+            exerciseId = "ex1",
+            setIndex = 1,
+            authRepository = auth,
+            workoutSessionRepository = sessionRepo,
+            userPreferencesRepository = prefs,
+            savedStateHandle = SavedStateHandle(),
+            elapsedRealtimeMs = { 20_000L },
+            setDraftStore = null,
+        )
+        awaitUntil { ordinaryManual.uiState.value is ManualRepCounterUiState.Active }
+        repeat(101) { ordinaryManual.incrementRep() }
+        assertEquals(101, (ordinaryManual.uiState.value as ManualRepCounterUiState.Active).currentReps)
+    }
+
+    @Test
+    fun dashboardEditSet_selectsExplicitRepCorrectionPolicy() = runBlocking {
+        val existingPerformed = PerformedSet(
+            id = "ps1",
+            sessionId = "s1",
+            sessionExerciseId = "ex1",
+            setIndex = 1,
+            fullReps = 8,
+            partialReps = 1,
+            actualLoad = WeightLoad.fromKilograms(80.0),
+            completedAtEpochMs = 5_000L,
+            trackingMode = TrackingMode.DEVICE_ASSISTED,
+            origin = MeasurementOrigin.SIMULATED_TELEMETRY,
+            durationMs = 15_000L,
+            repRecords = listOf(com.ayasheta.pulsesmartgym.core.model.device.RepMeasurement(1, RepClassification.FULL, origin = MeasurementOrigin.SIMULATED_TELEMETRY)),
+        )
+        val sessionWithPerformed = sampleActiveSession("s1", "owner_a").let { s ->
+            s.copy(exercises = listOf(s.exercises[0].copy(performedSets = listOf(existingPerformed))))
+        }
+        val sessionRepo = FakeP10SessionRepo(sessionWithPerformed)
+        val dashVm = com.ayasheta.pulsesmartgym.feature.session.dashboard.WorkoutSessionViewModel(
+            sessionId = "s1",
+            authRepository = FakeP10AuthRepo("owner_a"),
+            workoutSessionRepository = sessionRepo,
+            userPreferencesRepository = FakeP10PrefsRepo(),
+        )
+        awaitUntil { dashVm.uiState.value is com.ayasheta.pulsesmartgym.feature.session.dashboard.WorkoutSessionUiState.Active }
+
+        // Weight-only edit -> PRESERVE_IF_COUNTS_MATCH & preserves DEVICE_ASSISTED
+        dashVm.openSetEntry("ex1", 1)
+        val target = (dashVm.uiState.value as com.ayasheta.pulsesmartgym.feature.session.dashboard.WorkoutSessionUiState.Active).manualEntryTarget!!
+        assertTrue(target.hasDetailedMeasurements)
+        dashVm.submitManualSet("8", "1", "85")
+        awaitUntil { sessionRepo.lastCorrectedRequest != null }
+        assertEquals(
+            com.ayasheta.pulsesmartgym.core.model.session.RepCorrectionPolicy.PRESERVE_IF_COUNTS_MATCH,
+            sessionRepo.lastCorrectedRequest!!.repCorrectionPolicy,
+        )
+        assertEquals(TrackingMode.DEVICE_ASSISTED, sessionRepo.lastCorrectedRequest!!.trackingMode)
+
+        // Count change -> INVALIDATE_LEDGER & MANUAL_CORRECTION
+        sessionRepo.lastCorrectedRequest = null
+        dashVm.openSetEntry("ex1", 1)
+        dashVm.submitManualSet("10", "0", "85")
+        awaitUntil { sessionRepo.lastCorrectedRequest != null }
+        assertEquals(
+            com.ayasheta.pulsesmartgym.core.model.session.RepCorrectionPolicy.INVALIDATE_LEDGER,
+            sessionRepo.lastCorrectedRequest!!.repCorrectionPolicy,
+        )
+        assertEquals(MeasurementOrigin.MANUAL_CORRECTION, sessionRepo.lastCorrectedRequest!!.origin)
+    }
+
     private suspend fun awaitUntil(timeoutMs: Long = 500L, predicate: () -> Boolean) {
         val start = System.currentTimeMillis()
         while (!predicate() && System.currentTimeMillis() - start < timeoutMs) {
@@ -587,6 +756,7 @@ private class FakeP10SessionRepo(initial: WorkoutSession) : WorkoutSessionReposi
     private val sessionFlow = MutableStateFlow<WorkoutSession?>(initial)
     private val restFlow = MutableStateFlow<SessionRestState?>(null)
     var lastRecordedRequest: RecordSetRequest? = null
+    var lastCorrectedRequest: RecordSetRequest? = null
     var throwOnRecord: Throwable? = null
     var alreadyRecorded: Boolean = false
 
@@ -602,8 +772,25 @@ private class FakeP10SessionRepo(initial: WorkoutSession) : WorkoutSessionReposi
         lastRecordedRequest = request
         return RecordSetResult.Recorded("ps_1")
     }
-    override suspend fun correctPerformedSet(ownerId: String, request: RecordSetRequest): DomainResult<PerformedSet> =
-        throw UnsupportedOperationException()
+    override suspend fun correctPerformedSet(ownerId: String, request: RecordSetRequest): DomainResult<PerformedSet> {
+        lastCorrectedRequest = request
+        return DomainResult.Success(
+            PerformedSet(
+                id = "ps_1",
+                sessionId = request.sessionId,
+                sessionExerciseId = request.sessionExerciseId,
+                setIndex = request.setIndex,
+                fullReps = request.fullReps,
+                partialReps = request.partialReps,
+                actualLoad = request.actualLoad,
+                completedAtEpochMs = 5_000L,
+                trackingMode = request.trackingMode,
+                origin = request.origin,
+                durationMs = request.durationMs,
+                repRecords = request.repRecords,
+            ),
+        )
+    }
     override suspend fun startRestTimer(ownerId: String, sessionId: String, exerciseId: String, exerciseName: String, completedSetIndex: Int, durationSeconds: Int, nextExerciseId: String?, nextSetIndex: Int?): DomainResult<SessionRestState> =
         DomainResult.Success(SessionRestState(sessionId, exerciseId, exerciseName, completedSetIndex, nextExerciseId, nextSetIndex, durationSeconds, 9999L))
     override suspend fun extendRestTimer(ownerId: String, sessionId: String, additionalSeconds: Int): DomainResult<SessionRestState> =

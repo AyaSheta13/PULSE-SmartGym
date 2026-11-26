@@ -8,7 +8,8 @@
 
 ### 1. Complete Repetition Ledger Restoration
 - `SetExecutionDraft` (`SetDraftStore.kt`) is scoped by `(ownerId, environment, sessionId, exerciseId, setIndex)` and includes `trackingWindowId`, `fullReps`, `partialReps`, `repRecords`, `acceptedEventIds`, `origin`, `actualLoad` (preserving explicit `null` via `hasInitializedLoad`), `setStartedAtElapsedMs`, `trackingMode`, `hadDeviceTracking`, and `isManualFallback`.
-- `SetDraftSavedStateCodec` serializes a bounded draft (`MAX_SAVED_LEDGER_RECORDS = 100`, `MAX_SAVED_EVENT_IDS = 120`) into `SavedStateHandle` without placing unbounded data in navigation arguments.
+- `SetDraftSavedStateCodec` serializes a bounded draft (`MAX_SAVED_LEDGER_RECORDS = 100`, `MAX_SAVED_EVENT_IDS = 120`) into `SavedStateHandle` without placing unbounded data in navigation arguments and never silently truncates accepted repetitions or event IDs.
+- Both `DeviceAssistedRepCounterViewModel` (auto and manual `+1`) and `ManualRepCounterViewModel` (in manual fallback mode) enforce the same `100`-repetition limit and display a clear user message when reached; ordinary manual sets (`hadDeviceTracking == false`) retain their existing `999`-rep behavior.
 - On restoration, `DeviceAssistedRepCounterViewModel` and `ManualRepCounterViewModel` validate all fields, derive aggregate counts from the ledger for device-tracked sets, preserve `acceptedEventIds` to reject replayed events after restoration, and handle device reboots safely (`savedElapsed > currentElapsed` resets the monotonic baseline).
 - Ordinary manual sets (`hadDeviceTracking == false`) retain their aggregate-only representation.
 
@@ -25,6 +26,7 @@
 
 ### 4. Measurement Correction Semantics
 - `RecordSetRequest.repCorrectionPolicy` (`RepCorrectionPolicy`: `PRESERVE_IF_COUNTS_MATCH`, `REPLACE_WITH_LEDGER`, `INVALIDATE_LEDGER`) governs `RoomWorkoutSessionRepository.correctPerformedSet()`.
+- Dashboard Edit Set (`WorkoutSessionViewModel.submitManualSet` + `ManualSetEntrySheet`) explicitly selects `PRESERVE_IF_COUNTS_MATCH` for weight-only edits and `INVALIDATE_LEDGER` when rep counts change, displaying an inline notice explaining provenance preservation or per-rep measurement invalidation.
 - Weight-only corrections (`PRESERVE_IF_COUNTS_MATCH` with matching counts and empty `repRecords`) preserve existing `trackingMode`, `origin`, `durationMs`, and `repRecords`.
 - `INVALIDATE_LEDGER` explicitly clears detailed records; `REPLACE_WITH_LEDGER` requires non-empty validated `repRecords`.
 
@@ -39,10 +41,10 @@
 | `:core:model:test` | 6 | 6 | 0 | 0 | 0 | 0 |
 | `:core:data:testDebugUnitTest` | 4 | 4 | 0 | 0 | 0 | 0 |
 | `:core:designsystem:testDebugUnitTest` | 4 | 4 | 0 | 0 | 0 | 0 |
-| `:app:testDebugUnitTest` | 56 | 56 | 0 | 0 | 0 | 0 |
+| `:app:testDebugUnitTest` | 58 | 58 | 0 | 0 | 0 | 0 |
 | `:core:data:connectedDebugAndroidTest` | 27 | 27 | 0 | 0 | 0 | 0 |
 | `:app:connectedDebugAndroidTest` | 42 | 42 | 0 | 0 | 0 | 0 |
-| **Total** | **139** | **139** | **0** | **0** | **0** | **0** |
+| **Total** | **141** | **141** | **0** | **0** | **0** | **0** |
 
 - `:app:assembleDebug` — BUILD SUCCESSFUL
 - `:app:assembleRelease` — BUILD SUCCESSFUL
