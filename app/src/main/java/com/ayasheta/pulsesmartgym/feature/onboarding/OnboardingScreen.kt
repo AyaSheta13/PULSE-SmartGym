@@ -12,12 +12,14 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -39,10 +41,11 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -262,101 +265,112 @@ fun OnboardingContent(
             userScrollEnabled = !isCompleting,
         ) { pageIndex ->
             val pageSpec = onboardingPages[pageIndex]
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp),
+            val fontScale = LocalConfiguration.current.fontScale
+
+            BoxWithConstraints(
+                modifier = Modifier.fillMaxSize(),
             ) {
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Hero Visual Module (340dp height, 24dp radius, 1dp border rgba(0,0,0,0.06))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(340.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .border(
-                            width = 1.dp,
-                            color = Color(0x0F000000),
-                            shape = RoundedCornerShape(24.dp),
-                        ),
-                ) {
-                    Image(
-                        painter = painterResource(id = pageSpec.heroResId),
-                        contentDescription = pageSpec.badgeLabel,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .height(100.dp)
-                            .background(
-                                brush = Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color.Transparent,
-                                        Color(0x40000000),
-                                    ),
-                                ),
-                            ),
-                    )
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier
-                            .padding(start = 15.dp, top = 15.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xBF191919))
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(PulseTheme.color.primary),
-                        )
-                        BasicText(
-                            text = pageSpec.badgeLabel,
-                            style = TextStyle(
-                                fontFamily = PulseTheme.typography.label.fontFamily,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.5.sp,
-                                color = Color.White,
-                            ),
-                        )
+                // Standard viewports fit without vertical scroll so horizontal swipe stays crisp.
+                // Exceptionally short heights or large accessibility font scales fall back to scroll.
+                val useScrollFallback = maxHeight < 420.dp || fontScale > 1.35f
+                val pageColumnModifier = Modifier
+                    .fillMaxSize()
+                    .let { base ->
+                        if (useScrollFallback) base.verticalScroll(rememberScrollState()) else base
                     }
+                    .padding(horizontal = 20.dp)
+
+                Column(
+                    modifier = pageColumnModifier,
+                ) {
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Hero Visual Module (Figma 139:8, 139:27, 139:45 — ContentScale.Fit on harmonious background)
+                    val heroModifier = if (useScrollFallback) {
+                        Modifier
+                            .fillMaxWidth()
+                            .height(220.dp)
+                    } else {
+                        Modifier
+                            .fillMaxWidth()
+                            .weight(1f, fill = true)
+                            .heightIn(min = 180.dp, max = 340.dp)
+                    }
+                    Box(
+                        modifier = heroModifier
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(Color(0xFFFEF6F3))
+                            .border(
+                                width = 1.dp,
+                                color = Color(0xFFEFE2DE),
+                                shape = RoundedCornerShape(24.dp),
+                            )
+                            .testTag("onboarding_hero_card_$pageIndex"),
+                    ) {
+                        Image(
+                            painter = painterResource(id = pageSpec.heroResId),
+                            contentDescription = pageSpec.badgeLabel,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .testTag("onboarding_hero_image_$pageIndex"),
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .padding(start = 15.dp, top = 15.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xBF191919))
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(PulseTheme.color.primary),
+                            )
+                            BasicText(
+                                text = pageSpec.badgeLabel,
+                                style = TextStyle(
+                                    fontFamily = PulseTheme.typography.label.fontFamily,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp,
+                                    color = Color.White,
+                                ),
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    BasicText(
+                        text = pageSpec.title,
+                        style = TextStyle(
+                            fontFamily = PulseTheme.typography.sectionTitle.fontFamily,
+                            fontSize = 25.sp,
+                            lineHeight = 32.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF191919),
+                        ),
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    BasicText(
+                        text = pageSpec.description,
+                        style = TextStyle(
+                            fontFamily = PulseTheme.typography.contentPrimary.fontFamily,
+                            fontSize = 15.sp,
+                            lineHeight = 22.sp,
+                            fontWeight = FontWeight.Normal,
+                            color = Color(0xFF66615C),
+                        ),
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
                 }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                BasicText(
-                    text = pageSpec.title,
-                    style = TextStyle(
-                        fontFamily = PulseTheme.typography.sectionTitle.fontFamily,
-                        fontSize = 25.sp,
-                        lineHeight = 32.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF191919),
-                    ),
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                BasicText(
-                    text = pageSpec.description,
-                    style = TextStyle(
-                        fontFamily = PulseTheme.typography.contentPrimary.fontFamily,
-                        fontSize = 15.sp,
-                        lineHeight = 22.sp,
-                        fontWeight = FontWeight.Normal,
-                        color = Color(0xFF66615C),
-                    ),
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
             }
         }
 

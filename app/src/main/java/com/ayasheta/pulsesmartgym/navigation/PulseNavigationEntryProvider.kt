@@ -101,7 +101,9 @@ import com.ayasheta.pulsesmartgym.feature.workout.editor.WorkoutPlanEditorScreen
 import com.ayasheta.pulsesmartgym.feature.workout.editor.WorkoutPlanEditorViewModel
 import com.ayasheta.pulsesmartgym.feature.workout.editor.WorkoutPlanSelectionBridge
 import com.ayasheta.pulsesmartgym.feature.workout.exercise.ExerciseDetailsScreen
+import com.ayasheta.pulsesmartgym.feature.workout.exercise.ExerciseDetailsScreenContent
 import com.ayasheta.pulsesmartgym.feature.workout.exercise.ExerciseDetailsViewModel
+import com.ayasheta.pulsesmartgym.feature.workout.exercise.SessionExerciseDetailsViewModel
 import com.ayasheta.pulsesmartgym.feature.workout.list.MyWorkoutsScreen
 import com.ayasheta.pulsesmartgym.feature.workout.list.MyWorkoutsViewModel
 import com.ayasheta.pulsesmartgym.feature.workout.picker.ExercisePickerScreen
@@ -129,6 +131,7 @@ import com.ayasheta.pulsesmartgym.navigation.route.ProfileTab
 import com.ayasheta.pulsesmartgym.navigation.route.ProgressTab
 import com.ayasheta.pulsesmartgym.navigation.route.ReadyStartSet
 import com.ayasheta.pulsesmartgym.navigation.route.SessionDetails
+import com.ayasheta.pulsesmartgym.navigation.route.SessionExerciseDetails
 import com.ayasheta.pulsesmartgym.navigation.route.SignUp
 import com.ayasheta.pulsesmartgym.navigation.route.Splash
 import com.ayasheta.pulsesmartgym.navigation.route.WorkoutComplete
@@ -624,6 +627,15 @@ fun rememberPulseEntryProvider(
                         ),
                     )
                 },
+                onHowToPerformClick = { sessionId, sessionExerciseId ->
+                    navigator.navigate(
+                        SessionExerciseDetails(
+                            sessionId = sessionId,
+                            sessionExerciseId = sessionExerciseId,
+                            environment = key.environment,
+                        ),
+                    )
+                },
                 pendingActionError = pendingSessionError,
                 onConsumePendingActionError = { pendingSessionError = null },
                 onSessionCompleted = { completedSessionId ->
@@ -636,6 +648,35 @@ fun rememberPulseEntryProvider(
                         PartialWorkoutSummary(sessionId = endedSessionId, environment = key.environment),
                     )
                 },
+            )
+        }
+    }
+
+    entry<SessionExerciseDetails> { key ->
+        DemoEnvironmentGate(
+            environment = key.environment,
+            envState = envState,
+            genuineContainer = dataContainer,
+            onExitDemoToHome = {
+                deviceViewModel.exitDemoMode()
+                navigator.exitWorkoutSummaryToHome()
+            },
+        ) { scopedContainer ->
+            val viewModel: SessionExerciseDetailsViewModel = viewModel(
+                key = "sed_${key.environment.name}_${key.sessionId}_${key.sessionExerciseId}",
+            ) {
+                SessionExerciseDetailsViewModel(
+                    sessionId = key.sessionId,
+                    sessionExerciseId = key.sessionExerciseId,
+                    authRepository = scopedContainer.authRepository,
+                    workoutSessionRepository = scopedContainer.workoutSessionRepository,
+                    exerciseRepository = scopedContainer.exerciseRepository,
+                )
+            }
+            val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+            ExerciseDetailsScreenContent(
+                uiState = uiState,
+                onBackClick = { navigator.navigateBack() },
             )
         }
     }

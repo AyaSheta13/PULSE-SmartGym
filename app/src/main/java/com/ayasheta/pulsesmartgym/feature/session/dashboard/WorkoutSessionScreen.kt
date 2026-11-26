@@ -22,7 +22,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -65,6 +68,7 @@ fun WorkoutSessionScreen(
     modifier: Modifier = Modifier,
     onStartSet: ((sessionId: String, exerciseId: String, setIndex: Int) -> Unit)? = null,
     onNavigateToNextSet: ((sessionId: String, exerciseId: String, setIndex: Int) -> Unit)? = null,
+    onHowToPerformClick: (sessionId: String, sessionExerciseId: String) -> Unit = { _, _ -> },
     pendingActionError: String? = null,
     onConsumePendingActionError: () -> Unit = {},
 ) {
@@ -171,6 +175,12 @@ fun WorkoutSessionScreen(
         },
         onAddRestTimeClick = { viewModel.extendRestTimer(30) },
         onSkipRestClick = viewModel::skipRestTimer,
+        onHowToPerformClick = { sessionExerciseId ->
+            val sessionId = (uiState as? WorkoutSessionUiState.Active)?.sessionId
+            if (sessionId != null) {
+                onHowToPerformClick(sessionId, sessionExerciseId)
+            }
+        },
         onDismissActionError = viewModel::dismissActionError,
         onDismissSetEntry = viewModel::dismissSetEntry,
         onConfirmSetEntry = viewModel::submitManualSet,
@@ -196,6 +206,7 @@ fun WorkoutSessionScreenContent(
     modifier: Modifier = Modifier,
     onAddRestTimeClick: () -> Unit = {},
     onSkipRestClick: () -> Unit = {},
+    onHowToPerformClick: (sessionExerciseId: String) -> Unit = {},
     onDismissActionError: () -> Unit = {},
 ) {
     val renderInWindow = LocalRenderModalsInWindow.current
@@ -277,7 +288,14 @@ fun WorkoutSessionScreenContent(
                 }
 
                 is WorkoutSessionUiState.Active -> {
+                    val listState = rememberSaveable(
+                        uiState.sessionId,
+                        saver = LazyListState.Saver,
+                    ) {
+                        LazyListState()
+                    }
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
@@ -357,6 +375,7 @@ fun WorkoutSessionScreenContent(
                                 preferredWeightUnit = uiState.preferredWeightUnit,
                                 actionsEnabled = !uiState.isSavingSet && !uiState.isCompletingSession && !uiState.isEndingEarly,
                                 onSetActionClick = onSetActionClick,
+                                onHowToPerformClick = onHowToPerformClick,
                             )
                         }
                     }
