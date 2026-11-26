@@ -18,6 +18,7 @@ import com.ayasheta.pulsesmartgym.core.model.profile.UserPreferences
 import com.ayasheta.pulsesmartgym.core.model.profile.UserProfile
 import com.ayasheta.pulsesmartgym.core.model.session.PerformedSet
 import com.ayasheta.pulsesmartgym.core.model.session.RecordSetRequest
+import com.ayasheta.pulsesmartgym.core.model.session.SessionRestState
 import com.ayasheta.pulsesmartgym.core.model.session.SessionStatus
 import com.ayasheta.pulsesmartgym.core.model.session.WorkoutSession
 import com.ayasheta.pulsesmartgym.core.model.workout.WorkoutPlan
@@ -53,6 +54,23 @@ interface WorkoutSessionRepository {
     suspend fun correctPerformedSet(ownerId: String, request: RecordSetRequest): DomainResult<PerformedSet>
     suspend fun completeSession(ownerId: String, sessionId: String): DomainResult<WorkoutSession>
     suspend fun endSessionEarly(ownerId: String, sessionId: String): DomainResult<WorkoutSession>
+    fun observeRestState(ownerId: String, sessionId: String): Flow<SessionRestState?>
+    suspend fun startRestTimer(
+        ownerId: String,
+        sessionId: String,
+        exerciseId: String,
+        exerciseName: String,
+        completedSetIndex: Int,
+        durationSeconds: Int,
+        nextExerciseId: String?,
+        nextSetIndex: Int?,
+    ): DomainResult<SessionRestState>
+    suspend fun extendRestTimer(
+        ownerId: String,
+        sessionId: String,
+        additionalSeconds: Int,
+    ): DomainResult<SessionRestState>
+    suspend fun clearRestTimer(ownerId: String, sessionId: String): DomainResult<Unit>
 }
 
 interface WorkoutHistoryRepository {

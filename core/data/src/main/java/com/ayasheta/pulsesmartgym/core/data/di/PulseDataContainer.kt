@@ -42,8 +42,10 @@ open class PulseDataContainer(
             appContext,
             PulseDatabase::class.java,
             "pulse_smart_gym.db",
-        ).addMigrations(PulseDatabase.MIGRATION_1_2)
-            .build()
+        ).addMigrations(
+            PulseDatabase.MIGRATION_1_2,
+            PulseDatabase.MIGRATION_2_3,
+        ).build()
     }
 
     private val transactionRunner: PulseTransactionRunner by lazy {

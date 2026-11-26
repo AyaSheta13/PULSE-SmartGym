@@ -19,6 +19,7 @@ import com.ayasheta.pulsesmartgym.core.data.local.database.entity.PlannedSetEnti
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.RepRecordEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.SessionExerciseEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.SessionPlannedSetEntity
+import com.ayasheta.pulsesmartgym.core.data.local.database.entity.SessionRestStateEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.UserProfileEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.WorkoutPlanEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.WorkoutSessionEntity
@@ -32,12 +33,13 @@ import com.ayasheta.pulsesmartgym.core.data.local.database.entity.WorkoutSession
         WorkoutSessionEntity::class,
         SessionExerciseEntity::class,
         SessionPlannedSetEntity::class,
+        SessionRestStateEntity::class,
         PerformedSetEntity::class,
         RepRecordEntity::class,
         LocalAccountEntity::class,
         UserProfileEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(PulseTypeConverters::class)
@@ -83,6 +85,27 @@ abstract class PulseDatabase : RoomDatabase() {
                         `setupCompleted` INTEGER NOT NULL,
                         `updatedAtEpochMs` INTEGER NOT NULL,
                         PRIMARY KEY(`ownerId`)
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `session_rest_states` (
+                        `sessionId` TEXT NOT NULL,
+                        `exerciseId` TEXT NOT NULL,
+                        `exerciseName` TEXT NOT NULL,
+                        `completedSetIndex` INTEGER NOT NULL,
+                        `nextExerciseId` TEXT,
+                        `nextSetIndex` INTEGER,
+                        `durationSeconds` INTEGER NOT NULL,
+                        `deadlineEpochMs` INTEGER NOT NULL,
+                        PRIMARY KEY(`sessionId`),
+                        FOREIGN KEY(`sessionId`) REFERENCES `workout_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
                     )
                     """.trimIndent(),
                 )

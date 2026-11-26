@@ -404,4 +404,28 @@ private class FakeWorkoutSessionRepo : WorkoutSessionRepository {
         putSession(ended)
         return DomainResult.Success(ended)
     }
+
+    override fun observeRestState(ownerId: String, sessionId: String): Flow<com.ayasheta.pulsesmartgym.core.model.session.SessionRestState?> = flowOf(null)
+
+    override suspend fun startRestTimer(
+        ownerId: String,
+        sessionId: String,
+        exerciseId: String,
+        exerciseName: String,
+        completedSetIndex: Int,
+        durationSeconds: Int,
+        nextExerciseId: String?,
+        nextSetIndex: Int?,
+    ): DomainResult<com.ayasheta.pulsesmartgym.core.model.session.SessionRestState> =
+        DomainResult.Failure(DataError.NotFound("Not implemented"))
+
+    override suspend fun extendRestTimer(
+        ownerId: String,
+        sessionId: String,
+        additionalSeconds: Int,
+    ): DomainResult<com.ayasheta.pulsesmartgym.core.model.session.SessionRestState> =
+        DomainResult.Failure(DataError.NotFound("Not implemented"))
+
+    override suspend fun clearRestTimer(ownerId: String, sessionId: String): DomainResult<Unit> =
+        DomainResult.Success(Unit)
 }

@@ -430,6 +430,24 @@ fun rememberPulseEntryProvider(
         WorkoutSessionScreen(
             viewModel = viewModel,
             onBackClick = { navigator.navigateBack() },
+            onStartSet = { sessionId, exerciseId, setIndex ->
+                navigator.navigate(
+                    ReadyStartSet(
+                        sessionId = sessionId,
+                        exerciseId = exerciseId,
+                        setIndex = setIndex,
+                    ),
+                )
+            },
+            onNavigateToNextSet = { sessionId, exerciseId, setIndex ->
+                navigator.navigate(
+                    ReadyStartSet(
+                        sessionId = sessionId,
+                        exerciseId = exerciseId,
+                        setIndex = setIndex,
+                    ),
+                )
+            },
             onSessionCompleted = { completedSessionId ->
                 navigator.completeWorkoutFlow(WorkoutComplete(sessionId = completedSessionId))
             },
@@ -440,50 +458,65 @@ fun rememberPulseEntryProvider(
     }
 
     entry<ReadyStartSet> { key ->
-        NavigationPlaceholderScreen(
-            title = "Ready / Start Set",
-            routeLabel = "ReadyStartSet",
-            topBarStyle = PulseTopAppBarStyle.BackWithTitle("Prepare Set", onBackClick = { navigator.navigateBack() }),
-            routeArguments = listOf(
-                "sessionId" to key.sessionId,
-                "exerciseId" to key.exerciseId,
-                "setIndex" to key.setIndex.toString(),
-            ),
-            actions = listOf(
-                NavigationDemoAction("Manual Rep Counter", isPrimary = true) {
-                    navigator.navigate(
-                        ManualRepCounter(
-                            sessionId = key.sessionId,
-                            exerciseId = key.exerciseId,
-                            setIndex = key.setIndex,
-                        ),
-                    )
-                },
-                NavigationDemoAction("Device-Assisted Rep Counter") {
-                    navigator.navigate(
-                        DeviceAssistedRepCounter(
-                            sessionId = key.sessionId,
-                            exerciseId = key.exerciseId,
-                            setIndex = key.setIndex,
-                        ),
-                    )
-                },
-            ),
+        val viewModel: com.ayasheta.pulsesmartgym.feature.session.ready.ReadyStartSetViewModel = viewModel {
+            com.ayasheta.pulsesmartgym.feature.session.ready.ReadyStartSetViewModel(
+                sessionId = key.sessionId,
+                exerciseId = key.exerciseId,
+                setIndex = key.setIndex,
+                authRepository = dataContainer.authRepository,
+                workoutSessionRepository = dataContainer.workoutSessionRepository,
+                userPreferencesRepository = dataContainer.userPreferencesRepository,
+            )
+        }
+        com.ayasheta.pulsesmartgym.feature.session.ready.ReadyStartSetScreen(
+            viewModel = viewModel,
             onBackClick = { navigator.navigateBack() },
+            onStartSetClick = { sessionId, exerciseId, setIndex ->
+                navigator.navigate(
+                    ManualRepCounter(
+                        sessionId = sessionId,
+                        exerciseId = exerciseId,
+                        setIndex = setIndex,
+                    ),
+                )
+            },
+            onSessionCompleted = { completedSessionId ->
+                navigator.completeWorkoutFlow(WorkoutComplete(sessionId = completedSessionId))
+            },
+            onSessionEndedEarly = { endedSessionId ->
+                navigator.completeWorkoutFlow(PartialWorkoutSummary(sessionId = endedSessionId))
+            },
         )
     }
 
     entry<ManualRepCounter> { key ->
-        NavigationPlaceholderScreen(
-            title = "Manual Rep Counter",
-            routeLabel = "ManualRepCounter",
-            topBarStyle = PulseTopAppBarStyle.BackWithTitle("Manual Counter", onBackClick = { navigator.navigateBack() }),
-            routeArguments = listOf(
-                "sessionId" to key.sessionId,
-                "exerciseId" to key.exerciseId,
-                "setIndex" to key.setIndex.toString(),
-            ),
+        val viewModel: com.ayasheta.pulsesmartgym.feature.session.counter.ManualRepCounterViewModel = viewModel {
+            com.ayasheta.pulsesmartgym.feature.session.counter.ManualRepCounterViewModel(
+                sessionId = key.sessionId,
+                exerciseId = key.exerciseId,
+                setIndex = key.setIndex,
+                authRepository = dataContainer.authRepository,
+                workoutSessionRepository = dataContainer.workoutSessionRepository,
+                userPreferencesRepository = dataContainer.userPreferencesRepository,
+            )
+        }
+        com.ayasheta.pulsesmartgym.feature.session.counter.ManualRepCounterScreen(
+            viewModel = viewModel,
             onBackClick = { navigator.navigateBack() },
+            onSetFinished = { sessionId, hasRestStarted, nextTarget ->
+                navigator.finishSetAndReturnToSession(
+                    sessionId = sessionId,
+                    nextExerciseId = nextTarget?.exerciseId,
+                    nextSetIndex = nextTarget?.setIndex,
+                    openNextSetImmediately = !hasRestStarted && nextTarget != null,
+                )
+            },
+            onSessionCompleted = { completedSessionId ->
+                navigator.completeWorkoutFlow(WorkoutComplete(sessionId = completedSessionId))
+            },
+            onSessionEndedEarly = { endedSessionId ->
+                navigator.completeWorkoutFlow(PartialWorkoutSummary(sessionId = endedSessionId))
+            },
         )
     }
 

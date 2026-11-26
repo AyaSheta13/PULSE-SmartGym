@@ -42,6 +42,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ayasheta.pulsesmartgym.core.designsystem.component.progress.PulseLoadingIndicator
+import com.ayasheta.pulsesmartgym.core.designsystem.component.workout.PulseRestTimerCard
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
 import com.ayasheta.pulsesmartgym.core.designsystem.vectors.Back
 import com.ayasheta.pulsesmartgym.core.model.session.SessionStatus
@@ -58,6 +59,8 @@ fun WorkoutSessionScreen(
     onSessionCompleted: (String) -> Unit,
     onSessionEndedEarly: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onStartSet: ((sessionId: String, exerciseId: String, setIndex: Int) -> Unit)? = null,
+    onNavigateToNextSet: ((sessionId: String, exerciseId: String, setIndex: Int) -> Unit)? = null,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val handledTerminalSessionId = androidx.compose.runtime.remember(viewModel) {
@@ -106,14 +109,41 @@ fun WorkoutSessionScreen(
                         }
                     }
                 }
+                is WorkoutSessionEvent.NavigateToNextSet -> {
+                    onNavigateToNextSet?.invoke(event.sessionId, event.exerciseId, event.setIndex)
+                }
             }
+        }
+    }
+
+    LaunchedEffect(
+        (uiState as? WorkoutSessionUiState.Active)?.restTimer?.deadlineEpochMs,
+        (uiState as? WorkoutSessionUiState.Active)?.restTimer?.remainingSeconds,
+    ) {
+        val active = uiState as? WorkoutSessionUiState.Active ?: return@LaunchedEffect
+        val rest = active.restTimer ?: return@LaunchedEffect
+        if (rest.remainingSeconds == 0) {
+            viewModel.onRestExpired()
         }
     }
 
     WorkoutSessionScreenContent(
         uiState = uiState,
         onBackClick = onBackClick,
-        onSetActionClick = viewModel::openSetEntry,
+        onSetActionClick = { sessionExerciseId, setIndex ->
+            val active = uiState as? WorkoutSessionUiState.Active
+            val row = active?.exercises
+                ?.firstOrNull { it.sessionExerciseId == sessionExerciseId }
+                ?.sets
+                ?.firstOrNull { it.setIndex == setIndex }
+            if (active != null && row?.performed == null && onStartSet != null) {
+                onStartSet(active.sessionId, sessionExerciseId, setIndex)
+            } else {
+                viewModel.openSetEntry(sessionExerciseId, setIndex)
+            }
+        },
+        onAddRestTimeClick = { viewModel.extendRestTimer(30) },
+        onSkipRestClick = viewModel::skipRestTimer,
         onDismissSetEntry = viewModel::dismissSetEntry,
         onConfirmSetEntry = viewModel::submitManualSet,
         onFinishWorkout = viewModel::finishWorkout,
@@ -136,6 +166,8 @@ fun WorkoutSessionScreenContent(
     onDismissEndEarly: () -> Unit,
     onConfirmEndEarly: () -> Unit,
     modifier: Modifier = Modifier,
+    onAddRestTimeClick: () -> Unit = {},
+    onSkipRestClick: () -> Unit = {},
 ) {
     val renderInWindow = LocalRenderModalsInWindow.current
     val connectionLabel = (uiState as? WorkoutSessionUiState.Active)?.connectionLabel ?: "Not Connected"
@@ -255,6 +287,19 @@ fun WorkoutSessionScreenContent(
                                 plannedSetsCount = uiState.totalPlannedSets,
                                 progressFraction = uiState.progressFraction,
                             )
+                        }
+
+                        uiState.restTimer?.let { rest ->
+                            item(key = "session_rest_timer") {
+                                PulseRestTimerCard(
+                                    remainingFormatted = rest.remainingFormatted,
+                                    progress = rest.progress,
+                                    subtitle = "Rest after ${rest.exerciseName}",
+                                    onAddTimeClick = onAddRestTimeClick,
+                                    onSkipClick = onSkipRestClick,
+                                    modifier = Modifier.testTag("session_rest_timer_card"),
+                                )
+                            }
                         }
 
                         items(

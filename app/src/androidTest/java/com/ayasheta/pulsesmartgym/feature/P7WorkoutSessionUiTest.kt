@@ -133,9 +133,15 @@ class P7WorkoutSessionUiTest {
             val ex2Id = activeSession.exercises[1].id
 
             composeRule.onNodeWithTag("session_set_start_${ex2Id}_1").performClick()
-            composeRule.onNodeWithTag("modal_manual_set_entry").assertIsDisplayed()
-            composeRule.onNodeWithTag("input_manual_full_reps").performTextReplacement("12")
-            composeRule.onNodeWithTag("button_manual_set_confirm").performClick()
+            composeRule.waitUntil(5_000) {
+                runCatching { composeRule.onNodeWithTag("button_ready_start_set").assertExists(); true }.getOrDefault(false)
+            }
+            composeRule.onNodeWithTag("button_ready_start_set").performClick()
+            composeRule.waitUntil(5_000) {
+                runCatching { composeRule.onNodeWithTag("button_finish_set").assertExists(); true }.getOrDefault(false)
+            }
+            repeat(12) { composeRule.onNodeWithContentDescription("Add one rep").performClick() }
+            composeRule.onNodeWithTag("button_finish_set").performClick()
 
             composeRule.waitUntil(5_000) {
                 runCatching { composeRule.onNodeWithText("1 / 2 Sets Completed").assertExists(); true }.getOrDefault(false)
@@ -150,8 +156,15 @@ class P7WorkoutSessionUiTest {
 
             // Record Exercise 1 Set 1
             composeRule.onNodeWithTag("session_set_start_${ex1Id}_1").performClick()
-            composeRule.onNodeWithTag("input_manual_full_reps").performTextReplacement("10")
-            composeRule.onNodeWithTag("button_manual_set_confirm").performClick()
+            composeRule.waitUntil(5_000) {
+                runCatching { composeRule.onNodeWithTag("button_ready_start_set").assertExists(); true }.getOrDefault(false)
+            }
+            composeRule.onNodeWithTag("button_ready_start_set").performClick()
+            composeRule.waitUntil(5_000) {
+                runCatching { composeRule.onNodeWithTag("button_finish_set").assertExists(); true }.getOrDefault(false)
+            }
+            repeat(10) { composeRule.onNodeWithContentDescription("Add one rep").performClick() }
+            composeRule.onNodeWithTag("button_finish_set").performClick()
 
             composeRule.waitUntil(5_000) {
                 runCatching { composeRule.onNodeWithText("2 / 2 Sets Completed").assertExists(); true }.getOrDefault(false)
@@ -393,8 +406,17 @@ class P7SessionRecreationUiTest {
         }
         val exId = active.exercises.first().id
         activityRule.onNodeWithTag("session_set_start_${exId}_1").performClick()
-        activityRule.onNodeWithTag("input_manual_full_reps").performTextReplacement("10")
-        activityRule.onNodeWithTag("button_manual_set_confirm").performClick()
+        activityRule.waitUntil(5_000) {
+            runCatching { activityRule.onNodeWithTag("button_ready_start_set").assertExists(); true }.getOrDefault(false)
+        }
+        activityRule.onNodeWithTag("button_ready_start_set").performClick()
+        activityRule.waitUntil(5_000) {
+            runCatching { activityRule.onNodeWithTag("button_finish_set").assertExists(); true }.getOrDefault(false)
+        }
+        repeat(10) {
+            activityRule.onNodeWithContentDescription("Add one rep").performClick()
+        }
+        activityRule.onNodeWithTag("button_finish_set").performClick()
         activityRule.waitUntil(5_000) {
             runCatching { activityRule.onNodeWithText("1 / 2 Sets Completed").assertExists(); true }.getOrDefault(false)
         }

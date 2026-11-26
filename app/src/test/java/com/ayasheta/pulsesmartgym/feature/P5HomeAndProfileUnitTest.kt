@@ -489,6 +489,19 @@ class P5HomeAndProfileUnitTest {
         override suspend fun correctPerformedSet(ownerId: String, request: RecordSetRequest) = throw UnsupportedOperationException()
         override suspend fun completeSession(ownerId: String, sessionId: String) = throw UnsupportedOperationException()
         override suspend fun endSessionEarly(ownerId: String, sessionId: String) = throw UnsupportedOperationException()
+        override fun observeRestState(ownerId: String, sessionId: String): Flow<com.ayasheta.pulsesmartgym.core.model.session.SessionRestState?> = flowOf(null)
+        override suspend fun startRestTimer(
+            ownerId: String,
+            sessionId: String,
+            exerciseId: String,
+            exerciseName: String,
+            completedSetIndex: Int,
+            durationSeconds: Int,
+            nextExerciseId: String?,
+            nextSetIndex: Int?,
+        ): DomainResult<com.ayasheta.pulsesmartgym.core.model.session.SessionRestState> = throw UnsupportedOperationException()
+        override suspend fun extendRestTimer(ownerId: String, sessionId: String, additionalSeconds: Int): DomainResult<com.ayasheta.pulsesmartgym.core.model.session.SessionRestState> = throw UnsupportedOperationException()
+        override suspend fun clearRestTimer(ownerId: String, sessionId: String): DomainResult<Unit> = throw UnsupportedOperationException()
     }
 
     private class FakeHistoryRepo : WorkoutHistoryRepository {

@@ -8,6 +8,7 @@ import com.ayasheta.pulsesmartgym.core.data.local.database.entity.PerformedSetEn
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.RepRecordEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.SessionExerciseEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.SessionPlannedSetEntity
+import com.ayasheta.pulsesmartgym.core.data.local.database.entity.SessionRestStateEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.WorkoutSessionEntity
 import com.ayasheta.pulsesmartgym.core.data.mapper.toDomain
 import com.ayasheta.pulsesmartgym.core.model.common.DataError
@@ -17,6 +18,7 @@ import com.ayasheta.pulsesmartgym.core.model.common.RecordSetResult
 import com.ayasheta.pulsesmartgym.core.model.repository.WorkoutSessionRepository
 import com.ayasheta.pulsesmartgym.core.model.session.PerformedSet
 import com.ayasheta.pulsesmartgym.core.model.session.RecordSetRequest
+import com.ayasheta.pulsesmartgym.core.model.session.SessionRestState
 import com.ayasheta.pulsesmartgym.core.model.session.SessionStatus
 import com.ayasheta.pulsesmartgym.core.model.session.WorkoutSession
 import kotlinx.coroutines.flow.Flow
@@ -297,6 +299,7 @@ class RoomWorkoutSessionRepository(
                     DataError.InvalidSessionState("Session '$sessionId' is no longer ACTIVE"),
                 )
             }
+            sessionDao.deleteRestState(sessionId)
             val completed = sessionDao.getSession(ownerId, sessionId)?.toDomain()
                 ?: return@runInTransaction DomainResult.Failure(DataError.StorageError("Failed to load completed session"))
             DomainResult.Success(completed)
@@ -335,9 +338,92 @@ class RoomWorkoutSessionRepository(
                     DataError.InvalidSessionState("Session '$sessionId' is no longer ACTIVE"),
                 )
             }
+            sessionDao.deleteRestState(sessionId)
             val updated = sessionDao.getSession(ownerId, sessionId)?.toDomain()
                 ?: return@runInTransaction DomainResult.Failure(DataError.StorageError("Failed to load ended session"))
             DomainResult.Success(updated)
+        }
+    }
+
+    override fun observeRestState(ownerId: String, sessionId: String): Flow<SessionRestState?> =
+        sessionDao.observeRestState(ownerId, sessionId).map { it?.toDomain() }
+
+    override suspend fun startRestTimer(
+        ownerId: String,
+        sessionId: String,
+        exerciseId: String,
+        exerciseName: String,
+        completedSetIndex: Int,
+        durationSeconds: Int,
+        nextExerciseId: String?,
+        nextSetIndex: Int?,
+    ): DomainResult<SessionRestState> {
+        PulseValidators.validateOwnerId(ownerId)?.let {
+            return DomainResult.Failure(DataError.ValidationError(it))
+        }
+        if (durationSeconds <= 0) {
+            return DomainResult.Failure(DataError.ValidationError("Rest duration must be positive"))
+        }
+        return transactionRunner.runInTransaction {
+            val session = sessionDao.getSession(ownerId, sessionId)
+                ?: return@runInTransaction DomainResult.Failure(DataError.NotFound("Session '$sessionId' not found"))
+            if (session.session.status != SessionStatus.ACTIVE) {
+                return@runInTransaction DomainResult.Failure(
+                    DataError.InvalidSessionState("Session '$sessionId' is not ACTIVE"),
+                )
+            }
+            val deadlineEpochMs = clockMs() + durationSeconds.toLong() * 1000L
+            val entity = SessionRestStateEntity(
+                sessionId = sessionId,
+                exerciseId = exerciseId,
+                exerciseName = exerciseName,
+                completedSetIndex = completedSetIndex,
+                nextExerciseId = nextExerciseId,
+                nextSetIndex = nextSetIndex,
+                durationSeconds = durationSeconds,
+                deadlineEpochMs = deadlineEpochMs,
+            )
+            sessionDao.upsertRestState(entity)
+            DomainResult.Success(entity.toDomain())
+        }
+    }
+
+    override suspend fun extendRestTimer(
+        ownerId: String,
+        sessionId: String,
+        additionalSeconds: Int,
+    ): DomainResult<SessionRestState> {
+        PulseValidators.validateOwnerId(ownerId)?.let {
+            return DomainResult.Failure(DataError.ValidationError(it))
+        }
+        if (additionalSeconds <= 0) {
+            return DomainResult.Failure(DataError.ValidationError("Extension seconds must be positive"))
+        }
+        return transactionRunner.runInTransaction {
+            val existing = sessionDao.getRestState(ownerId, sessionId)
+                ?: return@runInTransaction DomainResult.Failure(DataError.NotFound("No active rest timer for session"))
+            val nowMs = clockMs()
+            val baseMs = maxOf(existing.deadlineEpochMs, nowMs)
+            val newDeadlineMs = baseMs + additionalSeconds.toLong() * 1000L
+            val newRemainingSec = ((newDeadlineMs - nowMs + 999L) / 1000L).toInt().coerceAtLeast(1)
+            val updated = existing.copy(
+                durationSeconds = maxOf(existing.durationSeconds + additionalSeconds, newRemainingSec),
+                deadlineEpochMs = newDeadlineMs,
+            )
+            sessionDao.upsertRestState(updated)
+            DomainResult.Success(updated.toDomain())
+        }
+    }
+
+    override suspend fun clearRestTimer(ownerId: String, sessionId: String): DomainResult<Unit> {
+        PulseValidators.validateOwnerId(ownerId)?.let {
+            return DomainResult.Failure(DataError.ValidationError(it))
+        }
+        return transactionRunner.runInTransaction {
+            val session = sessionDao.getSession(ownerId, sessionId)
+                ?: return@runInTransaction DomainResult.Failure(DataError.NotFound("Session '$sessionId' not found"))
+            sessionDao.deleteRestState(session.session.id)
+            DomainResult.Success(Unit)
         }
     }
 }

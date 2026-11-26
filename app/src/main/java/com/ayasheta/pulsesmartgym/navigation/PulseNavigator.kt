@@ -7,6 +7,8 @@ import com.ayasheta.pulsesmartgym.navigation.route.AuthEntry
 import com.ayasheta.pulsesmartgym.navigation.route.CreateWorkoutPlan
 import com.ayasheta.pulsesmartgym.navigation.route.EditWorkoutPlan
 import com.ayasheta.pulsesmartgym.navigation.route.ExercisePicker
+import com.ayasheta.pulsesmartgym.navigation.route.ManualRepCounter
+import com.ayasheta.pulsesmartgym.navigation.route.ReadyStartSet
 import com.ayasheta.pulsesmartgym.navigation.route.WorkoutDetails
 import com.ayasheta.pulsesmartgym.navigation.route.WorkoutSession
 import com.ayasheta.pulsesmartgym.navigation.route.toRootRoute
@@ -134,6 +136,26 @@ class PulseNavigator(
         }
         if (stack.lastOrNull() != summaryRoute) {
             stack.add(summaryRoute)
+        }
+    }
+
+    fun finishSetAndReturnToSession(
+        sessionId: String,
+        nextExerciseId: String? = null,
+        nextSetIndex: Int? = null,
+        openNextSetImmediately: Boolean = false,
+    ) {
+        val stack = state.activeBackStack
+        while (stack.size > 1) {
+            val top = stack.lastOrNull()
+            if (top is ManualRepCounter || top is ReadyStartSet) {
+                stack.removeAt(stack.lastIndex)
+            } else {
+                break
+            }
+        }
+        if (openNextSetImmediately && nextExerciseId != null && nextSetIndex != null) {
+            navigate(ReadyStartSet(sessionId = sessionId, exerciseId = nextExerciseId, setIndex = nextSetIndex))
         }
     }
 

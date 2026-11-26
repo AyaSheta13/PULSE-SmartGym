@@ -122,3 +122,16 @@ internal fun WorkoutSessionWithExercises.toDomain(): WorkoutSession = WorkoutSes
     status = session.status,
     exercises = exercises.sortedBy { it.sessionExercise.orderIndex }.map { it.toDomain() },
 )
+
+internal fun com.ayasheta.pulsesmartgym.core.data.local.database.entity.SessionRestStateEntity.toDomain():
+    com.ayasheta.pulsesmartgym.core.model.session.SessionRestState =
+    com.ayasheta.pulsesmartgym.core.model.session.SessionRestState(
+        sessionId = sessionId,
+        exerciseId = exerciseId,
+        exerciseName = exerciseName,
+        completedSetIndex = completedSetIndex,
+        nextExerciseId = nextExerciseId,
+        nextSetIndex = nextSetIndex,
+        durationSeconds = durationSeconds,
+        deadlineEpochMs = deadlineEpochMs,
+    )

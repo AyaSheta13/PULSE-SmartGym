@@ -10,6 +10,7 @@ import com.ayasheta.pulsesmartgym.core.data.local.database.entity.PerformedSetEn
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.RepRecordEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.SessionExerciseEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.SessionPlannedSetEntity
+import com.ayasheta.pulsesmartgym.core.data.local.database.entity.SessionRestStateEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.WorkoutSessionEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.relation.WorkoutSessionWithExercises
 import com.ayasheta.pulsesmartgym.core.model.session.SessionStatus
@@ -114,4 +115,34 @@ interface WorkoutSessionDao {
         status: SessionStatus,
         endedAtEpochMs: Long,
     ): Int
+
+    @Query(
+        """
+        SELECT r.* FROM session_rest_states r
+        INNER JOIN workout_sessions s ON r.sessionId = s.id
+        WHERE r.sessionId = :sessionId
+          AND s.ownerProfileId = :ownerId
+          AND s.status = 'ACTIVE'
+        LIMIT 1
+        """,
+    )
+    fun observeRestState(ownerId: String, sessionId: String): Flow<SessionRestStateEntity?>
+
+    @Query(
+        """
+        SELECT r.* FROM session_rest_states r
+        INNER JOIN workout_sessions s ON r.sessionId = s.id
+        WHERE r.sessionId = :sessionId
+          AND s.ownerProfileId = :ownerId
+          AND s.status = 'ACTIVE'
+        LIMIT 1
+        """,
+    )
+    suspend fun getRestState(ownerId: String, sessionId: String): SessionRestStateEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertRestState(state: SessionRestStateEntity)
+
+    @Query("DELETE FROM session_rest_states WHERE sessionId = :sessionId")
+    suspend fun deleteRestState(sessionId: String)
 }

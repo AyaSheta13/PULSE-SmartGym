@@ -43,6 +43,18 @@ data class ManualSetEntryTarget(
     val existingLoad: WeightLoad? = null,
 )
 
+data class SessionRestTimerUiModel(
+    val exerciseId: String,
+    val exerciseName: String,
+    val completedSetIndex: Int,
+    val remainingSeconds: Int,
+    val remainingFormatted: String,
+    val progress: Float,
+    val deadlineEpochMs: Long,
+    val nextExerciseId: String?,
+    val nextSetIndex: Int?,
+)
+
 sealed interface WorkoutSessionUiState {
     data object Loading : WorkoutSessionUiState
     data object SignedOut : WorkoutSessionUiState
@@ -72,6 +84,7 @@ sealed interface WorkoutSessionUiState {
         val manualEntryTarget: ManualSetEntryTarget? = null,
         val manualEntryError: String? = null,
         val actionError: String? = null,
+        val restTimer: SessionRestTimerUiModel? = null,
         val connectionLabel: String = "Not Connected",
     ) : WorkoutSessionUiState {
         val formattedElapsedTime: String

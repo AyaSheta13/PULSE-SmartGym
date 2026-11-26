@@ -174,6 +174,28 @@ data class SessionPlannedSetEntity(
 )
 
 @Entity(
+    tableName = "session_rest_states",
+    foreignKeys = [
+        ForeignKey(
+            entity = WorkoutSessionEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["sessionId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+)
+data class SessionRestStateEntity(
+    @PrimaryKey val sessionId: String,
+    val exerciseId: String,
+    val exerciseName: String,
+    val completedSetIndex: Int,
+    val nextExerciseId: String?,
+    val nextSetIndex: Int?,
+    val durationSeconds: Int,
+    val deadlineEpochMs: Long,
+)
+
+@Entity(
     tableName = "performed_sets",
     foreignKeys = [
         ForeignKey(

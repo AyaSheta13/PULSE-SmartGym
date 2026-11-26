@@ -75,3 +75,20 @@ data class RecordSetRequest(
     val durationMs: Long? = null,
     val repRecords: List<RepMeasurement> = emptyList(),
 )
+
+data class SessionSetTarget(
+    val exerciseId: String,
+    val exerciseName: String,
+    val setIndex: Int,
+)
+
+data class SessionRestState(
+    val sessionId: String,
+    val exerciseId: String,
+    val exerciseName: String,
+    val completedSetIndex: Int,
+    val nextExerciseId: String?,
+    val nextSetIndex: Int?,
+    val durationSeconds: Int,
+    val deadlineEpochMs: Long,
+)

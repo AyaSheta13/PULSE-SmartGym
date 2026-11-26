@@ -14,6 +14,7 @@ import com.ayasheta.pulsesmartgym.core.model.repository.AuthRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.UserPreferencesRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.WorkoutSessionRepository
 import com.ayasheta.pulsesmartgym.core.model.session.RecordSetRequest
+import com.ayasheta.pulsesmartgym.core.model.session.SessionProgression
 import com.ayasheta.pulsesmartgym.core.model.session.SessionStatus
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -36,6 +37,11 @@ sealed interface WorkoutSessionEvent {
     data class Completed(val sessionId: String) : WorkoutSessionEvent
     data class EndedEarly(val sessionId: String, val status: SessionStatus) : WorkoutSessionEvent
     data class RedirectToSummary(val sessionId: String, val status: SessionStatus) : WorkoutSessionEvent
+    data class NavigateToNextSet(
+        val sessionId: String,
+        val exerciseId: String,
+        val setIndex: Int,
+    ) : WorkoutSessionEvent
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -62,6 +68,7 @@ class WorkoutSessionViewModel(
     private val isEndingEarlyFlow = MutableStateFlow(false)
 
     private var activeOwnerId: String? = null
+    private var handledRestDeadlineMs: Long? = null
 
     init {
         observeSession()
@@ -90,6 +97,7 @@ class WorkoutSessionViewModel(
                             flowOf(WorkoutSessionUiState.Missing("Workout session ID is missing."))
                         } else {
                             val sessionFlow = workoutSessionRepository.observeSession(ownerId, sessionId)
+                            val restFlow = workoutSessionRepository.observeRestState(ownerId, sessionId)
                             val tickerFlow: Flow<Long> = flow {
                                 while (true) {
                                     emit(clockMs())
@@ -98,9 +106,10 @@ class WorkoutSessionViewModel(
                             }
                             combine(
                                 sessionFlow,
+                                restFlow,
                                 userPreferencesRepository.observePreferences(),
                                 tickerFlow,
-                            ) { session, prefs, nowMs ->
+                            ) { session, restState, prefs, nowMs ->
                                 if (session == null) {
                                     WorkoutSessionUiState.Missing("Workout session not found or no longer active.")
                                 } else if (session.status != SessionStatus.ACTIVE) {
@@ -109,11 +118,33 @@ class WorkoutSessionViewModel(
                                         status = session.status,
                                     )
                                 } else {
-                                    SessionUiMapper.mapToActiveUiState(
+                                    val activeUi = SessionUiMapper.mapToActiveUiState(
                                         session = session,
                                         preferredWeightUnit = prefs.preferredWeightUnit,
                                         nowEpochMs = nowMs,
                                     )
+                                    val restUi = restState?.let { rest ->
+                                        val remaining = SessionProgression.computeRemainingRestSeconds(
+                                            deadlineEpochMs = rest.deadlineEpochMs,
+                                            nowEpochMs = nowMs,
+                                        )
+                                        SessionRestTimerUiModel(
+                                            exerciseId = rest.exerciseId,
+                                            exerciseName = rest.exerciseName,
+                                            completedSetIndex = rest.completedSetIndex,
+                                            remainingSeconds = remaining,
+                                            remainingFormatted = SessionProgression.formatMmSs(remaining.toLong()),
+                                            progress = SessionProgression.computeRestProgress(
+                                                durationSeconds = rest.durationSeconds,
+                                                deadlineEpochMs = rest.deadlineEpochMs,
+                                                nowEpochMs = nowMs,
+                                            ),
+                                            deadlineEpochMs = rest.deadlineEpochMs,
+                                            nextExerciseId = rest.nextExerciseId,
+                                            nextSetIndex = rest.nextSetIndex,
+                                        )
+                                    }
+                                    activeUi.copy(restTimer = restUi)
                                 }
                             }
                         }
@@ -182,8 +213,73 @@ class WorkoutSessionViewModel(
     fun refreshElapsedTime() {
         val current = _uiState.value
         if (current is WorkoutSessionUiState.Active) {
+            val nowMs = clockMs()
+            val updatedRest = current.restTimer?.let { rest ->
+                val remaining = SessionProgression.computeRemainingRestSeconds(rest.deadlineEpochMs, nowMs)
+                rest.copy(
+                    remainingSeconds = remaining,
+                    remainingFormatted = SessionProgression.formatMmSs(remaining.toLong()),
+                )
+            }
             _uiState.value = current.copy(
-                elapsedSeconds = SessionUiMapper.computeElapsedSeconds(current.startedAtEpochMs, clockMs()),
+                elapsedSeconds = SessionUiMapper.computeElapsedSeconds(current.startedAtEpochMs, nowMs),
+                restTimer = updatedRest,
+            )
+        }
+    }
+
+    fun extendRestTimer(additionalSeconds: Int = 30) {
+        val active = _uiState.value as? WorkoutSessionUiState.Active ?: return
+        val ownerId = activeOwnerId ?: return
+        handledRestDeadlineMs = null
+        viewModelScope.launch {
+            workoutSessionRepository.extendRestTimer(ownerId, active.sessionId, additionalSeconds)
+        }
+    }
+
+    fun skipRestTimer() {
+        val active = _uiState.value as? WorkoutSessionUiState.Active ?: return
+        val rest = active.restTimer ?: return
+        val ownerId = activeOwnerId ?: return
+        handledRestDeadlineMs = rest.deadlineEpochMs
+        viewModelScope.launch {
+            workoutSessionRepository.clearRestTimer(ownerId, active.sessionId)
+            emitNextSetIfUncompleted(active, rest)
+        }
+    }
+
+    fun onRestExpired() {
+        val active = _uiState.value as? WorkoutSessionUiState.Active ?: return
+        val rest = active.restTimer ?: return
+        if (rest.remainingSeconds > 0) return
+        if (handledRestDeadlineMs == rest.deadlineEpochMs) return
+        handledRestDeadlineMs = rest.deadlineEpochMs
+        val ownerId = activeOwnerId ?: return
+        viewModelScope.launch {
+            workoutSessionRepository.clearRestTimer(ownerId, active.sessionId)
+            emitNextSetIfUncompleted(active, rest)
+        }
+    }
+
+    private fun emitNextSetIfUncompleted(
+        active: WorkoutSessionUiState.Active,
+        rest: SessionRestTimerUiModel,
+    ) {
+        val nextExId = rest.nextExerciseId
+        val nextSetIdx = rest.nextSetIndex
+        val isTargetStillUncompleted = nextExId != null && nextSetIdx != null && active.exercises
+            .firstOrNull { it.sessionExerciseId == nextExId }
+            ?.sets
+            ?.firstOrNull { it.setIndex == nextSetIdx }
+            ?.performed == null
+
+        if (isTargetStillUncompleted && nextExId != null && nextSetIdx != null) {
+            _events.tryEmit(
+                WorkoutSessionEvent.NavigateToNextSet(
+                    sessionId = active.sessionId,
+                    exerciseId = nextExId,
+                    setIndex = nextSetIdx,
+                ),
             )
         }
     }
