@@ -1,0 +1,416 @@
+package com.ayasheta.pulsesmartgym.feature
+
+import android.Manifest
+import androidx.lifecycle.SavedStateHandle
+import com.ayasheta.pulsesmartgym.core.data.device.DefaultDeviceRepository
+import com.ayasheta.pulsesmartgym.core.data.device.DeviceEventNormalizer
+import com.ayasheta.pulsesmartgym.core.data.device.DeviceSimulationScenario
+import com.ayasheta.pulsesmartgym.core.data.device.FakeDeviceDataSource
+import com.ayasheta.pulsesmartgym.core.data.device.NormalizedRepResult
+import com.ayasheta.pulsesmartgym.core.data.device.RealBleDeviceDataSource
+import com.ayasheta.pulsesmartgym.core.data.device.SimulatedDeviceCatalog
+import com.ayasheta.pulsesmartgym.core.model.common.DataError
+import com.ayasheta.pulsesmartgym.core.model.common.DomainResult
+import com.ayasheta.pulsesmartgym.core.model.common.RecordSetResult
+import com.ayasheta.pulsesmartgym.core.model.common.WeightLoad
+import com.ayasheta.pulsesmartgym.core.model.device.DeviceCapabilities
+import com.ayasheta.pulsesmartgym.core.model.device.DeviceConnectionState
+import com.ayasheta.pulsesmartgym.core.model.device.DeviceOperationError
+import com.ayasheta.pulsesmartgym.core.model.device.DeviceOperationResult
+import com.ayasheta.pulsesmartgym.core.model.device.DeviceProviderType
+import com.ayasheta.pulsesmartgym.core.model.device.DeviceRepEvent
+import com.ayasheta.pulsesmartgym.core.model.device.MeasurementOrigin
+import com.ayasheta.pulsesmartgym.core.model.device.RepClassification
+import com.ayasheta.pulsesmartgym.core.model.device.TrackingMode
+import com.ayasheta.pulsesmartgym.core.model.exercise.EquipmentCategory
+import com.ayasheta.pulsesmartgym.core.model.exercise.MuscleGroup
+import com.ayasheta.pulsesmartgym.core.model.exercise.TrackingCategory
+import com.ayasheta.pulsesmartgym.core.model.profile.AuthState
+import com.ayasheta.pulsesmartgym.core.model.profile.AuthUser
+import com.ayasheta.pulsesmartgym.core.model.profile.UserPreferences
+import com.ayasheta.pulsesmartgym.core.model.repository.AuthRepository
+import com.ayasheta.pulsesmartgym.core.model.repository.UserPreferencesRepository
+import com.ayasheta.pulsesmartgym.core.model.repository.WorkoutSessionRepository
+import com.ayasheta.pulsesmartgym.core.model.session.PerformedSet
+import com.ayasheta.pulsesmartgym.core.model.session.RecordSetRequest
+import com.ayasheta.pulsesmartgym.core.model.session.SessionExercise
+import com.ayasheta.pulsesmartgym.core.model.session.SessionPlannedSet
+import com.ayasheta.pulsesmartgym.core.model.session.SessionRestState
+import com.ayasheta.pulsesmartgym.core.model.session.SessionStatus
+import com.ayasheta.pulsesmartgym.core.model.session.WorkoutSession
+import com.ayasheta.pulsesmartgym.feature.device.permissions.BluetoothPermissionPolicy
+import com.ayasheta.pulsesmartgym.feature.device.permissions.BluetoothReadinessState
+import com.ayasheta.pulsesmartgym.feature.session.counter.ManualRepCounterUiState
+import com.ayasheta.pulsesmartgym.feature.session.counter.ManualRepCounterViewModel
+import com.ayasheta.pulsesmartgym.feature.session.counter.SetDraftStore
+import com.ayasheta.pulsesmartgym.feature.session.devicecounter.DeviceAssistedRepCounterUiState
+import com.ayasheta.pulsesmartgym.feature.session.devicecounter.DeviceAssistedRepCounterViewModel
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.yield
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class P10DeviceAndCounterUnitTest {
+
+    private val testDispatcher = UnconfinedTestDispatcher()
+
+    @Before
+    fun setup() {
+        Dispatchers.setMain(testDispatcher)
+    }
+
+    @After
+    fun teardown() {
+        Dispatchers.resetMain()
+    }
+
+    @Test
+    fun deviceStateMachine_handlesScanConnectCancelTimeoutReconnectAndRealBleBoundary() = runBlocking {
+        val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val fake = FakeDeviceDataSource(scope = ioScope, scanDelayMs = 40L, connectStepDelayMs = 20L)
+        val realBle = RealBleDeviceDataSource()
+        val repo = DefaultDeviceRepository(fakeDataSource = fake, realBleDataSource = realBle, scope = ioScope)
+
+        // 1. Scan & deduplicate
+        assertTrue(repo.startScan() is DeviceOperationResult.Success)
+        awaitUntil { repo.discoveredDevices.value.size == 2 }
+        assertEquals(2, repo.discoveredDevices.value.size)
+        assertTrue(repo.startScan() is DeviceOperationResult.Success)
+        awaitUntil { repo.discoveredDevices.value.size == 2 }
+        assertEquals(2, repo.discoveredDevices.value.size)
+
+        // 2. No devices scenario
+        fake.setScenario(DeviceSimulationScenario.NO_DEVICES)
+        assertTrue(repo.startScan() is DeviceOperationResult.Success)
+        awaitUntil { repo.discoveredDevices.value.isEmpty() }
+        assertTrue(repo.discoveredDevices.value.isEmpty())
+
+        // 3. Scan cancellation
+        val scanJob = async { fake.startScan() }
+        delay(5L)
+        assertTrue(fake.stopScan() is DeviceOperationResult.Success)
+        val scanRes = scanJob.await()
+        assertTrue(scanRes is DeviceOperationResult.Failure && scanRes.error == DeviceOperationError.CANCELED)
+
+        // 4. Connection timeout & failure
+        fake.setScenario(DeviceSimulationScenario.CONNECTION_TIMEOUT)
+        val timeoutRes = repo.connect(SimulatedDeviceCatalog.pulse001.id)
+        assertTrue(timeoutRes is DeviceOperationResult.Failure && timeoutRes.error == DeviceOperationError.CONNECTION_TIMEOUT)
+        awaitUntil { repo.linkState.value.phase == DeviceConnectionState.FAILED }
+        assertEquals(DeviceConnectionState.FAILED, repo.linkState.value.phase)
+
+        // 5. Connection cancellation ignores late callbacks
+        fake.setScenario(DeviceSimulationScenario.DEFAULT_AVAILABLE)
+        val connJob = async { repo.connect(SimulatedDeviceCatalog.pulse001.id) }
+        delay(10L)
+        assertTrue(repo.cancelConnection() is DeviceOperationResult.Success)
+        val canceledConn = connJob.await()
+        assertTrue(canceledConn is DeviceOperationResult.Failure && canceledConn.error == DeviceOperationError.CANCELED)
+        awaitUntil { repo.linkState.value.phase == DeviceConnectionState.DISCONNECTED }
+        assertEquals(DeviceConnectionState.DISCONNECTED, repo.linkState.value.phase)
+
+        // 6. Successful connect, connection loss, reconnect, idempotent disconnect
+        assertTrue(repo.connect(SimulatedDeviceCatalog.pulse001.id) is DeviceOperationResult.Success)
+        awaitUntil { repo.linkState.value.phase == DeviceConnectionState.CONNECTED }
+        assertEquals(DeviceConnectionState.CONNECTED, repo.linkState.value.phase)
+        val gen1 = repo.linkState.value.connectionGeneration
+
+        fake.simulateConnectionLoss()
+        awaitUntil { repo.linkState.value.phase == DeviceConnectionState.CONNECTION_LOST }
+        assertEquals(DeviceConnectionState.CONNECTION_LOST, repo.linkState.value.phase)
+        assertTrue(repo.reconnect() is DeviceOperationResult.Success)
+        awaitUntil { repo.linkState.value.phase == DeviceConnectionState.CONNECTED }
+        assertEquals(DeviceConnectionState.CONNECTED, repo.linkState.value.phase)
+        assertTrue(repo.linkState.value.connectionGeneration > gen1)
+
+        assertTrue(repo.disconnect() is DeviceOperationResult.Success)
+        assertTrue(repo.disconnect() is DeviceOperationResult.Success)
+        awaitUntil { repo.linkState.value.phase == DeviceConnectionState.DISCONNECTED }
+        assertEquals(DeviceConnectionState.DISCONNECTED, repo.linkState.value.phase)
+
+        // 7. RealBleDeviceDataSource never fakes connectivity
+        repo.selectProvider(DeviceProviderType.REAL_BLE)
+        val bleScan = repo.startScan()
+        assertTrue(bleScan is DeviceOperationResult.Failure && bleScan.error == DeviceOperationError.PROTOCOL_NOT_CONFIGURED)
+        awaitUntil { repo.linkState.value.phase == DeviceConnectionState.FAILED }
+        assertEquals(DeviceConnectionState.FAILED, repo.linkState.value.phase)
+        assertTrue(repo.discoveredDevices.value.isEmpty())
+
+        // 8. Owner change resets provider cleanly
+        repo.selectProvider(DeviceProviderType.SIMULATED)
+        repo.setDemoSessionActive(true)
+        repo.connect(SimulatedDeviceCatalog.pulse001.id)
+        repo.onOwnerChanged()
+        assertFalse(repo.isDemoSessionActive.value)
+        awaitUntil { repo.linkState.value.phase == DeviceConnectionState.DISCONNECTED }
+        assertEquals(DeviceConnectionState.DISCONNECTED, repo.linkState.value.phase)
+    }
+
+    @Test
+    fun eventNormalizer_validatesOriginDuplicatesGenerationWindowAndCapabilities() {
+        val caps = DeviceCapabilities(
+            automaticRepEvents = true,
+            fullPartialClassification = true,
+            angularRom = false,
+            linearRom = false,
+            repDuration = true,
+        )
+        val base = DeviceRepEvent(
+            eventId = "e1",
+            providerType = DeviceProviderType.SIMULATED,
+            connectionGeneration = 5L,
+            trackingWindowId = "s1_ex1_1",
+            classification = RepClassification.FULL,
+            totalDurationMs = 1500L,
+            angularRomDegrees = 90.0,
+            origin = MeasurementOrigin.SIMULATED_TELEMETRY,
+        )
+
+        // Valid full rep strips unsupported angularRomDegrees
+        val ok = DeviceEventNormalizer.normalizeAndValidate(
+            event = base,
+            expectedProviderType = DeviceProviderType.SIMULATED,
+            expectedConnectionGeneration = 5L,
+            expectedTrackingWindowId = "s1_ex1_1",
+            isConnected = true,
+            isSubmitting = false,
+            capabilities = caps,
+            seenEventIds = emptySet(),
+            nextRepIndex = 1,
+        )
+        assertTrue(ok is NormalizedRepResult.Accepted)
+        val meas = (ok as NormalizedRepResult.Accepted).measurement
+        assertEquals(1500L, meas.totalDurationMs)
+        assertNull(meas.angularRomDegrees)
+        assertEquals(MeasurementOrigin.SIMULATED_TELEMETRY, meas.origin)
+
+        // Duplicate, stale generation, wrong window, NaN, negative duration, SENSOR_TELEMETRY for simulator, submitting
+        assertTrue(DeviceEventNormalizer.normalizeAndValidate(base, DeviceProviderType.SIMULATED, 5L, "s1_ex1_1", true, false, caps, setOf("e1"), 2) is NormalizedRepResult.Rejected)
+        assertTrue(DeviceEventNormalizer.normalizeAndValidate(base.copy(connectionGeneration = 4L), DeviceProviderType.SIMULATED, 5L, "s1_ex1_1", true, false, caps, emptySet(), 2) is NormalizedRepResult.Rejected)
+        assertTrue(DeviceEventNormalizer.normalizeAndValidate(base.copy(trackingWindowId = "other"), DeviceProviderType.SIMULATED, 5L, "s1_ex1_1", true, false, caps, emptySet(), 2) is NormalizedRepResult.Rejected)
+        assertTrue(DeviceEventNormalizer.normalizeAndValidate(base.copy(totalDurationMs = -10L), DeviceProviderType.SIMULATED, 5L, "s1_ex1_1", true, false, caps, emptySet(), 2) is NormalizedRepResult.Rejected)
+        assertTrue(DeviceEventNormalizer.normalizeAndValidate(base.copy(angularRomDegrees = Double.NaN), DeviceProviderType.SIMULATED, 5L, "s1_ex1_1", true, false, caps, emptySet(), 2) is NormalizedRepResult.Rejected)
+        assertTrue(DeviceEventNormalizer.normalizeAndValidate(base.copy(origin = MeasurementOrigin.SENSOR_TELEMETRY), DeviceProviderType.SIMULATED, 5L, "s1_ex1_1", true, false, caps, emptySet(), 2) is NormalizedRepResult.Rejected)
+        assertTrue(DeviceEventNormalizer.normalizeAndValidate(base, DeviceProviderType.SIMULATED, 5L, "s1_ex1_1", true, true, caps, emptySet(), 2) is NormalizedRepResult.Rejected)
+    }
+
+    @Test
+    fun deviceAssistedCounter_preserves8RepsAcrossDisconnect_andManualFallbackPersists10Reps() = runBlocking {
+        val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val fake = FakeDeviceDataSource(scope = ioScope, scanDelayMs = 0L, connectStepDelayMs = 0L)
+        val deviceRepo = DefaultDeviceRepository(fakeDataSource = fake, scope = ioScope)
+        deviceRepo.connect(SimulatedDeviceCatalog.pulse001.id)
+
+        val auth = FakeP10AuthRepo("owner_a")
+        val sessionRepo = FakeP10SessionRepo(sampleActiveSession("s1", "owner_a"))
+        val prefs = FakeP10PrefsRepo()
+        val draftStore = SetDraftStore()
+        var nowElapsed = 10_000L
+
+        val deviceVm = DeviceAssistedRepCounterViewModel(
+            sessionId = "s1",
+            exerciseId = "ex1",
+            setIndex = 1,
+            authRepository = auth,
+            workoutSessionRepository = sessionRepo,
+            userPreferencesRepository = prefs,
+            deviceRepository = deviceRepo,
+            fakeDeviceDataSource = fake,
+            setDraftStore = draftStore,
+            savedStateHandle = SavedStateHandle(),
+            elapsedRealtimeMs = { nowElapsed },
+        )
+        yield()
+
+        // Emit 7 simulated full reps + 1 partial rep
+        repeat(7) { idx ->
+            fake.emitSimulatedRep("s1_ex1_1", RepClassification.FULL, eventId = "ev_$idx")
+        }
+        // Duplicate event ignored
+        fake.emitSimulatedRep("s1_ex1_1", RepClassification.FULL, eventId = "ev_0")
+        fake.emitSimulatedRep("s1_ex1_1", RepClassification.PARTIAL, eventId = "ev_p1")
+        // +1 manual full rep -> 8 full, 1 partial
+        deviceVm.incrementManualFullRep()
+        yield()
+
+        val beforeDrop = deviceVm.uiState.value as DeviceAssistedRepCounterUiState.Active
+        assertEquals(8, beforeDrop.fullReps)
+        assertEquals(1, beforeDrop.partialReps)
+
+        // Simulate disconnect -> recovery sheet opens, reps preserved!
+        fake.simulateConnectionLoss()
+        awaitUntil { (deviceVm.uiState.value as? DeviceAssistedRepCounterUiState.Active)?.showRecoverySheet == true }
+        val dropped = deviceVm.uiState.value as DeviceAssistedRepCounterUiState.Active
+        assertTrue(dropped.showRecoverySheet)
+        assertEquals(8, dropped.fullReps)
+        assertEquals(1, dropped.partialReps)
+
+        // Continue Manually -> ManualRepCounterViewModel consumes draft starting at 8 full + 1 partial
+        deviceVm.continueManually()
+        nowElapsed += 5_000L
+        val manualVm = ManualRepCounterViewModel(
+            sessionId = "s1",
+            exerciseId = "ex1",
+            setIndex = 1,
+            authRepository = auth,
+            workoutSessionRepository = sessionRepo,
+            userPreferencesRepository = prefs,
+            savedStateHandle = SavedStateHandle(),
+            elapsedRealtimeMs = { nowElapsed },
+            setDraftStore = draftStore,
+        )
+        yield()
+        val manualActive = manualVm.uiState.value as ManualRepCounterUiState.Active
+        assertEquals(8, manualActive.currentReps)
+
+        // Add 2 manual reps -> 10 full reps -> Finish Set
+        manualVm.incrementRep()
+        manualVm.incrementRep()
+        yield()
+        manualVm.finishSet()
+        yield()
+
+        val recorded = sessionRepo.lastRecordedRequest!!
+        assertEquals(10, recorded.fullReps)
+        assertEquals(1, recorded.partialReps)
+        assertEquals(TrackingMode.DEVICE_ASSISTED, recorded.trackingMode)
+        assertEquals(MeasurementOrigin.SIMULATED_TELEMETRY, recorded.origin)
+        assertEquals(11, recorded.repRecords.size)
+        assertEquals(MeasurementOrigin.SIMULATED_TELEMETRY, recorded.repRecords.first().origin)
+        assertEquals(MeasurementOrigin.MANUAL_INPUT, recorded.repRecords.last().origin)
+    }
+
+    @Test
+    fun bluetoothPermissionPolicy_handlesApiLevelsAndReadinessStates() {
+        assertEquals(
+            listOf(Manifest.permission.ACCESS_FINE_LOCATION),
+            BluetoothPermissionPolicy.runtimePermissionsForApi(29),
+        )
+        assertEquals(
+            listOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT),
+            BluetoothPermissionPolicy.runtimePermissionsForApi(31),
+        )
+        assertEquals(
+            BluetoothReadinessState.HARDWARE_UNAVAILABLE,
+            BluetoothPermissionPolicy.resolveReadiness(false, true, true, false, false),
+        )
+        assertEquals(
+            BluetoothReadinessState.PERMISSION_NOT_REQUESTED,
+            BluetoothPermissionPolicy.resolveReadiness(true, true, false, false, false),
+        )
+        assertEquals(
+            BluetoothReadinessState.PERMISSION_DENIED,
+            BluetoothPermissionPolicy.resolveReadiness(true, true, false, true, true),
+        )
+        assertEquals(
+            BluetoothReadinessState.PERMISSION_PERMANENTLY_DENIED,
+            BluetoothPermissionPolicy.resolveReadiness(true, true, false, true, false),
+        )
+        assertEquals(
+            BluetoothReadinessState.BLUETOOTH_DISABLED,
+            BluetoothPermissionPolicy.resolveReadiness(true, false, true, true, false),
+        )
+        assertEquals(
+            BluetoothReadinessState.READY,
+            BluetoothPermissionPolicy.resolveReadiness(true, true, true, true, false),
+        )
+    }
+
+    private suspend fun awaitUntil(timeoutMs: Long = 500L, predicate: () -> Boolean) {
+        val start = System.currentTimeMillis()
+        while (!predicate() && System.currentTimeMillis() - start < timeoutMs) {
+            delay(10L)
+        }
+    }
+
+    private fun sampleActiveSession(id: String, ownerId: String): WorkoutSession = WorkoutSession(
+        id = id,
+        ownerProfileId = ownerId,
+        sourcePlanId = "p1",
+        planNameSnapshot = "Upper Body Power",
+        startedAtEpochMs = 1_000L,
+        endedAtEpochMs = null,
+        status = SessionStatus.ACTIVE,
+        exercises = listOf(
+            SessionExercise(
+                id = "ex1",
+                sessionId = id,
+                sourceExerciseId = "bench",
+                exerciseNameSnapshot = "Barbell Bench Press",
+                muscleGroupSnapshot = MuscleGroup.CHEST,
+                equipmentSnapshot = EquipmentCategory.BARBELL,
+                trackingCategorySnapshot = TrackingCategory.LINEAR,
+                orderIndex = 0,
+                plannedSets = listOf(SessionPlannedSet("sp1", "ex1", 1, 10, WeightLoad.fromKilograms(80.0), 60)),
+                performedSets = emptyList(),
+            ),
+        ),
+    )
+}
+
+private class FakeP10AuthRepo(initialId: String) : AuthRepository {
+    private val state = MutableStateFlow<AuthState>(
+        AuthState.Authenticated(AuthUser(initialId, "User", "$initialId@pulse.fit", false, false)),
+    )
+    override fun observeAuthState(): Flow<AuthState> = state
+    override suspend fun restoreSession(): AuthState = state.value
+    override suspend fun continueAsGuest() = throw UnsupportedOperationException()
+    override suspend fun registerLocalAccount(fullName: String, email: String, password: String) = throw UnsupportedOperationException()
+    override suspend fun signInWithEmail(email: String, password: String, rememberMe: Boolean) = throw UnsupportedOperationException()
+    override suspend fun resetPassword(newPassword: String) = throw UnsupportedOperationException()
+    override suspend fun signInDemo(displayName: String, email: String) = throw UnsupportedOperationException()
+    override suspend fun signOut() { state.value = AuthState.Unauthenticated }
+}
+
+private class FakeP10PrefsRepo : UserPreferencesRepository {
+    private val flow = MutableStateFlow(UserPreferences())
+    override fun observePreferences(): Flow<UserPreferences> = flow
+    override suspend fun updatePreferredWeightUnit(unit: com.ayasheta.pulsesmartgym.core.model.common.WeightUnit) {}
+    override suspend fun setOnboardingCompleted(completed: Boolean) {}
+    override suspend fun updateDefaultRestSeconds(seconds: Int) {}
+}
+
+private class FakeP10SessionRepo(initial: WorkoutSession) : WorkoutSessionRepository {
+    private val sessionFlow = MutableStateFlow<WorkoutSession?>(initial)
+    private val restFlow = MutableStateFlow<SessionRestState?>(null)
+    var lastRecordedRequest: RecordSetRequest? = null
+
+    override fun observeActiveSession(ownerId: String): Flow<WorkoutSession?> = sessionFlow
+    override fun observeSession(ownerId: String, sessionId: String): Flow<WorkoutSession?> = sessionFlow
+    override suspend fun getSession(ownerId: String, sessionId: String): WorkoutSession? = sessionFlow.value
+    override fun observeRestState(ownerId: String, sessionId: String): Flow<SessionRestState?> = restFlow
+    override suspend fun startSessionFromPlan(ownerId: String, planId: String) = throw UnsupportedOperationException()
+    override suspend fun startSessionFromHistory(ownerId: String, historicalSessionId: String) = throw UnsupportedOperationException()
+    override suspend fun recordPerformedSet(ownerId: String, request: RecordSetRequest): RecordSetResult {
+        lastRecordedRequest = request
+        return RecordSetResult.Recorded("ps_1")
+    }
+    override suspend fun correctPerformedSet(ownerId: String, request: RecordSetRequest): DomainResult<PerformedSet> =
+        throw UnsupportedOperationException()
+    override suspend fun startRestTimer(ownerId: String, sessionId: String, exerciseId: String, exerciseName: String, completedSetIndex: Int, durationSeconds: Int, nextExerciseId: String?, nextSetIndex: Int?): DomainResult<SessionRestState> =
+        DomainResult.Success(SessionRestState(sessionId, exerciseId, exerciseName, completedSetIndex, nextExerciseId, nextSetIndex, durationSeconds, 9999L))
+    override suspend fun extendRestTimer(ownerId: String, sessionId: String, additionalSeconds: Int): DomainResult<SessionRestState> =
+        throw UnsupportedOperationException()
+    override suspend fun clearRestTimer(ownerId: String, sessionId: String): DomainResult<Unit> = DomainResult.Success(Unit)
+    override suspend fun completeSession(ownerId: String, sessionId: String): DomainResult<WorkoutSession> =
+        throw UnsupportedOperationException()
+    override suspend fun endSessionEarly(ownerId: String, sessionId: String): DomainResult<WorkoutSession> =
+        throw UnsupportedOperationException()
+}

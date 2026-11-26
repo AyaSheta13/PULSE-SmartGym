@@ -3,6 +3,7 @@ package com.ayasheta.pulsesmartgym.navigation
 import android.content.Context
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -24,6 +25,7 @@ import com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoal
 import com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoalsDraft
 import com.ayasheta.pulsesmartgym.core.model.profile.GenderIdentity
 import com.ayasheta.pulsesmartgym.core.model.profile.PersonalInfoDraft
+import com.ayasheta.pulsesmartgym.navigation.route.ExercisePicker
 import com.ayasheta.pulsesmartgym.navigation.route.MyDevice
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
@@ -79,26 +81,32 @@ class PulseNavigationUiTest {
             }
         }
 
-        // Open MyDevice under ProgressTab and increment to 1
-        composeRule.runOnIdle { navigator.navigate(MyDevice) }
-        composeRule.onNodeWithText("Route: MyDevice").assertIsDisplayed()
-        composeRule.onNodeWithText("Increment Local State").performClick()
-        composeRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
+        // Open ExercisePicker under ProgressTab and select Chest filter
+        composeRule.runOnIdle { navigator.navigate(ExercisePicker()) }
+        composeRule.waitUntil(5_000) {
+            runCatching { composeRule.onNodeWithTag("picker_filter_CHEST").assertExists(); true }.getOrDefault(false)
+        }
+        composeRule.onNodeWithTag("picker_filter_CHEST").performClick()
+        composeRule.onNodeWithText("Barbell Bench Press").assertIsDisplayed()
+        composeRule.onNodeWithText("Barbell Back Squat").assertDoesNotExist()
 
-        // Switch to HistoryTab while ProgressTab keeps MyDevice on its stack
+        // Switch to HistoryTab while ProgressTab keeps ExercisePicker on its stack
         composeRule.runOnIdle { navigator.selectTab(PulseTab.HISTORY) }
         composeRule.onNodeWithText("Workout History").assertIsDisplayed()
-        composeRule.runOnIdle { navigator.navigate(MyDevice) }
-        composeRule.onNodeWithText("Route: MyDevice").assertIsDisplayed()
-        composeRule.onNodeWithText("Saved State Counter: 0").assertIsDisplayed()
-        composeRule.onNodeWithText("Increment Local State").performClick()
-        composeRule.onNodeWithText("Increment Local State").performClick()
-        composeRule.onNodeWithText("Saved State Counter: 2").assertIsDisplayed()
+        composeRule.runOnIdle { navigator.navigate(ExercisePicker()) }
+        composeRule.waitUntil(5_000) {
+            runCatching { composeRule.onNodeWithTag("picker_filter_LEGS").assertExists(); true }.getOrDefault(false)
+        }
+        // Fresh ExercisePicker defaults to ALL, so Barbell Bench Press is visible
+        composeRule.onNodeWithText("Barbell Bench Press").assertIsDisplayed()
+        composeRule.onNodeWithTag("picker_filter_LEGS").performClick()
+        composeRule.onNodeWithText("Barbell Back Squat").assertIsDisplayed()
+        composeRule.onNodeWithText("Barbell Bench Press").assertDoesNotExist()
 
-        // Switch back to ProgressTab -> restores ProgressTab's MyDevice with counter 1
+        // Switch back to ProgressTab -> restores ProgressTab's ExercisePicker with Chest filter
         composeRule.runOnIdle { navigator.selectTab(PulseTab.PROGRESS) }
-        composeRule.onNodeWithText("Route: MyDevice").assertIsDisplayed()
-        composeRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
+        composeRule.onNodeWithText("Barbell Bench Press").assertIsDisplayed()
+        composeRule.onNodeWithText("Barbell Back Squat").assertDoesNotExist()
     }
 
     @Test

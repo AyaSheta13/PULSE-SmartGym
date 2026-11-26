@@ -15,6 +15,7 @@ import com.ayasheta.pulsesmartgym.core.model.common.DataError
 import com.ayasheta.pulsesmartgym.core.model.common.DomainResult
 import com.ayasheta.pulsesmartgym.core.model.common.PulseValidators
 import com.ayasheta.pulsesmartgym.core.model.common.RecordSetResult
+import com.ayasheta.pulsesmartgym.core.model.device.RepClassification
 import com.ayasheta.pulsesmartgym.core.model.repository.WorkoutSessionRepository
 import com.ayasheta.pulsesmartgym.core.model.session.PerformedSet
 import com.ayasheta.pulsesmartgym.core.model.session.RecordSetRequest
@@ -250,6 +251,9 @@ class RoomWorkoutSessionRepository(
         PulseValidators.validatePerformedReps(request.fullReps, request.partialReps)?.let {
             return RecordSetResult.ValidationError(it)
         }
+        validateRepRecords(request)?.let {
+            return RecordSetResult.ValidationError(it)
+        }
 
         return transactionRunner.runInTransaction {
             val session = sessionDao.getSession(ownerId, request.sessionId)
@@ -330,6 +334,9 @@ class RoomWorkoutSessionRepository(
         PulseValidators.validatePerformedReps(request.fullReps, request.partialReps)?.let {
             return DomainResult.Failure(DataError.ValidationError(it))
         }
+        validateRepRecords(request)?.let {
+            return DomainResult.Failure(DataError.ValidationError(it))
+        }
 
         return transactionRunner.runInTransaction {
             val session = sessionDao.getSession(ownerId, request.sessionId)
@@ -376,11 +383,53 @@ class RoomWorkoutSessionRepository(
                 sessionDao.deleteRepRecordsForSet(updatedSet.id)
                 sessionDao.insertRepRecords(repEntities)
                 request.repRecords
+            } else if (request.fullReps == existing.fullReps && request.partialReps == existing.partialReps) {
+                sessionDao.getRepRecordsForSet(existing.id).map { it.toDomain() }
             } else {
+                sessionDao.deleteRepRecordsForSet(updatedSet.id)
                 emptyList()
             }
             DomainResult.Success(updatedSet.toDomain(resultRepRecords))
         }
+    }
+
+    private fun validateRepRecords(request: RecordSetRequest): String? {
+        val records = request.repRecords
+        if (records.isEmpty()) return null
+        val seenIndexes = HashSet<Int>(records.size)
+        var fullCount = 0
+        var partialCount = 0
+        for (rep in records) {
+            if (rep.repIndex < 1) {
+                return "Rep index must be >= 1 (got ${rep.repIndex})"
+            }
+            if (!seenIndexes.add(rep.repIndex)) {
+                return "Duplicate rep index ${rep.repIndex}"
+            }
+            if (rep.totalDurationMs != null && rep.totalDurationMs!! < 0L) {
+                return "Rep ${rep.repIndex} totalDurationMs cannot be negative"
+            }
+            if (rep.concentricDurationMs != null && rep.concentricDurationMs!! < 0L) {
+                return "Rep ${rep.repIndex} concentricDurationMs cannot be negative"
+            }
+            if (rep.eccentricDurationMs != null && rep.eccentricDurationMs!! < 0L) {
+                return "Rep ${rep.repIndex} eccentricDurationMs cannot be negative"
+            }
+            if (rep.angularRomDegrees != null && (!rep.angularRomDegrees!!.isFinite() || rep.angularRomDegrees!! < 0.0)) {
+                return "Rep ${rep.repIndex} angularRomDegrees must be finite and non-negative"
+            }
+            if (rep.linearRomCm != null && (!rep.linearRomCm!!.isFinite() || rep.linearRomCm!! < 0.0)) {
+                return "Rep ${rep.repIndex} linearRomCm must be finite and non-negative"
+            }
+            when (rep.classification) {
+                RepClassification.FULL -> fullCount += 1
+                RepClassification.PARTIAL -> partialCount += 1
+            }
+        }
+        if (fullCount != request.fullReps || partialCount != request.partialReps) {
+            return "Rep records ($fullCount full, $partialCount partial) do not match set totals (${request.fullReps} full, ${request.partialReps} partial)"
+        }
+        return null
     }
 
     override suspend fun completeSession(ownerId: String, sessionId: String): DomainResult<WorkoutSession> {

@@ -5,6 +5,7 @@ import androidx.navigation3.runtime.NavKey
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTab
 import com.ayasheta.pulsesmartgym.navigation.route.AuthEntry
 import com.ayasheta.pulsesmartgym.navigation.route.CreateWorkoutPlan
+import com.ayasheta.pulsesmartgym.navigation.route.DeviceAssistedRepCounter
 import com.ayasheta.pulsesmartgym.navigation.route.EditWorkoutPlan
 import com.ayasheta.pulsesmartgym.navigation.route.ExercisePicker
 import com.ayasheta.pulsesmartgym.navigation.route.ManualRepCounter
@@ -148,7 +149,7 @@ class PulseNavigator(
         val stack = state.activeBackStack
         while (stack.size > 1) {
             val top = stack.lastOrNull()
-            if (top is ManualRepCounter || top is ReadyStartSet) {
+            if (top is ManualRepCounter || top is DeviceAssistedRepCounter || top is ReadyStartSet) {
                 stack.removeAt(stack.lastIndex)
             } else {
                 break
@@ -159,12 +160,28 @@ class PulseNavigator(
         }
     }
 
+    fun switchDeviceCounterToManual(
+        sessionId: String,
+        exerciseId: String,
+        setIndex: Int,
+    ) {
+        val stack = state.activeBackStack
+        while (stack.size > 1 && stack.lastOrNull() is DeviceAssistedRepCounter) {
+            stack.removeAt(stack.lastIndex)
+        }
+        navigate(ManualRepCounter(sessionId = sessionId, exerciseId = exerciseId, setIndex = setIndex))
+    }
+
     fun exitWorkoutSummaryToHome() {
         val stack = state.activeBackStack
         while (stack.size > 1 && NavigationPolicy.isFullScreenWorkoutRoute(stack.lastOrNull())) {
             stack.removeAt(stack.lastIndex)
         }
         state.selectedTab = PulseTab.HOME
+        val homeStack = state.activeBackStack
+        while (homeStack.size > 1) {
+            homeStack.removeAt(homeStack.lastIndex)
+        }
         state.activeFlow = AppEntryFlow.MAIN
     }
 

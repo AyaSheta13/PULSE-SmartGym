@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
+import com.ayasheta.pulsesmartgym.core.data.device.DefaultDeviceRepository
+import com.ayasheta.pulsesmartgym.core.data.device.FakeDeviceDataSource
 import com.ayasheta.pulsesmartgym.core.data.local.database.PulseDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +24,7 @@ import com.ayasheta.pulsesmartgym.core.data.repository.profile.RoomUserProfileRe
 import com.ayasheta.pulsesmartgym.core.data.repository.session.RoomWorkoutSessionRepository
 import com.ayasheta.pulsesmartgym.core.data.repository.workout.RoomWorkoutPlanRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.AuthRepository
+import com.ayasheta.pulsesmartgym.core.model.device.DeviceRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.ExerciseRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.UserPreferencesRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.UserProfileRepository
@@ -90,6 +93,14 @@ open class PulseDataContainer(
             userProfileDao = database.userProfileDao(),
             transactionRunner = transactionRunner,
         )
+    }
+
+    open val fakeDeviceDataSource: FakeDeviceDataSource by lazy {
+        FakeDeviceDataSource()
+    }
+
+    open val deviceRepository: DeviceRepository by lazy {
+        DefaultDeviceRepository(fakeDataSource = fakeDeviceDataSource)
     }
 
     open val authRepository: AuthRepository by lazy {

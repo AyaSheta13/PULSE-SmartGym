@@ -1,0 +1,17 @@
+# P10 Figma Implementation Spec
+
+**Figma File Key:** `UvskyKTyxlIOd68wQkp5cQ`
+**Reference Viewport:** `390 × 884`
+
+| # | Screen / State | Figma Node ID | Android Screen / Component | Key Visual Tokens & Fidelity Notes |
+| --- | --- | --- | --- | --- |
+| 1 | My Device (Disconnected) | `420:68` | `MyDeviceScreen` (`Disconnected` branch) | Warm `#FAF8F7` background, `PulsePodIllustration` (`#1F232B` pod, `PULSE BLE` label), `No Device Connected` neutral pill, `Smart Workout Automation` card with provider selector (`Demo Simulator` / `Physical BLE`) and `#FF5722` primary CTA `Search & Connect Device`, plus `Always usable without hardware` info card. |
+| 2 | Device Discovery (Searching) | `420:69` | `DeviceDiscoveryScreen` (`SEARCHING`) | `64dp` top bar (`Searching for Devices`), animated `BluetoothRadarIndicator`, `Searching for PULSE Hardware`, `Cancel Search` secondary button, `Searching Tips` card with `Simulate No Devices Found ›` debug/demo trigger. |
+| 3 | Available Devices | `420:70` | `DeviceDiscoveryScreen` (`AVAILABLE_DEVICES`) | Subtitle `2 simulated devices found`, `PULSE-001` (`Recommended`, `-48 dBm`) & `PULSE-002` (`-62 dBm`) cards with signal badge & `Connect` pill, `Search Again` footer button. |
+| 4 | No Devices Found | `420:71` | `DeviceDiscoveryScreen` (`NO_DEVICES`) | Warning circle icon, `No PULSE Devices Found`, troubleshooting checklist, `Search Again` primary button, `Continue Without Device` outlined action. |
+| 5 | Connecting | `420:73` | `DeviceDiscoveryScreen` (`CONNECTING`) | `PULSE-001` badge, `Connecting to PULSE-001...`, 3-step diagnostic checklist (`Establishing link`, `Discovering services`, `Enabling telemetry`), `Cancel Connection` outlined button, `Simulate Handshake Timeout ›`. |
+| 6 | Connected Success | `420:74` | `DeviceDiscoveryScreen` (`CONNECTED_SUCCESS`) | Green `#10B981` success badge, `PULSE-001 Connected` (`Simulated` chip), `Hardware Status (Prototype Demo Data)` key-value card (`88% • Sample Telemetry`), `View in Device Center` primary CTA, `Start Workout with Auto-Tracking` secondary action. |
+| 7 | My Device (Connected) | `420:75` | `MyDeviceScreen` (`CONNECTED`) | `PulsePodIllustration` with `#10B981` border & `PULSE-001` label, `PULSE-001 Connected (Simulated)` green pill, `Hardware Status (Prototype Demo Data)` card, `Start Workout with Auto-Tracking` primary CTA, `Disconnect Device` outlined button. |
+| 8 | Connection Lost Recovery | `420:76` | `ConnectionLostRecoverySheet` over `DeviceAssistedRepCounterScreen` | Bottom sheet (`RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)`), amber `!` badge, `Device Disconnected`, copy preserving completed sets & current reps (`8 full reps`), `Reconnect Device` primary CTA, `Continue Manually (Keep All Reps)` outlined CTA. |
+| 9 | Connection Failed | `451:2` | `DeviceDiscoveryScreen` (`CONNECTION_FAILED`) | Coral `!` badge, `Connection Failed`, `Simulated handshake timed out with PULSE-001`, diagnostic details card, `Retry Connection` primary CTA, `Continue Manually` outlined button. |
+| 10 | Device-Assisted Rep Counter | `57:18098` | `DeviceAssistedRepCounterScreen` | Top bar (`Barbell Bench Press`, `Set 1 of 4 • Sim • 04:19`, green `Connected` chip), `Upper Body Power`, `TARGET: 10 REPS @ 80 KG` pill, `PulseRepCounterGauge` (`8`, `GOAL 10`, `— 1` / `+ 1` adjustment controls), `CURRENT SET LOAD` card (`80 kg`, `-` / `+`), simulator strip (`Demo Simulator`, `+ Sim Rep`, `+ Partial`, `Drop Link`), `Finish Set` primary CTA, `End Workout` text action. |

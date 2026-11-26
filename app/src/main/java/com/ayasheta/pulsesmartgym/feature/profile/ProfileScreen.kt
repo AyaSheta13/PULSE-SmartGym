@@ -58,6 +58,7 @@ fun ProfileScreen(
     onDeviceClick: () -> Unit,
     onLoggedOut: () -> Unit,
     modifier: Modifier = Modifier,
+    deviceStatusText: String = "Not paired • Tap to connect",
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     ProfileScreenContent(
@@ -69,6 +70,7 @@ fun ProfileScreen(
         onConfirmMetricUnits = viewModel::confirmMetricUnits,
         onLogoutClick = { viewModel.signOut(onLoggedOut) },
         modifier = modifier,
+        deviceStatusText = deviceStatusText,
     )
 }
 
@@ -82,6 +84,7 @@ fun ProfileScreenContent(
     onConfirmMetricUnits: () -> Unit,
     onLogoutClick: () -> Unit,
     modifier: Modifier = Modifier,
+    deviceStatusText: String = "Not paired • Tap to connect",
 ) {
     val listState = rememberLazyListState()
 
@@ -148,7 +151,10 @@ fun ProfileScreenContent(
                     }
 
                     item(key = "pulse_device") {
-                        MyPulseDeviceCard(onClick = onDeviceClick)
+                        MyPulseDeviceCard(
+                            deviceStatusText = deviceStatusText,
+                            onClick = onDeviceClick,
+                        )
                     }
 
                     item(key = "settings_menu") {
@@ -381,6 +387,7 @@ private fun StatDivider() {
 
 @Composable
 private fun MyPulseDeviceCard(
+    deviceStatusText: String,
     onClick: () -> Unit,
 ) {
     Row(
@@ -416,7 +423,7 @@ private fun MyPulseDeviceCard(
                     ),
                 )
                 BasicText(
-                    text = "Not paired • BLE setup in P10",
+                    text = deviceStatusText,
                     style = PulseTheme.typography.contentPrimary.copy(
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Normal,

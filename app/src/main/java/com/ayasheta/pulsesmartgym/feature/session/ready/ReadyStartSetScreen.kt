@@ -62,6 +62,7 @@ fun ReadyStartSetScreen(
     onSessionCompleted: (String) -> Unit,
     onSessionEndedEarly: (String) -> Unit,
     modifier: Modifier = Modifier,
+    onStartDeviceAssistedClick: ((sessionId: String, exerciseId: String, setIndex: Int) -> Unit)? = null,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val handledTerminalId = remember(viewModel) { mutableStateOf<String?>(null) }
@@ -82,7 +83,11 @@ fun ReadyStartSetScreen(
         uiState = uiState,
         onBackClick = onBackClick,
         onStartSetClick = { state ->
-            onStartSetClick(state.sessionId, state.exerciseId, state.setIndex)
+            if (state.canStartDeviceAssisted && onStartDeviceAssistedClick != null) {
+                onStartDeviceAssistedClick(state.sessionId, state.exerciseId, state.setIndex)
+            } else {
+                onStartSetClick(state.sessionId, state.exerciseId, state.setIndex)
+            }
         },
         onRequestEndEarly = viewModel::requestEndEarly,
         onDismissEndEarly = viewModel::dismissEndEarly,
@@ -169,7 +174,7 @@ fun ReadyStartSetScreenContent(
                     SetExecutionTopBar(
                         title = uiState.exerciseName,
                         subtitle = "Set ${uiState.setIndex} of ${uiState.totalSetsForExercise} • Ready",
-                        modeLabel = "Manual",
+                        modeLabel = uiState.trackingModeLabel,
                         onBackClick = onBackClick,
                     )
 
@@ -241,6 +246,24 @@ fun ReadyStartSetScreenContent(
                                     color = PulseTheme.color.shadeSecondary,
                                 ),
                             )
+                        }
+
+                        if (uiState.trackingCompatibilityNotice != null) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFFFFF4DC))
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                            ) {
+                                BasicText(
+                                    text = uiState.trackingCompatibilityNotice,
+                                    style = PulseTheme.typography.contentPrimary.copy(
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF92400E),
+                                    ),
+                                )
+                            }
                         }
 
                         if (uiState.actionError != null) {

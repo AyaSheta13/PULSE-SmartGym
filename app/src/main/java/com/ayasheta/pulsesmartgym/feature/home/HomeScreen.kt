@@ -80,6 +80,7 @@ fun HomeScreen(
     onProgressClick: () -> Unit,
     onLastSessionClick: (String) -> Unit,
     modifier: Modifier = Modifier,
+    bluetoothStatus: PulseBluetoothChipStatus = PulseBluetoothChipStatus.DISCONNECTED,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     HomeScreenContent(
@@ -93,6 +94,7 @@ fun HomeScreen(
         onProgressClick = onProgressClick,
         onLastSessionClick = onLastSessionClick,
         modifier = modifier,
+        bluetoothStatus = bluetoothStatus,
     )
 }
 
@@ -108,6 +110,7 @@ fun HomeScreenContent(
     onProgressClick: () -> Unit,
     onLastSessionClick: (String) -> Unit,
     modifier: Modifier = Modifier,
+    bluetoothStatus: PulseBluetoothChipStatus = PulseBluetoothChipStatus.DISCONNECTED,
 ) {
 
     Column(
@@ -121,7 +124,7 @@ fun HomeScreenContent(
                     style = PulseTopAppBarStyle.HomeGreetingHeader(
                         greeting = "Welcome",
                         userName = "PULSE",
-                        bluetoothStatus = PulseBluetoothChipStatus.DISCONNECTED,
+                        bluetoothStatus = bluetoothStatus,
                         avatarInitial = "P",
                         onBluetoothClick = onDeviceStatusClick,
                         onAvatarClick = onAvatarClick,
@@ -140,7 +143,7 @@ fun HomeScreenContent(
                     style = PulseTopAppBarStyle.HomeGreetingHeader(
                         greeting = "Welcome",
                         userName = "PULSE",
-                        bluetoothStatus = PulseBluetoothChipStatus.DISCONNECTED,
+                        bluetoothStatus = bluetoothStatus,
                         avatarInitial = "P",
                         onBluetoothClick = onDeviceStatusClick,
                         onAvatarClick = onAvatarClick,
@@ -164,7 +167,7 @@ fun HomeScreenContent(
                     style = PulseTopAppBarStyle.HomeGreetingHeader(
                         greeting = uiState.welcomeOverline,
                         userName = uiState.greetingTitle,
-                        bluetoothStatus = PulseBluetoothChipStatus.DISCONNECTED,
+                        bluetoothStatus = bluetoothStatus,
                         avatarInitial = uiState.avatarInitial,
                         onBluetoothClick = onDeviceStatusClick,
                         onAvatarClick = onAvatarClick,

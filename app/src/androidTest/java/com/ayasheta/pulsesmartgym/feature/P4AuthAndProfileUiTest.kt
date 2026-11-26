@@ -358,25 +358,25 @@ class P4AuthAndProfileUiTest {
             }
         }
 
-        // Push MyDevice on PROGRESS tab
+        // Push ExercisePicker on PROGRESS tab
         composeRule.runOnIdle { navigator.selectTab(PulseTab.PROGRESS) }
-        composeRule.runOnIdle { navigator.navigate(com.ayasheta.pulsesmartgym.navigation.route.MyDevice) }
-        composeRule.onNodeWithText("Route: MyDevice").assertIsDisplayed()
-        composeRule.onNodeWithText("Increment Local State").performClick()
-        composeRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
+        composeRule.runOnIdle { navigator.navigate(com.ayasheta.pulsesmartgym.navigation.route.ExercisePicker()) }
+        composeRule.onNodeWithTag("picker_search_input").assertIsDisplayed()
+        composeRule.onNodeWithTag("picker_search_input").performTextInput("Bench")
+        composeRule.onNodeWithText("Bench").assertIsDisplayed()
 
-        // Switch to HISTORY tab and push same MyDevice
+        // Switch to HISTORY tab and push same ExercisePicker
         composeRule.runOnIdle { navigator.selectTab(PulseTab.HISTORY) }
-        composeRule.runOnIdle { navigator.navigate(com.ayasheta.pulsesmartgym.navigation.route.MyDevice) }
-        composeRule.onNodeWithText("Route: MyDevice").assertIsDisplayed()
-        composeRule.onNodeWithText("Saved State Counter: 0").assertIsDisplayed()
+        composeRule.runOnIdle { navigator.navigate(com.ayasheta.pulsesmartgym.navigation.route.ExercisePicker()) }
+        composeRule.onNodeWithTag("picker_search_input").assertIsDisplayed()
+        composeRule.onNodeWithText("Bench").assertDoesNotExist()
 
-        // Pop HISTORY's MyDevice, then switch back to PROGRESS -> PROGRESS's MyDevice state is intact
+        // Pop HISTORY's ExercisePicker, then switch back to PROGRESS -> PROGRESS's ExercisePicker state is intact
         composeRule.runOnIdle { navigator.navigateBack() }
         composeRule.onNodeWithText("Workout History").assertIsDisplayed()
         composeRule.runOnIdle { navigator.selectTab(PulseTab.PROGRESS) }
-        composeRule.onNodeWithText("Route: MyDevice").assertIsDisplayed()
-        composeRule.onNodeWithText("Saved State Counter: 1").assertIsDisplayed()
+        composeRule.onNodeWithTag("picker_search_input").assertIsDisplayed()
+        composeRule.onNodeWithText("Bench").assertIsDisplayed()
     }
 
     @Test

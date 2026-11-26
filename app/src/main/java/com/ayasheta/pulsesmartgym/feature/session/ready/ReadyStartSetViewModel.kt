@@ -3,6 +3,9 @@ package com.ayasheta.pulsesmartgym.feature.session.ready
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ayasheta.pulsesmartgym.core.model.common.DomainResult
+import com.ayasheta.pulsesmartgym.core.model.device.DeviceConnectionState
+import com.ayasheta.pulsesmartgym.core.model.device.DeviceLinkState
+import com.ayasheta.pulsesmartgym.core.model.device.DeviceRepository
 import com.ayasheta.pulsesmartgym.core.model.profile.AuthState
 import com.ayasheta.pulsesmartgym.core.model.repository.AuthRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.UserPreferencesRepository
@@ -27,6 +30,7 @@ class ReadyStartSetViewModel(
     private val authRepository: AuthRepository,
     private val workoutSessionRepository: WorkoutSessionRepository,
     private val userPreferencesRepository: UserPreferencesRepository,
+    private val deviceRepository: DeviceRepository? = null,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<ReadyStartSetUiState>(ReadyStartSetUiState.Loading)
@@ -63,7 +67,8 @@ class ReadyStartSetViewModel(
                         combine(
                             workoutSessionRepository.observeSession(ownerId, sessionId),
                             userPreferencesRepository.observePreferences(),
-                        ) { session, prefs ->
+                            deviceRepository?.linkState ?: flowOf(DeviceLinkState()),
+                        ) { session, prefs, link ->
                             if (session == null) {
                                 ReadyStartSetUiState.Missing("Workout session not found.")
                             } else if (session.status != SessionStatus.ACTIVE) {
@@ -79,6 +84,22 @@ class ReadyStartSetViewModel(
                                         setIndex = setIndex,
                                     )
                                 } else {
+                                    val isDeviceConnected = link.phase == DeviceConnectionState.CONNECTED
+                                    val supportsCategory = isDeviceConnected &&
+                                        link.capabilities.supportsTrackingCategory(exercise.trackingCategorySnapshot)
+                                    val notice = when {
+                                        isDeviceConnected && !supportsCategory ->
+                                            "Auto-tracking unavailable for ${exercise.trackingCategorySnapshot.name.lowercase()} exercises. Using manual mode."
+                                        link.phase == DeviceConnectionState.CONNECTION_LOST ||
+                                            link.phase == DeviceConnectionState.FAILED ->
+                                            "Device connection lost. Starting in manual mode."
+                                        else -> null
+                                    }
+                                    val modeLabel = when {
+                                        supportsCategory && link.isSimulated -> "Sim Pod"
+                                        supportsCategory -> "Connected"
+                                        else -> "Manual"
+                                    }
                                     ReadyStartSetUiState.Ready(
                                         sessionId = session.id,
                                         exerciseId = exercise.id,
@@ -91,6 +112,9 @@ class ReadyStartSetViewModel(
                                         targetRestSeconds = plannedSet.targetRestSeconds,
                                         preferredWeightUnit = prefs.preferredWeightUnit,
                                         recordedSetsCount = session.exercises.sumOf { it.performedSets.size },
+                                        canStartDeviceAssisted = supportsCategory,
+                                        trackingModeLabel = modeLabel,
+                                        trackingCompatibilityNotice = notice,
                                     )
                                 }
                             }

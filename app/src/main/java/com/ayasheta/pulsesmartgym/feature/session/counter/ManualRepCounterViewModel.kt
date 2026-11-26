@@ -8,6 +8,8 @@ import com.ayasheta.pulsesmartgym.core.model.common.RecordSetResult
 import com.ayasheta.pulsesmartgym.core.model.common.WeightLoad
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
 import com.ayasheta.pulsesmartgym.core.model.device.MeasurementOrigin
+import com.ayasheta.pulsesmartgym.core.model.device.RepClassification
+import com.ayasheta.pulsesmartgym.core.model.device.RepMeasurement
 import com.ayasheta.pulsesmartgym.core.model.device.TrackingMode
 import com.ayasheta.pulsesmartgym.core.model.profile.AuthState
 import com.ayasheta.pulsesmartgym.core.model.repository.AuthRepository
@@ -41,6 +43,7 @@ class ManualRepCounterViewModel(
     private val userPreferencesRepository: UserPreferencesRepository,
     private val savedStateHandle: SavedStateHandle = SavedStateHandle(),
     private val elapsedRealtimeMs: () -> Long = { android.os.SystemClock.elapsedRealtime() },
+    private val setDraftStore: SetDraftStore? = null,
 ) : ViewModel() {
 
     private val stateKeyPrefix = "counter_${sessionId}_${exerciseId}_${setIndex}"
@@ -81,8 +84,11 @@ class ManualRepCounterViewModel(
     private var activeOwnerId: String? = null
     private var hasInitializedLoad = savedStateHandle.get<Boolean>(loadInitKey) ?: false
     private var latestSession: WorkoutSession? = null
-    private val setStartedAtElapsedMs: Long = savedStateHandle.get<Long>(startElapsedKey)
+    private var setStartedAtElapsedMs: Long = savedStateHandle.get<Long>(startElapsedKey)
         ?: elapsedRealtimeMs().also { savedStateHandle[startElapsedKey] = it }
+    private var partialRepsCount: Int = 0
+    private var preservedLedger: MutableList<RepMeasurement> = mutableListOf()
+    private var hadDeviceTracking: Boolean = false
 
     init {
         observeState()
@@ -107,6 +113,21 @@ class ManualRepCounterViewModel(
                             clearTransient()
                         }
                         activeOwnerId = ownerId
+                        setDraftStore?.consume(ownerId, sessionId, exerciseId, setIndex)?.let { draft ->
+                            currentRepsFlow.value = draft.fullReps
+                            savedStateHandle[repsKey] = draft.fullReps
+                            partialRepsCount = draft.partialReps
+                            preservedLedger = draft.repRecords.toMutableList()
+                            hadDeviceTracking = draft.hadDeviceTracking
+                            setStartedAtElapsedMs = draft.setStartedAtElapsedMs
+                            savedStateHandle[startElapsedKey] = draft.setStartedAtElapsedMs
+                            if (draft.actualLoad != null) {
+                                actualLoadFlow.value = draft.actualLoad
+                                savedStateHandle[loadGramsKey] = draft.actualLoad.grams
+                                savedStateHandle[loadInitKey] = true
+                                hasInitializedLoad = true
+                            }
+                        }
                         combine(
                             workoutSessionRepository.observeSession(ownerId, sessionId),
                             userPreferencesRepository.observePreferences(),
@@ -231,6 +252,15 @@ class ManualRepCounterViewModel(
         currentRepsFlow.update { next ->
             (next + 1).coerceAtMost(999).also { savedStateHandle[repsKey] = it }
         }
+        if (hadDeviceTracking) {
+            preservedLedger.add(
+                RepMeasurement(
+                    repIndex = preservedLedger.size + 1,
+                    classification = RepClassification.FULL,
+                    origin = MeasurementOrigin.MANUAL_INPUT,
+                ),
+            )
+        }
     }
 
     fun decrementRep() {
@@ -238,6 +268,12 @@ class ManualRepCounterViewModel(
         errorMessageFlow.value = null
         currentRepsFlow.update { next ->
             (next - 1).coerceAtLeast(0).also { savedStateHandle[repsKey] = it }
+        }
+        if (hadDeviceTracking) {
+            val lastFullIdx = preservedLedger.indexOfLast { it.classification == RepClassification.FULL }
+            if (lastFullIdx >= 0) {
+                preservedLedger.removeAt(lastFullIdx)
+            }
         }
     }
 
@@ -267,94 +303,72 @@ class ManualRepCounterViewModel(
         if (isSubmittingFlow.value || isEndingEarlyFlow.value) return
 
         val elapsedMs = (elapsedRealtimeMs() - setStartedAtElapsedMs).coerceAtLeast(0L)
+        val normalizedRecords = if (hadDeviceTracking && preservedLedger.isNotEmpty()) {
+            preservedLedger.mapIndexed { idx, rep -> rep.copy(repIndex = idx + 1) }
+        } else {
+            emptyList()
+        }
+        val trackingMode = if (hadDeviceTracking) TrackingMode.DEVICE_ASSISTED else TrackingMode.MANUAL
+        val setOrigin = when {
+            normalizedRecords.any { it.origin == MeasurementOrigin.SENSOR_TELEMETRY } ->
+                MeasurementOrigin.SENSOR_TELEMETRY
+            normalizedRecords.any { it.origin == MeasurementOrigin.SIMULATED_TELEMETRY } ->
+                MeasurementOrigin.SIMULATED_TELEMETRY
+            else -> MeasurementOrigin.MANUAL_INPUT
+        }
         val request = RecordSetRequest(
             sessionId = active.sessionId,
             sessionExerciseId = active.exerciseId,
             setIndex = active.setIndex,
             fullReps = active.currentReps,
-            partialReps = 0,
+            partialReps = if (hadDeviceTracking) partialRepsCount else 0,
             actualLoad = active.actualLoad,
-            trackingMode = TrackingMode.MANUAL,
-            origin = MeasurementOrigin.MANUAL_INPUT,
+            trackingMode = trackingMode,
+            origin = setOrigin,
             durationMs = elapsedMs,
-            repRecords = emptyList(),
+            repRecords = normalizedRecords,
         )
 
         isSubmittingFlow.value = true
         errorMessageFlow.value = null
 
         viewModelScope.launch {
-            when (val result = workoutSessionRepository.recordPerformedSet(ownerId, request)) {
-                is RecordSetResult.Recorded -> {
-                    if (activeOwnerId != ownerId) {
-                        isSubmittingFlow.value = false
-                        return@launch
-                    }
-                    val refreshedSession = workoutSessionRepository.getSession(ownerId, active.sessionId)
-                        ?: latestSession
-                    val nextTarget = refreshedSession?.let {
-                        SessionProgression.findNextUncompletedSet(
-                            session = it,
-                            afterExerciseId = active.exerciseId,
-                            afterSetIndex = active.setIndex,
-                        )
-                    }
-                    val restSeconds = active.targetRestSeconds ?: 0
-                    val shouldStartRest = restSeconds > 0 && nextTarget != null
-                    val (hasRestStarted, restErrorMessage) = if (shouldStartRest) {
-                        when (
-                            val restResult = workoutSessionRepository.startRestTimer(
-                                ownerId = ownerId,
-                                sessionId = active.sessionId,
-                                exerciseId = active.exerciseId,
-                                exerciseName = active.exerciseName,
-                                completedSetIndex = active.setIndex,
-                                durationSeconds = restSeconds,
-                                nextExerciseId = nextTarget?.exerciseId,
-                                nextSetIndex = nextTarget?.setIndex,
-                            )
-                        ) {
-                            is DomainResult.Success -> true to null
-                            is DomainResult.Failure -> {
-                                false to "Set saved, but rest timer could not be started: ${restResult.error.userMessage()}"
-                            }
-                        }
-                    } else {
-                        false to null
-                    }
+            when (
+                val outcome = SetFinishHelper.submitSetAndStartRest(
+                    ownerId = ownerId,
+                    request = request,
+                    exerciseName = active.exerciseName,
+                    targetRestSeconds = active.targetRestSeconds,
+                    fallbackSession = latestSession,
+                    workoutSessionRepository = workoutSessionRepository,
+                    currentOwnerProvider = { activeOwnerId },
+                )
+            ) {
+                is SetSubmissionOutcome.Success -> {
                     val completedState = ManualRepCounterUiState.Completed(
-                        sessionId = active.sessionId,
-                        hasRestStarted = hasRestStarted,
-                        restErrorMessage = restErrorMessage,
+                        sessionId = outcome.sessionId,
+                        hasRestStarted = outcome.hasRestStarted,
+                        restErrorMessage = outcome.restErrorMessage,
                     )
                     savedStateHandle[completedKey] = true
-                    savedStateHandle[completedRestStartedKey] = hasRestStarted
-                    savedStateHandle[completedRestErrorKey] = restErrorMessage
+                    savedStateHandle[completedRestStartedKey] = outcome.hasRestStarted
+                    savedStateHandle[completedRestErrorKey] = outcome.restErrorMessage
                     completionStateFlow.value = completedState
                     _uiState.value = completedState
                     _events.tryEmit(
                         ManualRepCounterEvent.SetFinished(
-                            sessionId = active.sessionId,
-                            hasRestStarted = hasRestStarted,
-                            nextTarget = nextTarget,
-                            restErrorMessage = restErrorMessage,
+                            sessionId = outcome.sessionId,
+                            hasRestStarted = outcome.hasRestStarted,
+                            nextTarget = outcome.nextTarget,
+                            restErrorMessage = outcome.restErrorMessage,
                         ),
                     )
                 }
-                is RecordSetResult.AlreadyRecorded -> {
-                    errorMessageFlow.value = "Set ${result.setIndex} was already recorded."
+                is SetSubmissionOutcome.Failure -> {
+                    errorMessageFlow.value = outcome.message
                     isSubmittingFlow.value = false
                 }
-                is RecordSetResult.ValidationError -> {
-                    errorMessageFlow.value = result.message
-                    isSubmittingFlow.value = false
-                }
-                is RecordSetResult.NotFound -> {
-                    errorMessageFlow.value = result.message
-                    isSubmittingFlow.value = false
-                }
-                is RecordSetResult.InvalidState -> {
-                    errorMessageFlow.value = result.message
+                SetSubmissionOutcome.OwnerChanged -> {
                     isSubmittingFlow.value = false
                 }
             }

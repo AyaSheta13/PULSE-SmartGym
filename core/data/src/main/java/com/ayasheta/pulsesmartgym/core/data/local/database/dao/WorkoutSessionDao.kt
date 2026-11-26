@@ -97,6 +97,9 @@ interface WorkoutSessionDao {
     @Update
     suspend fun updatePerformedSet(set: PerformedSetEntity)
 
+    @Query("SELECT * FROM rep_records WHERE performedSetId = :performedSetId ORDER BY repIndex ASC")
+    suspend fun getRepRecordsForSet(performedSetId: String): List<RepRecordEntity>
+
     @Query("DELETE FROM rep_records WHERE performedSetId = :performedSetId")
     suspend fun deleteRepRecordsForSet(performedSetId: String)
 

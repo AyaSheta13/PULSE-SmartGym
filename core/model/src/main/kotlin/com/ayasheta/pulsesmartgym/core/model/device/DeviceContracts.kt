@@ -17,6 +17,7 @@ enum class TrackingMode {
 enum class MeasurementOrigin {
     MANUAL_INPUT,
     SENSOR_TELEMETRY,
+    SIMULATED_TELEMETRY,
     MANUAL_CORRECTION,
 }
 

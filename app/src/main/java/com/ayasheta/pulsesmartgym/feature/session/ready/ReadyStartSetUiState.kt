@@ -33,5 +33,8 @@ sealed interface ReadyStartSetUiState {
         val isEndingEarly: Boolean = false,
         val recordedSetsCount: Int = 0,
         val actionError: String? = null,
+        val canStartDeviceAssisted: Boolean = false,
+        val trackingModeLabel: String = "Manual",
+        val trackingCompatibilityNotice: String? = null,
     ) : ReadyStartSetUiState
 }

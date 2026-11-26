@@ -1,12 +1,20 @@
 package com.ayasheta.pulsesmartgym.navigation
 
+import android.bluetooth.BluetoothAdapter
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelStoreOwner
@@ -19,6 +27,22 @@ import com.ayasheta.pulsesmartgym.core.data.di.PulseDataContainer
 import com.ayasheta.pulsesmartgym.core.designsystem.component.chips.PulseBluetoothChipStatus
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTab
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTopAppBarStyle
+import com.ayasheta.pulsesmartgym.core.model.common.DomainResult
+import com.ayasheta.pulsesmartgym.core.model.common.WeightLoad
+import com.ayasheta.pulsesmartgym.core.model.device.DeviceConnectionState
+import com.ayasheta.pulsesmartgym.core.model.profile.AuthState
+import com.ayasheta.pulsesmartgym.core.model.workout.PlanExerciseDraft
+import com.ayasheta.pulsesmartgym.core.model.workout.PlannedSetDraft
+import com.ayasheta.pulsesmartgym.core.model.workout.WorkoutPlanDraft
+import com.ayasheta.pulsesmartgym.feature.device.DeviceViewModel
+import com.ayasheta.pulsesmartgym.feature.device.center.MyDeviceScreen
+import com.ayasheta.pulsesmartgym.feature.device.discovery.DeviceDiscoveryScreen
+import com.ayasheta.pulsesmartgym.feature.device.permissions.BluetoothPermissionPolicy
+import com.ayasheta.pulsesmartgym.feature.session.counter.SetDraftStore
+import com.ayasheta.pulsesmartgym.feature.session.devicecounter.DeviceAssistedRepCounterScreen
+import com.ayasheta.pulsesmartgym.feature.session.devicecounter.DeviceAssistedRepCounterViewModel
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import com.ayasheta.pulsesmartgym.feature.auth.entry.AuthEntryScreen
 import com.ayasheta.pulsesmartgym.feature.auth.entry.AuthEntryViewModel
 import com.ayasheta.pulsesmartgym.feature.auth.login.LoginScreen
@@ -115,12 +139,91 @@ fun rememberPulseEntryProvider(
     ) {
         WorkoutPlanSelectionBridge()
     }
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val sessionLaunchCoordinator = remember(navigator, dataContainer, coroutineScope) {
+    val setDraftStore = remember { SetDraftStore() }
+
+    val deviceViewModel: DeviceViewModel = viewModel(
+        viewModelStoreOwner = authFlowViewModelStoreOwner,
+        key = "global_device_view_model",
+    ) {
+        DeviceViewModel(
+            authRepository = dataContainer.authRepository,
+            deviceRepository = dataContainer.deviceRepository,
+            fakeDeviceDataSource = dataContainer.fakeDeviceDataSource,
+        )
+    }
+    val deviceUiState by deviceViewModel.uiState.collectAsStateWithLifecycle()
+
+    // Isolated simulator container so demo workouts never contaminate genuine History/PRs/Analytics
+    var demoIsolated by remember { mutableStateOf<PulseDataContainer.IsolatedTestContainer?>(null) }
+    var demoSeededOwnerId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(deviceUiState.isDemoSessionActive) {
+        if (deviceUiState.isDemoSessionActive) {
+            if (demoIsolated == null) {
+                val created = PulseDataContainer.createIsolatedForTesting(context)
+                demoIsolated = created
+                val user = (created.container.authRepository.continueAsGuest() as? DomainResult.Success)?.data
+                if (user != null) {
+                    demoSeededOwnerId = user.id
+                    val bench = created.container.exerciseRepository.observeAll().first()
+                        .firstOrNull { it.name.contains("Bench", ignoreCase = true) }
+                    if (bench != null) {
+                        created.container.workoutPlanRepository.createPlan(
+                            ownerId = user.id,
+                            draft = WorkoutPlanDraft(
+                                name = "Upper Body Power (Demo)",
+                                description = "Isolated device simulation workout",
+                                exercises = listOf(
+                                    PlanExerciseDraft(
+                                        exerciseId = bench.id,
+                                        orderIndex = 0,
+                                        plannedSets = listOf(
+                                            PlannedSetDraft(1, 10, WeightLoad.fromKilograms(80.0), 60),
+                                            PlannedSetDraft(2, 10, WeightLoad.fromKilograms(80.0), 60),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        )
+                    }
+                }
+            }
+        } else {
+            demoIsolated?.close()
+            demoIsolated = null
+            demoSeededOwnerId = null
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            demoIsolated?.close()
+            demoIsolated = null
+        }
+    }
+
+    val workoutDataContainer = if (deviceUiState.isDemoSessionActive && demoIsolated != null) {
+        demoIsolated!!.container
+    } else {
+        dataContainer
+    }
+
+    val globalBluetoothChipStatus = when (deviceUiState.linkState.phase) {
+        DeviceConnectionState.CONNECTED -> PulseBluetoothChipStatus.CONNECTED
+        DeviceConnectionState.SCANNING,
+        DeviceConnectionState.CONNECTING,
+        -> PulseBluetoothChipStatus.CONNECTING
+        DeviceConnectionState.CONNECTION_LOST,
+        DeviceConnectionState.FAILED,
+        -> PulseBluetoothChipStatus.CONNECTION_LOST
+        DeviceConnectionState.DISCONNECTED -> PulseBluetoothChipStatus.DISCONNECTED
+    }
+
+    val sessionLaunchCoordinator = remember(navigator, workoutDataContainer, coroutineScope) {
         WorkoutSessionLaunchCoordinator(
             scope = coroutineScope,
-            authRepository = dataContainer.authRepository,
-            workoutSessionRepository = dataContainer.workoutSessionRepository,
+            authRepository = workoutDataContainer.authRepository,
+            workoutSessionRepository = workoutDataContainer.workoutSessionRepository,
             onNavigateToSession = { planId, sessionId ->
                 navigator.startWorkoutSession(planId = planId, sessionId = sessionId)
             },
@@ -281,6 +384,7 @@ fun rememberPulseEntryProvider(
             },
             onProgressClick = { navigator.selectTab(PulseTab.PROGRESS) },
             onLastSessionClick = { sessionId -> navigator.navigate(SessionDetails(sessionId = sessionId)) },
+            bluetoothStatus = globalBluetoothChipStatus,
         )
     }
 
@@ -340,11 +444,27 @@ fun rememberPulseEntryProvider(
                 userPreferencesRepository = dataContainer.userPreferencesRepository,
             )
         }
+        val profileDeviceText = when (deviceUiState.linkState.phase) {
+            DeviceConnectionState.CONNECTED -> {
+                val name = deviceUiState.linkState.selectedDevice?.name ?: "PULSE Pod"
+                if (deviceUiState.linkState.isSimulated) "$name • Connected (Simulated)" else "$name • Connected"
+            }
+            DeviceConnectionState.CONNECTION_LOST -> "Connection lost • Tap to reconnect"
+            DeviceConnectionState.CONNECTING -> "Connecting..."
+            DeviceConnectionState.SCANNING -> "Scanning..."
+            DeviceConnectionState.FAILED -> "Connection failed • Tap to retry"
+            DeviceConnectionState.DISCONNECTED -> "Not paired • Tap to connect"
+        }
         ProfileScreen(
             viewModel = viewModel,
             onEditProfileClick = { navigator.navigate(EditProfile) },
             onDeviceClick = { navigator.navigate(MyDevice) },
-            onLoggedOut = { navigator.resetToAuth(AuthEntry) },
+            onLoggedOut = {
+                setDraftStore.clearAll()
+                deviceViewModel.exitDemoMode()
+                navigator.resetToAuth(AuthEntry)
+            },
+            deviceStatusText = profileDeviceText,
         )
     }
 
@@ -441,9 +561,9 @@ fun rememberPulseEntryProvider(
         val viewModel: WorkoutSessionViewModel = viewModel {
             WorkoutSessionViewModel(
                 sessionId = key.sessionId,
-                authRepository = dataContainer.authRepository,
-                workoutSessionRepository = dataContainer.workoutSessionRepository,
-                userPreferencesRepository = dataContainer.userPreferencesRepository,
+                authRepository = workoutDataContainer.authRepository,
+                workoutSessionRepository = workoutDataContainer.workoutSessionRepository,
+                userPreferencesRepository = workoutDataContainer.userPreferencesRepository,
             )
         }
         WorkoutSessionScreen(
@@ -484,9 +604,10 @@ fun rememberPulseEntryProvider(
                 sessionId = key.sessionId,
                 exerciseId = key.exerciseId,
                 setIndex = key.setIndex,
-                authRepository = dataContainer.authRepository,
-                workoutSessionRepository = dataContainer.workoutSessionRepository,
-                userPreferencesRepository = dataContainer.userPreferencesRepository,
+                authRepository = workoutDataContainer.authRepository,
+                workoutSessionRepository = workoutDataContainer.workoutSessionRepository,
+                userPreferencesRepository = workoutDataContainer.userPreferencesRepository,
+                deviceRepository = dataContainer.deviceRepository,
             )
         }
         com.ayasheta.pulsesmartgym.feature.session.ready.ReadyStartSetScreen(
@@ -495,6 +616,15 @@ fun rememberPulseEntryProvider(
             onStartSetClick = { sessionId, exerciseId, setIndex ->
                 navigator.navigate(
                     ManualRepCounter(
+                        sessionId = sessionId,
+                        exerciseId = exerciseId,
+                        setIndex = setIndex,
+                    ),
+                )
+            },
+            onStartDeviceAssistedClick = { sessionId, exerciseId, setIndex ->
+                navigator.navigate(
+                    DeviceAssistedRepCounter(
                         sessionId = sessionId,
                         exerciseId = exerciseId,
                         setIndex = setIndex,
@@ -516,10 +646,11 @@ fun rememberPulseEntryProvider(
                 sessionId = key.sessionId,
                 exerciseId = key.exerciseId,
                 setIndex = key.setIndex,
-                authRepository = dataContainer.authRepository,
-                workoutSessionRepository = dataContainer.workoutSessionRepository,
-                userPreferencesRepository = dataContainer.userPreferencesRepository,
+                authRepository = workoutDataContainer.authRepository,
+                workoutSessionRepository = workoutDataContainer.workoutSessionRepository,
+                userPreferencesRepository = workoutDataContainer.userPreferencesRepository,
                 savedStateHandle = createSavedStateHandle(),
+                setDraftStore = setDraftStore,
             )
         }
         com.ayasheta.pulsesmartgym.feature.session.counter.ManualRepCounterScreen(
@@ -546,21 +677,45 @@ fun rememberPulseEntryProvider(
     }
 
     entry<DeviceAssistedRepCounter> { key ->
-        NavigationPlaceholderScreen(
-            title = "Device-Assisted Rep Counter",
-            routeLabel = "DeviceAssistedRepCounter",
-            topBarStyle = PulseTopAppBarStyle.LiveWorkoutHeader(
-                exerciseTitle = "Device Counter",
-                sessionSubtitle = "Set ${key.setIndex}",
-                bluetoothStatus = PulseBluetoothChipStatus.CONNECTED,
-                onBackClick = { navigator.navigateBack() },
-            ),
-            routeArguments = listOf(
-                "sessionId" to key.sessionId,
-                "exerciseId" to key.exerciseId,
-                "setIndex" to key.setIndex.toString(),
-            ),
+        val viewModel: DeviceAssistedRepCounterViewModel = viewModel {
+            DeviceAssistedRepCounterViewModel(
+                sessionId = key.sessionId,
+                exerciseId = key.exerciseId,
+                setIndex = key.setIndex,
+                authRepository = workoutDataContainer.authRepository,
+                workoutSessionRepository = workoutDataContainer.workoutSessionRepository,
+                userPreferencesRepository = workoutDataContainer.userPreferencesRepository,
+                deviceRepository = dataContainer.deviceRepository,
+                fakeDeviceDataSource = dataContainer.fakeDeviceDataSource,
+                setDraftStore = setDraftStore,
+                savedStateHandle = createSavedStateHandle(),
+            )
+        }
+        DeviceAssistedRepCounterScreen(
+            viewModel = viewModel,
             onBackClick = { navigator.navigateBack() },
+            onSetFinished = { sessionId, _, nextTarget: com.ayasheta.pulsesmartgym.core.model.session.SessionSetTarget?, restErrorMessage ->
+                if (restErrorMessage != null) {
+                    pendingSessionError = restErrorMessage
+                }
+                navigator.finishSetAndReturnToSession(
+                    sessionId = sessionId,
+                    nextExerciseId = nextTarget?.exerciseId,
+                    nextSetIndex = nextTarget?.setIndex,
+                    openNextSetImmediately = false,
+                )
+            },
+            onFallbackToManual = { sessionId, exerciseId, setIndex ->
+                navigator.switchDeviceCounterToManual(sessionId, exerciseId, setIndex)
+            },
+            onSessionEnded = { endedSessionId, status ->
+                val route = if (status == com.ayasheta.pulsesmartgym.core.model.session.SessionStatus.COMPLETED) {
+                    WorkoutComplete(sessionId = endedSessionId)
+                } else {
+                    PartialWorkoutSummary(sessionId = endedSessionId)
+                }
+                navigator.completeWorkoutFlow(route)
+            },
         )
     }
 
@@ -568,15 +723,22 @@ fun rememberPulseEntryProvider(
         val viewModel: WorkoutResultViewModel = viewModel {
             WorkoutResultViewModel(
                 sessionId = key.sessionId,
-                authRepository = dataContainer.authRepository,
-                workoutSessionRepository = dataContainer.workoutSessionRepository,
-                userPreferencesRepository = dataContainer.userPreferencesRepository,
+                authRepository = workoutDataContainer.authRepository,
+                workoutSessionRepository = workoutDataContainer.workoutSessionRepository,
+                userPreferencesRepository = workoutDataContainer.userPreferencesRepository,
             )
         }
         WorkoutResultScreen(
             viewModel = viewModel,
-            onBackToHome = { navigator.exitWorkoutSummaryToHome() },
-            onViewHistory = { navigator.exitWorkoutSummaryToHistory() },
+            onBackToHome = {
+                deviceViewModel.exitDemoMode()
+                navigator.exitWorkoutSummaryToHome()
+            },
+            onViewHistory = if (deviceUiState.isDemoSessionActive) {
+                null
+            } else {
+                { navigator.exitWorkoutSummaryToHistory() }
+            },
         )
     }
 
@@ -584,15 +746,22 @@ fun rememberPulseEntryProvider(
         val viewModel: WorkoutResultViewModel = viewModel {
             WorkoutResultViewModel(
                 sessionId = key.sessionId,
-                authRepository = dataContainer.authRepository,
-                workoutSessionRepository = dataContainer.workoutSessionRepository,
-                userPreferencesRepository = dataContainer.userPreferencesRepository,
+                authRepository = workoutDataContainer.authRepository,
+                workoutSessionRepository = workoutDataContainer.workoutSessionRepository,
+                userPreferencesRepository = workoutDataContainer.userPreferencesRepository,
             )
         }
         WorkoutResultScreen(
             viewModel = viewModel,
-            onBackToHome = { navigator.exitWorkoutSummaryToHome() },
-            onViewHistory = { navigator.exitWorkoutSummaryToHistory() },
+            onBackToHome = {
+                deviceViewModel.exitDemoMode()
+                navigator.exitWorkoutSummaryToHome()
+            },
+            onViewHistory = if (deviceUiState.isDemoSessionActive) {
+                null
+            } else {
+                { navigator.exitWorkoutSummaryToHistory() }
+            },
         )
     }
 
@@ -618,25 +787,82 @@ fun rememberPulseEntryProvider(
 
     // --- Device & Profile Settings ---
     entry<MyDevice> {
-        NavigationPlaceholderScreen(
-            title = "My Device",
-            routeLabel = "MyDevice",
-            topBarStyle = PulseTopAppBarStyle.BackWithTitle("My Device", onBackClick = { navigator.navigateBack() }),
-            actions = listOf(
-                NavigationDemoAction("Scan for Devices", isPrimary = true) {
-                    navigator.navigate(DeviceDiscovery)
-                },
-            ),
+        MyDeviceScreen(
+            viewModel = deviceViewModel,
             onBackClick = { navigator.navigateBack() },
+            onSearchAndConnectClick = { navigator.navigate(DeviceDiscovery) },
+            onStartWorkoutWithAutoTracking = {
+                coroutineScope.launch {
+                    val targetContainer = demoIsolated?.container ?: dataContainer
+                    val ownerId = (targetContainer.authRepository.restoreSession() as? AuthState.Authenticated)?.user?.id
+                        ?: demoSeededOwnerId
+                    if (ownerId != null) {
+                        val firstPlan = targetContainer.workoutPlanRepository.observePlans(ownerId).first().firstOrNull()
+                        if (firstPlan != null) {
+                            sessionLaunchCoordinator.startOrResumePlan(firstPlan.id)
+                            return@launch
+                        }
+                    }
+                    navigator.selectTab(PulseTab.WORKOUTS)
+                }
+            },
         )
     }
 
     entry<DeviceDiscovery> {
-        NavigationPlaceholderScreen(
-            title = "Device Discovery",
-            routeLabel = "DeviceDiscovery",
-            topBarStyle = PulseTopAppBarStyle.BackWithTitle("Device Discovery", onBackClick = { navigator.navigateBack() }),
+        var hasRequestedBtPermissions by rememberSaveable { mutableStateOf(false) }
+        val permissionLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestMultiplePermissions(),
+        ) {
+            hasRequestedBtPermissions = true
+            deviceViewModel.updateBluetoothReadiness(
+                BluetoothPermissionPolicy.inspectDeviceReadiness(
+                    context = context,
+                    hasRequestedBefore = true,
+                    shouldShowRationale = false,
+                ),
+            )
+        }
+        val enableBtLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.StartActivityForResult(),
+        ) {
+            deviceViewModel.updateBluetoothReadiness(
+                BluetoothPermissionPolicy.inspectDeviceReadiness(
+                    context = context,
+                    hasRequestedBefore = hasRequestedBtPermissions,
+                    shouldShowRationale = false,
+                ),
+            )
+        }
+        DeviceDiscoveryScreen(
+            viewModel = deviceViewModel,
             onBackClick = { navigator.navigateBack() },
+            onContinueToWorkout = {
+                coroutineScope.launch {
+                    val targetContainer = demoIsolated?.container ?: dataContainer
+                    val ownerId = (targetContainer.authRepository.restoreSession() as? AuthState.Authenticated)?.user?.id
+                        ?: demoSeededOwnerId
+                    if (ownerId != null) {
+                        val active = targetContainer.workoutSessionRepository.observeActiveSession(ownerId).first()
+                        if (active != null) {
+                            navigator.startWorkoutSession(active.sourcePlanId ?: "", active.id)
+                            return@launch
+                        }
+                    }
+                    navigator.selectTab(PulseTab.WORKOUTS)
+                }
+            },
+            onViewInDeviceCenter = { navigator.navigateBack() },
+            onContinueWithoutDevice = {
+                deviceViewModel.exitDemoMode()
+                navigator.selectTab(PulseTab.WORKOUTS)
+            },
+            onRequestPermissionsClick = {
+                permissionLauncher.launch(BluetoothPermissionPolicy.runtimePermissionsForApi().toTypedArray())
+            },
+            onEnableBluetoothClick = {
+                enableBtLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+            },
         )
     }
 
