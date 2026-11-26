@@ -1,5 +1,6 @@
 package com.ayasheta.pulsesmartgym.feature.session.dashboard
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -74,6 +75,13 @@ fun WorkoutSessionScreen(
         onPauseOrDispose { }
     }
 
+    val activeState = uiState as? WorkoutSessionUiState.Active
+    BackHandler(
+        enabled = activeState != null && !activeState.allSetsCompleted && !activeState.showEndEarlyConfirmation,
+    ) {
+        viewModel.requestEndEarly()
+    }
+
     LaunchedEffect(pendingActionError) {
         if (pendingActionError != null) {
             viewModel.setActionError(pendingActionError)
@@ -138,7 +146,14 @@ fun WorkoutSessionScreen(
 
     WorkoutSessionScreenContent(
         uiState = uiState,
-        onBackClick = onBackClick,
+        onBackClick = {
+            val active = uiState as? WorkoutSessionUiState.Active
+            if (active != null && !active.allSetsCompleted) {
+                viewModel.requestEndEarly()
+            } else {
+                onBackClick()
+            }
+        },
         onSetActionClick = { sessionExerciseId, setIndex ->
             val active = uiState as? WorkoutSessionUiState.Active
             val row = active?.exercises

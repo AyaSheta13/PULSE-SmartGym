@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.update
@@ -312,14 +313,19 @@ class WorkoutSessionViewModel(
         val active = _uiState.value as? WorkoutSessionUiState.Active ?: return
         val rest = active.restTimer ?: return
         if (rest.remainingSeconds > 0) return
-        if (handledRestDeadlineMs == rest.deadlineEpochMs) return
+        val triggeringDeadlineMs = rest.deadlineEpochMs
+        if (handledRestDeadlineMs == triggeringDeadlineMs) return
         val ownerId = activeOwnerId ?: return
-        handledRestDeadlineMs = rest.deadlineEpochMs
+        handledRestDeadlineMs = triggeringDeadlineMs
         viewModelScope.launch {
             restMutex.withLock {
                 if (activeOwnerId != ownerId) return@withLock
                 val latest = workoutSessionRepository.getSession(ownerId, active.sessionId)
                 if (latest == null || latest.status != SessionStatus.ACTIVE) return@withLock
+                val persistedRest = workoutSessionRepository.observeRestState(ownerId, active.sessionId).first()
+                    ?: return@withLock
+                if (persistedRest.deadlineEpochMs != triggeringDeadlineMs) return@withLock
+                if (clockMs() < persistedRest.deadlineEpochMs) return@withLock
                 when (val result = workoutSessionRepository.clearRestTimer(ownerId, active.sessionId)) {
                     is DomainResult.Success -> Unit
                     is DomainResult.Failure -> {

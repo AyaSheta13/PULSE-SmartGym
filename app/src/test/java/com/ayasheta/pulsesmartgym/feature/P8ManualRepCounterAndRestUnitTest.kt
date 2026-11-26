@@ -446,6 +446,38 @@ class P8ManualRepCounterAndRestUnitTest {
     }
 
     @Test
+    fun restTimer_extend30sConcurrentWithExpiration_doesNotClearExtendedTimer(): Unit = runBlocking {
+        var nowMs = 100_000L
+        val sessionRepo = FakeP8SessionRepository(clockMs = { nowMs })
+        val authRepo = FakeP8AuthRepository("user_1")
+        val prefsRepo = FakeP8PreferencesRepository()
+        sessionRepo.putSession(sampleSession())
+        // Deadline = 160_000L
+        sessionRepo.startRestTimer("user_1", "sess_1", "ex_1", "Barbell Bench Press", 1, 60, "ex_1", 2)
+
+        val vm = WorkoutSessionViewModel("sess_1", authRepo, sessionRepo, prefsRepo, clockMs = { nowMs })
+        withTimeout(5_000) {
+            vm.uiState.first { it is WorkoutSessionUiState.Active && it.restTimer != null }
+        }
+
+        // Timer reaches expiration in UI state, then +30s extends persisted deadline to 190_000L before onRestExpired runs
+        nowMs = 160_500L
+        vm.refreshElapsedTime()
+        sessionRepo.extendRestTimer("user_1", "sess_1", 30)
+        // Even if onRestExpired fires for the stale 160_000L UI snapshot, it must NOT clear the 190_000L extended timer
+        vm.onRestExpired()
+
+        val activeAfter = withTimeout(5_000) {
+            vm.uiState.first {
+                it is WorkoutSessionUiState.Active && it.restTimer?.deadlineEpochMs == 190_000L
+            } as WorkoutSessionUiState.Active
+        }
+        assertNotNull(activeAfter.restTimer)
+        assertEquals(190_000L, activeAfter.restTimer!!.deadlineEpochMs)
+        assertNotNull(sessionRepo.observeRestState("user_1", "sess_1").first())
+    }
+
+    @Test
     fun manualRepCounter_restoresSavedStateHandle_andDurableCompletedState() = runBlocking {
         var nowMs = 20_000L
         val sessionRepo = FakeP8SessionRepository(clockMs = { nowMs })

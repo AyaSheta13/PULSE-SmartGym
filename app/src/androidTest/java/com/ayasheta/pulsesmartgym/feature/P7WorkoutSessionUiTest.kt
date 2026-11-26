@@ -107,21 +107,17 @@ class P7WorkoutSessionUiTest {
             composeRule.onNodeWithText("Not Connected").assertIsDisplayed()
             composeRule.onNodeWithTag("pulse_bottom_bar").assertDoesNotExist()
 
-            // 3. Navigate back to Workouts and tap Start on Pull Session -> ActiveSessionConflict dialog!
+            // 3. Header Back during unfinished workout opens End Workout Early confirmation without terminating
             composeRule.onNodeWithTag("session_back_button").performClick()
-            composeRule.waitUntil(5_000) {
-                runCatching { composeRule.onNodeWithTag("details_plan_name").assertExists(); true }.getOrDefault(false)
+            composeRule.onNodeWithTag("modal_end_workout_early").assertIsDisplayed()
+            composeRule.onNodeWithTag("button_keep_working_out").performClick()
+            composeRule.onNodeWithTag("modal_end_workout_early").assertDoesNotExist()
+
+            // Verify ActiveSessionConflict when attempting to start another plan while session is active
+            val conflictResult = runBlocking {
+                container.workoutSessionRepository.startSessionFromPlan(ownerId, otherPlanId)
             }
-            composeRule.onNodeWithText("Workout Details").assertIsDisplayed()
-            composeRule.onNodeWithContentDescription("Back").performClick()
-            composeRule.waitUntil(5_000) {
-                runCatching { composeRule.onNodeWithTag("workout_plan_card_$otherPlanId").assertExists(); true }.getOrDefault(false)
-            }
-            composeRule.onNodeWithTag("workout_plan_start_$otherPlanId").performClick()
-            composeRule.waitUntil(5_000) {
-                runCatching { composeRule.onNodeWithTag("dialog_active_session_conflict").assertExists(); true }.getOrDefault(false)
-            }
-            composeRule.onNodeWithTag("button_resume_active_session").performClick()
+            org.junit.Assert.assertTrue(conflictResult is DomainResult.Failure)
 
             composeRule.waitUntil(5_000) {
                 runCatching { composeRule.onNodeWithTag("session_progress_card").assertExists(); true }.getOrDefault(false)
