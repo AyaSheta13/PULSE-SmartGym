@@ -85,20 +85,20 @@ fun BluetoothRadarIndicator(
     isAnimating: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val pulseFraction = if (isAnimating) {
+    val pulsePhase = if (isAnimating) {
         val transition = rememberInfiniteTransition(label = "bt_radar")
         val anim by transition.animateFloat(
-            initialValue = 0.88f,
-            targetValue = 1.06f,
+            initialValue = 0f,
+            targetValue = 1f,
             animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 1_100, easing = LinearEasing),
-                repeatMode = RepeatMode.Reverse,
+                animation = tween(durationMillis = 1_600, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
             ),
-            label = "bt_radar_scale",
+            label = "bt_radar_phase",
         )
         anim
     } else {
-        1f
+        0f
     }
 
     Box(
@@ -107,24 +107,41 @@ fun BluetoothRadarIndicator(
     ) {
         Canvas(modifier = Modifier.size(216.dp)) {
             val center = Offset(size.width / 2f, size.height / 2f)
-            drawCircle(
-                color = Color(0xFFFFD8CE),
-                radius = (size.minDimension / 2f) * pulseFraction.coerceAtMost(1f),
-                center = center,
-                style = Stroke(width = 1.5.dp.toPx()),
-            )
-            drawCircle(
-                color = Color(0xFFFFB4A1),
-                radius = (size.minDimension * 0.34f) * pulseFraction.coerceAtMost(1f),
-                center = center,
-                style = Stroke(width = 1.5.dp.toPx()),
-            )
-            drawCircle(
-                color = Color(0xFFFF886C),
-                radius = (size.minDimension * 0.21f),
-                center = center,
-                style = Stroke(width = 1.5.dp.toPx()),
-            )
+            val minRadius = 28.dp.toPx()
+            val maxRadius = size.minDimension / 2f
+            if (isAnimating) {
+                val ringOffsets = floatArrayOf(0f, 0.33f, 0.66f)
+                ringOffsets.forEach { offset ->
+                    val progress = (pulsePhase + offset) % 1f
+                    val radius = minRadius + (maxRadius - minRadius) * progress
+                    val alpha = (1f - progress) * 0.65f
+                    drawCircle(
+                        color = WorkoutPalette.PrimaryCoral.copy(alpha = alpha),
+                        radius = radius,
+                        center = center,
+                        style = Stroke(width = 2.dp.toPx()),
+                    )
+                }
+            } else {
+                drawCircle(
+                    color = Color(0xFFFFD8CE),
+                    radius = maxRadius,
+                    center = center,
+                    style = Stroke(width = 1.5.dp.toPx()),
+                )
+                drawCircle(
+                    color = Color(0xFFFFB4A1),
+                    radius = size.minDimension * 0.34f,
+                    center = center,
+                    style = Stroke(width = 1.5.dp.toPx()),
+                )
+                drawCircle(
+                    color = Color(0xFFFF886C),
+                    radius = size.minDimension * 0.21f,
+                    center = center,
+                    style = Stroke(width = 1.5.dp.toPx()),
+                )
+            }
         }
         Box(
             modifier = Modifier

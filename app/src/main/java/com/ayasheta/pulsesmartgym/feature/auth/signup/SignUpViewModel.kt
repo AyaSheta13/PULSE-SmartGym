@@ -159,42 +159,6 @@ class SignUpViewModel(
         }
     }
 
-    fun triggerValidationErrorsSample(isDebugEnabled: Boolean) {
-        if (!isDebugEnabled) return
-        _uiState.update {
-            it.copy(
-                fullName = "",
-                email = "invalid.email@",
-                password = "12345",
-                confirmPassword = "abcdef",
-                bannerTitle = "Registration Incomplete (4 Errors)",
-                bannerMessage = "Please correct the highlighted fields below to create your account.",
-                fullNameError = "✕ Missing required field: Name cannot be blank.",
-                emailError = "✕ Invalid email format: Missing domain extension.",
-                passwordError = "✕ Weak password: Minimum 8 characters required with symbol & number.",
-                confirmPasswordError = "✕ Confirmation mismatch: Passwords do not match.",
-            )
-        }
-    }
-
-    fun clearErrorsAndFillDemoRegistration(isDebugEnabled: Boolean) {
-        if (!isDebugEnabled) return
-        _uiState.update {
-            it.copy(
-                fullName = "Alex Miller",
-                email = "alex.miller@example.com",
-                password = "Pulse@2026!",
-                confirmPassword = "Pulse@2026!",
-                bannerTitle = null,
-                bannerMessage = null,
-                fullNameError = null,
-                emailError = null,
-                passwordError = null,
-                confirmPasswordError = null,
-            )
-        }
-    }
-
     fun consumeNavigation() {
         _uiState.update { it.copy(navigateToPersonalInfo = false) }
     }

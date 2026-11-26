@@ -49,7 +49,6 @@ import com.ayasheta.pulsesmartgym.feature.auth.components.PulseValidationBanner
 @Composable
 fun LoginScreen(
     viewModel: LoginViewModel,
-    isDebugEntryEnabled: Boolean,
     onBackClick: () -> Unit,
     onForgotPasswordClick: () -> Unit,
     onSignUpClick: () -> Unit,
@@ -75,7 +74,6 @@ fun LoginScreen(
 
     LoginContent(
         uiState = uiState,
-        isDebugEntryEnabled = isDebugEntryEnabled,
         onBackClick = onBackClick,
         onEmailChange = viewModel::onEmailChange,
         onPasswordChange = viewModel::onPasswordChange,
@@ -83,9 +81,6 @@ fun LoginScreen(
         onToggleRememberMe = viewModel::toggleRememberMe,
         onForgotPasswordClick = onForgotPasswordClick,
         onSubmitClick = viewModel::submitLogin,
-        onExternalProviderClick = viewModel::onExternalProviderClick,
-        onTestErrorsClick = { viewModel.triggerValidationErrorSample(isDebugEntryEnabled) },
-        onFillValidDemoClick = { viewModel.clearErrorsAndFillDebugCredentials(isDebugEntryEnabled) },
         onSignUpClick = onSignUpClick,
         modifier = modifier,
     )
@@ -94,7 +89,6 @@ fun LoginScreen(
 @Composable
 fun LoginContent(
     uiState: LoginUiState,
-    isDebugEntryEnabled: Boolean,
     onBackClick: () -> Unit,
     onEmailChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
@@ -102,9 +96,6 @@ fun LoginContent(
     onToggleRememberMe: () -> Unit,
     onForgotPasswordClick: () -> Unit,
     onSubmitClick: () -> Unit,
-    onExternalProviderClick: (String) -> Unit,
-    onTestErrorsClick: () -> Unit,
-    onFillValidDemoClick: () -> Unit,
     onSignUpClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -196,219 +187,88 @@ fun LoginContent(
                 ),
             )
 
-            if (!uiState.isValidationErrorState) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(24.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(24.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable(role = Role.Checkbox, onClick = onToggleRememberMe)
+                        .padding(end = 4.dp),
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable(role = Role.Checkbox, onClick = onToggleRememberMe)
-                            .padding(end = 4.dp),
-                    ) {
-                        CheckBox(
-                            status = if (uiState.rememberMe) CheckBoxStatus.CHECKED else CheckBoxStatus.UN_CHECKED,
-                            onClick = onToggleRememberMe,
-                        )
-                        BasicText(
-                            text = "Remember me",
-                            style = TextStyle(
-                                fontFamily = PulseTheme.typography.contentSecondary.fontFamily,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = PulseTheme.color.shadePrimary,
-                            ),
-                        )
-                    }
-
+                    CheckBox(
+                        status = if (uiState.rememberMe) CheckBoxStatus.CHECKED else CheckBoxStatus.UN_CHECKED,
+                        onClick = onToggleRememberMe,
+                    )
                     BasicText(
-                        text = "Forgot password?",
+                        text = "Remember me",
                         style = TextStyle(
-                            fontFamily = PulseTheme.typography.caption.fontFamily,
+                            fontFamily = PulseTheme.typography.contentSecondary.fontFamily,
                             fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = PulseTheme.color.primary,
+                            fontWeight = FontWeight.Medium,
+                            color = PulseTheme.color.shadePrimary,
                         ),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable(role = Role.Button, onClick = onForgotPasswordClick)
-                            .padding(vertical = 2.dp),
                     )
                 }
+
+                BasicText(
+                    text = "Forgot password?",
+                    style = TextStyle(
+                        fontFamily = PulseTheme.typography.caption.fontFamily,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = PulseTheme.color.primary,
+                    ),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable(role = Role.Button, onClick = onForgotPasswordClick)
+                        .padding(vertical = 2.dp),
+                )
             }
 
-            if (uiState.isValidationErrorState && isDebugEntryEnabled) {
-                PulsePrimaryCta(
-                    text = "Try Valid Demo Credentials",
-                    onClick = onFillValidDemoClick,
-                    height = 50.dp,
+            PulsePrimaryCta(
+                text = "Log In",
+                onClick = onSubmitClick,
+                isLoading = uiState.isLoading,
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(32.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(role = Role.Button, onClick = onSignUpClick),
+                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BasicText(
+                    text = "Don't have an account?",
+                    style = TextStyle(
+                        fontFamily = PulseTheme.typography.contentPrimary.fontFamily,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Normal,
+                        color = PulseTheme.color.shadeSecondary,
+                    ),
                 )
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(30.dp)
-                        .clickable(role = Role.Button, onClick = onForgotPasswordClick),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    BasicText(
-                        text = "Forgot Password? Reset it here →",
-                        style = TextStyle(
-                            fontFamily = PulseTheme.typography.caption.fontFamily,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = PulseTheme.color.primary,
-                        ),
-                    )
-                }
-            } else {
-                PulsePrimaryCta(
-                    text = "Log In",
-                    onClick = onSubmitClick,
-                    isLoading = uiState.isLoading,
+                BasicText(
+                    text = "Sign Up",
+                    style = TextStyle(
+                        fontFamily = PulseTheme.typography.cardTitle.fontFamily,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = PulseTheme.color.primary,
+                    ),
                 )
-
-                // OR CONTINUE WITH separator (Figma 281:52)
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(20.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(1.dp)
-                            .background(PulseAuthColors.CardBorderLight),
-                    )
-                    BasicText(
-                        text = "OR CONTINUE WITH",
-                        style = TextStyle(
-                            fontFamily = PulseTheme.typography.label.fontFamily,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = PulseAuthColors.Placeholder,
-                        ),
-                    )
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(1.dp)
-                            .background(PulseAuthColors.CardBorderLight),
-                    )
-                }
-
-                // Google & Apple buttons (Figma 281:56)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    ExternalProviderButton(
-                        label = "Google",
-                        onClick = { onExternalProviderClick("Google") },
-                        modifier = Modifier.weight(1f),
-                    )
-                    ExternalProviderButton(
-                        label = "Apple",
-                        onClick = { onExternalProviderClick("Apple") },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-
-                if (isDebugEntryEnabled) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(PulseAuthColors.ErrorBannerBg)
-                            .border(
-                                width = 1.dp,
-                                color = PulseTheme.color.primary,
-                                shape = RoundedCornerShape(10.dp),
-                            )
-                            .clickable(role = Role.Button, onClick = onTestErrorsClick),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        BasicText(
-                            text = "⚠ Test Invalid Login & Error Feedback",
-                            style = TextStyle(
-                                fontFamily = PulseTheme.typography.supportingContent.fontFamily,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = PulseAuthColors.DebugButtonText,
-                            ),
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(32.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable(role = Role.Button, onClick = onSignUpClick),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    BasicText(
-                        text = "Don't have an account?",
-                        style = TextStyle(
-                            fontFamily = PulseTheme.typography.contentPrimary.fontFamily,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Normal,
-                            color = PulseTheme.color.shadeSecondary,
-                        ),
-                    )
-                    BasicText(
-                        text = "Sign Up",
-                        style = TextStyle(
-                            fontFamily = PulseTheme.typography.cardTitle.fontFamily,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = PulseTheme.color.primary,
-                        ),
-                    )
-                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
         }
-    }
-}
-
-@Composable
-private fun ExternalProviderButton(
-    label: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val shape = RoundedCornerShape(14.dp)
-    Box(
-        modifier = modifier
-            .height(48.dp)
-            .clip(shape)
-            .background(PulseTheme.color.container)
-            .border(width = 1.dp, color = PulseAuthColors.CardBorderLight, shape = shape)
-            .clickable(role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        BasicText(
-            text = label,
-            style = TextStyle(
-                fontFamily = PulseTheme.typography.ctaPrimary.fontFamily,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = PulseTheme.color.shadePrimary,
-            ),
-        )
     }
 }
 
@@ -418,7 +278,6 @@ private fun LoginPreview() {
     PulseTheme {
         LoginContent(
             uiState = LoginUiState(email = "alex.miller@example.com", password = "••••••••••••"),
-            isDebugEntryEnabled = true,
             onBackClick = {},
             onEmailChange = {},
             onPasswordChange = {},
@@ -426,9 +285,6 @@ private fun LoginPreview() {
             onToggleRememberMe = {},
             onForgotPasswordClick = {},
             onSubmitClick = {},
-            onExternalProviderClick = {},
-            onTestErrorsClick = {},
-            onFillValidDemoClick = {},
             onSignUpClick = {},
         )
     }

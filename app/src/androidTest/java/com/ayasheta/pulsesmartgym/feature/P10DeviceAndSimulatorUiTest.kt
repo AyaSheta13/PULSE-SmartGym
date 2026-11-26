@@ -172,7 +172,7 @@ class P10DeviceAndSimulatorUiTest {
         activityRule.waitUntil(5_000) {
             runCatching { activityRule.onNodeWithTag("button_simulate_handshake_timeout").assertExists(); true }.getOrDefault(false)
         }
-        activityRule.onNodeWithTag("button_simulate_handshake_timeout").performScrollTo().performClick()
+        activityRule.onNodeWithTag("button_simulate_handshake_timeout").performClick()
         activityRule.waitUntil(5_000) {
             runCatching { activityRule.onNodeWithText("Connection Failed").assertExists(); true }.getOrDefault(false)
         }

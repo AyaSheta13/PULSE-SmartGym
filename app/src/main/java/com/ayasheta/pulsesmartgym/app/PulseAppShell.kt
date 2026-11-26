@@ -52,16 +52,13 @@ fun PulseAppShell(
     val contentBottomInsetModifier = if (navigationState.showBottomBar) {
         Modifier
     } else {
-        Modifier
-            .windowInsetsPadding(WindowInsets.navigationBars)
-            .imePadding()
+        Modifier.imePadding()
     }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(PulseTheme.color.background)
-            .windowInsetsPadding(WindowInsets.statusBars),
+            .background(PulseTheme.color.background),
     ) {
         Box(
             modifier = Modifier

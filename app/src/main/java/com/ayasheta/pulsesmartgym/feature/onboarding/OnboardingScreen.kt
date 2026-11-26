@@ -2,6 +2,10 @@ package com.ayasheta.pulsesmartgym.feature.onboarding
 
 import androidx.activity.compose.BackHandler
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,9 +18,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,6 +34,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -120,6 +130,7 @@ fun OnboardingScreen(
     OnboardingContent(
         currentPage = uiState.currentPage,
         isCompleting = uiState.isCompleting,
+        onPageSelected = viewModel::selectPage,
         onBackClick = {
             if (!viewModel.previousPage()) {
                 onExitAppBack()
@@ -135,12 +146,37 @@ fun OnboardingScreen(
 fun OnboardingContent(
     currentPage: Int,
     isCompleting: Boolean,
+    onPageSelected: (Int) -> Unit = {},
     onBackClick: () -> Unit,
     onSkipClick: () -> Unit,
     onPrimaryClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val spec = onboardingPages[currentPage.coerceIn(0, onboardingPages.lastIndex)]
+    val clampedPage = currentPage.coerceIn(0, onboardingPages.lastIndex)
+    val pagerState = rememberPagerState(
+        initialPage = clampedPage,
+        pageCount = { onboardingPages.size },
+    )
+
+    LaunchedEffect(clampedPage) {
+        if (pagerState.currentPage != clampedPage) {
+            pagerState.animateScrollToPage(
+                page = clampedPage,
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+            )
+        }
+    }
+
+    val latestPage by rememberUpdatedState(clampedPage)
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage to pagerState.isScrollInProgress }.collect { (settled, scrolling) ->
+            if (!scrolling && settled != latestPage) {
+                onPageSelected(settled)
+            }
+        }
+    }
+
+    val spec = onboardingPages[clampedPage]
 
     Column(
         modifier = modifier
@@ -151,8 +187,9 @@ fun OnboardingContent(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(64.dp)
-                .background(PulseTheme.color.container),
+                .background(PulseTheme.color.container)
+                .statusBarsPadding()
+                .height(64.dp),
         ) {
             Row(
                 modifier = Modifier
@@ -217,104 +254,121 @@ fun OnboardingContent(
             )
         }
 
-        Column(
+        HorizontalPager(
+            state = pagerState,
             modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp),
-        ) {
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Hero Visual Module (340dp height, 24dp radius, 1dp border rgba(0,0,0,0.06))
-            Box(
+                .weight(1f)
+                .fillMaxWidth(),
+            userScrollEnabled = !isCompleting,
+        ) { pageIndex ->
+            val pageSpec = onboardingPages[pageIndex]
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(340.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .border(
-                        width = 1.dp,
-                        color = Color(0x0F000000),
-                        shape = RoundedCornerShape(24.dp),
-                    ),
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp),
             ) {
-                Image(
-                    painter = painterResource(id = spec.heroResId),
-                    contentDescription = spec.badgeLabel,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Hero Visual Module (340dp height, 24dp radius, 1dp border rgba(0,0,0,0.06))
                 Box(
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .height(100.dp)
-                        .background(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    Color(0x40000000),
-                                ),
-                            ),
+                        .height(340.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .border(
+                            width = 1.dp,
+                            color = Color(0x0F000000),
+                            shape = RoundedCornerShape(24.dp),
                         ),
-                )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier
-                        .padding(start = 15.dp, top = 15.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color(0xBF191919))
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
                 ) {
+                    Image(
+                        painter = painterResource(id = pageSpec.heroResId),
+                        contentDescription = pageSpec.badgeLabel,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                     Box(
                         modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(PulseTheme.color.primary),
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .height(100.dp)
+                            .background(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.Transparent,
+                                        Color(0x40000000),
+                                    ),
+                                ),
+                            ),
                     )
-                    BasicText(
-                        text = spec.badgeLabel,
-                        style = TextStyle(
-                            fontFamily = PulseTheme.typography.label.fontFamily,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.5.sp,
-                            color = Color.White,
-                        ),
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier
+                            .padding(start = 15.dp, top = 15.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xBF191919))
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(PulseTheme.color.primary),
+                        )
+                        BasicText(
+                            text = pageSpec.badgeLabel,
+                            style = TextStyle(
+                                fontFamily = PulseTheme.typography.label.fontFamily,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp,
+                                color = Color.White,
+                            ),
+                        )
+                    }
                 }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                BasicText(
+                    text = pageSpec.title,
+                    style = TextStyle(
+                        fontFamily = PulseTheme.typography.sectionTitle.fontFamily,
+                        fontSize = 25.sp,
+                        lineHeight = 32.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF191919),
+                    ),
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                BasicText(
+                    text = pageSpec.description,
+                    style = TextStyle(
+                        fontFamily = PulseTheme.typography.contentPrimary.fontFamily,
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp,
+                        fontWeight = FontWeight.Normal,
+                        color = Color(0xFF66615C),
+                    ),
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
             }
+        }
 
-            Spacer(modifier = Modifier.height(24.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp),
+        ) {
+            Spacer(modifier = Modifier.height(12.dp))
 
-            BasicText(
-                text = spec.title,
-                style = TextStyle(
-                    fontFamily = PulseTheme.typography.sectionTitle.fontFamily,
-                    fontSize = 25.sp,
-                    lineHeight = 32.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF191919),
-                ),
-            )
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            BasicText(
-                text = spec.description,
-                style = TextStyle(
-                    fontFamily = PulseTheme.typography.contentPrimary.fontFamily,
-                    fontSize = 15.sp,
-                    lineHeight = 22.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = Color(0xFF66615C),
-                ),
-            )
-
-            Spacer(modifier = Modifier.weight(1f, fill = true))
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Progress Dots
+            // Animated Progress Dots
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -323,18 +377,28 @@ fun OnboardingContent(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 repeat(onboardingPages.size) { index ->
-                    val isActive = index == currentPage
+                    val isActive = index == clampedPage
+                    val dotWidth by animateDpAsState(
+                        targetValue = if (isActive) 24.dp else 7.dp,
+                        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
+                        label = "onboarding_dot_width_$index",
+                    )
+                    val dotColor by animateColorAsState(
+                        targetValue = if (isActive) PulseTheme.color.primary else Color(0xFFD9D4CF),
+                        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
+                        label = "onboarding_dot_color_$index",
+                    )
                     Box(
                         modifier = Modifier
-                            .width(if (isActive) 24.dp else 7.dp)
+                            .width(dotWidth)
                             .height(7.dp)
                             .clip(RoundedCornerShape(3.5.dp))
-                            .background(if (isActive) PulseTheme.color.primary else Color(0xFFD9D4CF)),
+                            .background(dotColor),
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             PulsePrimaryCta(
                 text = spec.primaryCtaLabel,
@@ -342,10 +406,11 @@ fun OnboardingContent(
                 height = 54.dp,
                 fontSizeSp = 16,
                 isLoading = isCompleting,
+                enabled = !isCompleting,
                 withElevationShadow = true,
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }

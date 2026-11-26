@@ -1,5 +1,8 @@
 package com.ayasheta.pulsesmartgym.feature.splash
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -19,12 +22,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -34,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.ayasheta.pulsesmartgym.R
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
 import com.ayasheta.pulsesmartgym.feature.auth.components.PulseAuthColors
+import kotlinx.coroutines.launch
 
 @Composable
 fun SplashScreen(
@@ -59,6 +68,26 @@ fun SplashScreen(
 fun SplashContent(
     modifier: Modifier = Modifier,
 ) {
+    var hasPlayedEntrance by rememberSaveable { mutableStateOf(false) }
+    val contentAlpha = remember { Animatable(if (hasPlayedEntrance) 1f else 0f) }
+    val logoScale = remember { Animatable(if (hasPlayedEntrance) 1f else 0.90f) }
+
+    LaunchedEffect(Unit) {
+        if (!hasPlayedEntrance) {
+            hasPlayedEntrance = true
+            launch {
+                contentAlpha.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing),
+                )
+            }
+            logoScale.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 460, easing = FastOutSlowInEasing),
+            )
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -99,7 +128,12 @@ fun SplashContent(
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
-                .padding(horizontal = 16.dp),
+                .padding(horizontal = 16.dp)
+                .graphicsLayer {
+                    alpha = contentAlpha.value
+                    scaleX = logoScale.value
+                    scaleY = logoScale.value
+                },
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {

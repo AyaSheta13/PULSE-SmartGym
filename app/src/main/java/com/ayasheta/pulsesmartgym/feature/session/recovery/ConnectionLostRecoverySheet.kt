@@ -1,6 +1,9 @@
 package com.ayasheta.pulsesmartgym.feature.session.recovery
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -51,8 +54,16 @@ fun ConnectionLostRecoverySheet(
 ) {
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn() + slideInVertically(initialOffsetY = { it }),
-        exit = fadeOut() + slideOutVertically(targetOffsetY = { it }),
+        enter = fadeIn(animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing)) +
+            slideInVertically(
+                animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+                initialOffsetY = { it },
+            ),
+        exit = fadeOut(animationSpec = tween(durationMillis = 240, easing = FastOutLinearInEasing)) +
+            slideOutVertically(
+                animationSpec = tween(durationMillis = 240, easing = FastOutLinearInEasing),
+                targetOffsetY = { it },
+            ),
         modifier = modifier,
     ) {
         Box(

@@ -7,10 +7,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -98,12 +101,17 @@ fun PulseTopAppBar(
     style: PulseTopAppBarStyle,
     modifier: Modifier = Modifier,
 ) {
-    Box(
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .height(PulseTheme.size.giant)
-            .background(PulseTheme.color.container),
+            .background(PulseTheme.color.container)
+            .windowInsetsPadding(WindowInsets.statusBars),
     ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(PulseTheme.size.giant),
+        ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -315,6 +323,7 @@ fun PulseTopAppBar(
                 .height(1.dp)
                 .background(PulseTheme.color.divider),
         )
+        }
     }
 }
 

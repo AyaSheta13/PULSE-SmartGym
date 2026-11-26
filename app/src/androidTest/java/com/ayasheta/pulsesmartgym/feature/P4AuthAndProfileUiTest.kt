@@ -197,25 +197,32 @@ class P4AuthAndProfileUiTest {
         composeRule.onNodeWithText("✕ Weak password: Minimum 8 characters required with symbol & number.").assertIsDisplayed()
         composeRule.onNodeWithText("✕ Confirmation mismatch: Passwords do not match.").assertIsDisplayed()
 
-        // Go back to Auth Entry -> Log In -> Google/Apple honest unavailable feedback -> Validation Errors + Forgot Password
+        // Verify Sign Up has no debug test buttons
+        composeRule.onNodeWithText("⚠ Test Sign Up Validation Errors (4 Scenarios)").assertDoesNotExist()
+        composeRule.onNodeWithText("Use Valid Demo Registration").assertDoesNotExist()
+
+        // Go back to Auth Entry -> Log In -> verify social & debug buttons removed + inline validation errors + Forgot Password
         composeRule.onNodeWithContentDescription("Back").performClick()
         composeRule.onNodeWithText("Log In").performClick()
         composeRule.onNodeWithText("Welcome Back").assertIsDisplayed()
 
-        // Verify restored Figma OR CONTINUE WITH + Google / Apple buttons
-        composeRule.onNodeWithText("OR CONTINUE WITH").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Google").performScrollTo().performClick()
-        composeRule.onNodeWithText("Google Sign-In Unavailable").assertIsDisplayed()
-        composeRule.onNodeWithText("Apple").performScrollTo().performClick()
-        composeRule.onNodeWithText("Apple Sign-In Unavailable").assertIsDisplayed()
+        // Verify Google / Apple / OR CONTINUE WITH / debug showcase are completely removed
+        composeRule.onNodeWithText("OR CONTINUE WITH").assertDoesNotExist()
+        composeRule.onNodeWithText("Google").assertDoesNotExist()
+        composeRule.onNodeWithText("Apple").assertDoesNotExist()
+        composeRule.onNodeWithText("⚠ Test Invalid Login & Error Feedback").assertDoesNotExist()
+        composeRule.onNodeWithText("Try Valid Demo Credentials").assertDoesNotExist()
 
-        composeRule.onNodeWithText("⚠ Test Invalid Login & Error Feedback").performScrollTo().performClick()
-        composeRule.onNodeWithText("Incorrect Email or Password").assertIsDisplayed()
+        // Trigger real inline validation by submitting empty/invalid credentials
+        composeRule.onNode(hasText("Log In") and hasClickAction()).performScrollTo().performClick()
+        composeRule.onNodeWithText("Validation Failed").assertIsDisplayed()
         composeRule.onNodeWithText("✕ Invalid email. Format must be name@example.com, not empty.").assertIsDisplayed()
         composeRule.onNodeWithText("✕ Password cannot be empty (minimum 8 characters required).").assertIsDisplayed()
+        // Real Log In CTA remains visible and retryable after validation errors
+        composeRule.onNode(hasText("Log In") and hasClickAction()).assertExists()
 
         // Navigate to Forgot Password and verify unauthenticated reset is blocked honestly
-        composeRule.onNodeWithText("Forgot Password? Reset it here →").performScrollTo().performClick()
+        composeRule.onNodeWithText("Forgot password?").performScrollTo().performClick()
         composeRule.onNodeWithText("Save New Password").assertIsDisplayed()
         composeRule.onNodeWithTag("field_NEW PASSWORD").performTextInput("Pulse@2026!")
         composeRule.onNodeWithText("Save New Password").performClick()

@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.ayasheta.pulsesmartgym.core.designsystem.component.progress.PulseLoadingIndicator
+import com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseAnimatedBottomSheetOverlay
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
 import com.ayasheta.pulsesmartgym.feature.session.dashboard.ManualSetEntryTarget
@@ -74,20 +75,17 @@ fun ManualSetEntrySheet(
 
     val targetLoadLabel = SessionUiMapper.formatWeightLoad(target.targetLoad, preferredWeightUnit)
     val sheetBody: @Composable () -> Unit = {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.55f))
-                .clickable(enabled = !isSaving, onClick = onDismiss)
-                .testTag("modal_manual_set_entry_scrim"),
-            contentAlignment = Alignment.BottomCenter,
-        ) {
+        PulseAnimatedBottomSheetOverlay(
+            onDismissRequest = onDismiss,
+            scrimAlphaMax = 0.55f,
+            dismissEnabled = !isSaving,
+            modifier = Modifier.testTag("modal_manual_set_entry_scrim"),
+        ) { sheetModifier ->
             Column(
-                modifier = Modifier
+                modifier = sheetModifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
                     .background(Color.White)
-                    .clickable(enabled = false, onClick = {})
                     .let { if (inWindow) it else it.navigationBarsPadding().imePadding() }
                     .padding(horizontal = 16.dp, vertical = 22.dp)
                     .testTag("modal_manual_set_entry"),

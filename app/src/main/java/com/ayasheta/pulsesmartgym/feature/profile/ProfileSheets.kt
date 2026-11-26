@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.ayasheta.pulsesmartgym.R
+import com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseAnimatedBottomSheetOverlay
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
 
@@ -96,31 +97,19 @@ private fun ProfileModalFrame(
     content: @Composable () -> Unit,
 ) {
     val frameBody: @Composable () -> Unit = {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.55f))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismiss,
-                )
-                .semantics { dialog() }
-                .testTag("${testTag}_scrim"),
-        ) {
+        PulseAnimatedBottomSheetOverlay(
+            onDismissRequest = onDismiss,
+            scrimAlphaMax = 0.55f,
+            scrimTestTag = "${testTag}_scrim",
+            modifier = Modifier.testTag("${testTag}_scrim"),
+        ) { sheetModifier ->
             val shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
             Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
+                modifier = sheetModifier
                     .fillMaxWidth()
                     .heightIn(min = minHeight)
                     .clip(shape)
                     .background(Color.White)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {},
-                    )
                     .verticalScroll(rememberScrollState())
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .imePadding()

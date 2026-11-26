@@ -51,6 +51,15 @@ class OnboardingViewModel(
         return false
     }
 
+    fun selectPage(pageIndex: Int) {
+        val state = _uiState.value
+        if (state.isCompleting || state.completed) return
+        val clamped = pageIndex.coerceIn(0, LAST_PAGE_INDEX)
+        if (clamped == state.currentPage) return
+        savedStateHandle[KEY_CURRENT_PAGE] = clamped
+        _uiState.update { it.copy(currentPage = clamped) }
+    }
+
     fun skipOnboarding() {
         completeOnboarding()
     }

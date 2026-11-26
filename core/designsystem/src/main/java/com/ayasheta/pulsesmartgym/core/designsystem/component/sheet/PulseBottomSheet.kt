@@ -1,12 +1,15 @@
 package com.ayasheta.pulsesmartgym.core.designsystem.component.sheet
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -15,7 +18,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -24,6 +26,7 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -31,11 +34,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.dialog
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -44,8 +48,8 @@ import com.ayasheta.pulsesmartgym.core.designsystem.component.button.CompactButt
 import com.ayasheta.pulsesmartgym.core.designsystem.component.button.NegativeButton
 import com.ayasheta.pulsesmartgym.core.designsystem.component.button.OutlineButton
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 @Composable
 fun PulseBottomSheet(
@@ -64,17 +68,42 @@ fun PulseBottomSheet(
     dismissOnClickOutside: Boolean = true,
 ) {
     var showDialog by remember { mutableStateOf(visible) }
-    val slideOffsetY = remember { Animatable(600f) }
+    val slideFraction = remember { Animatable(1f) }
     val scrimAlpha = remember { Animatable(0f) }
+    var sheetHeightPx by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(visible) {
         if (visible) {
             showDialog = true
-            launch { scrimAlpha.animateTo(0.5f, animationSpec = tween(durationMillis = 220)) }
-            slideOffsetY.animateTo(0f, animationSpec = tween(durationMillis = 220))
+            coroutineScope {
+                launch {
+                    scrimAlpha.animateTo(
+                        targetValue = 0.5f,
+                        animationSpec = tween(durationMillis = SHEET_ENTER_DURATION_MS, easing = FastOutSlowInEasing),
+                    )
+                }
+                launch {
+                    slideFraction.animateTo(
+                        targetValue = 0f,
+                        animationSpec = tween(durationMillis = SHEET_ENTER_DURATION_MS, easing = FastOutSlowInEasing),
+                    )
+                }
+            }
         } else if (showDialog) {
-            launch { scrimAlpha.animateTo(0f, animationSpec = tween(durationMillis = 180)) }
-            slideOffsetY.animateTo(600f, animationSpec = tween(durationMillis = 180))
+            coroutineScope {
+                launch {
+                    scrimAlpha.animateTo(
+                        targetValue = 0f,
+                        animationSpec = tween(durationMillis = SHEET_EXIT_DURATION_MS, easing = FastOutLinearInEasing),
+                    )
+                }
+                launch {
+                    slideFraction.animateTo(
+                        targetValue = 1f,
+                        animationSpec = tween(durationMillis = SHEET_EXIT_DURATION_MS, easing = FastOutLinearInEasing),
+                    )
+                }
+            }
             showDialog = false
         }
     }
@@ -106,7 +135,11 @@ fun PulseBottomSheet(
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .offset { IntOffset(x = 0, y = slideOffsetY.value.roundToInt()) }
+                    .onSizeChanged { sheetHeightPx = it.height }
+                    .graphicsLayer {
+                        val height = sheetHeightPx
+                        translationY = if (height > 0) height * slideFraction.value else OFFSCREEN_FALLBACK_PX
+                    }
                     .fillMaxWidth()
                     .clip(sheetShape)
                     .background(PulseTheme.color.container)
@@ -185,6 +218,74 @@ fun PulseBottomSheet(
         }
     }
 }
+
+/**
+ * Reusable bottom-sheet overlay that animates its scrim alpha and slides the sheet content from
+ * its full measured height outside the bottom edge (300ms enter / 240ms exit).
+ */
+@Composable
+fun PulseAnimatedBottomSheetOverlay(
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    scrimColor: Color = Color.Black,
+    scrimAlphaMax: Float = 0.55f,
+    dismissEnabled: Boolean = true,
+    scrimTestTag: String? = null,
+    sheetContent: @Composable BoxScope.(Modifier) -> Unit,
+) {
+    val slideFraction = remember { Animatable(1f) }
+    val scrimAlpha = remember { Animatable(0f) }
+    var sheetHeightPx by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        coroutineScope {
+            launch {
+                scrimAlpha.animateTo(
+                    targetValue = scrimAlphaMax,
+                    animationSpec = tween(durationMillis = SHEET_ENTER_DURATION_MS, easing = FastOutSlowInEasing),
+                )
+            }
+            launch {
+                slideFraction.animateTo(
+                    targetValue = 0f,
+                    animationSpec = tween(durationMillis = SHEET_ENTER_DURATION_MS, easing = FastOutSlowInEasing),
+                )
+            }
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(scrimColor.copy(alpha = scrimAlpha.value))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                enabled = dismissEnabled,
+                onClick = onDismissRequest,
+            )
+            .let { if (scrimTestTag != null) it.semantics { dialog() } else it },
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        val sheetModifier = Modifier
+            .align(Alignment.BottomCenter)
+            .onSizeChanged { sheetHeightPx = it.height }
+            .graphicsLayer {
+                val height = sheetHeightPx
+                translationY = if (height > 0) height * slideFraction.value else OFFSCREEN_FALLBACK_PX
+            }
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+            )
+        sheetContent(sheetModifier)
+    }
+}
+
+private const val SHEET_ENTER_DURATION_MS = 300
+private const val SHEET_EXIT_DURATION_MS = 240
+private const val OFFSCREEN_FALLBACK_PX = 2000f
 
 @Preview(showBackground = true)
 @Composable

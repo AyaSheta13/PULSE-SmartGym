@@ -64,13 +64,12 @@ class P4ScreenshotCaptureTest {
                 Box(modifier = Modifier.size(width = 390.dp, height = 884.dp)) {
                     when (screenIndex) {
                         0 -> SplashContent()
-                        1 -> OnboardingContent(0, false, {}, {}, {})
-                        2 -> OnboardingContent(1, false, {}, {}, {})
-                        3 -> OnboardingContent(2, false, {}, {}, {})
+                        1 -> OnboardingContent(currentPage = 0, isCompleting = false, onBackClick = {}, onSkipClick = {}, onPrimaryClick = {})
+                        2 -> OnboardingContent(currentPage = 1, isCompleting = false, onBackClick = {}, onSkipClick = {}, onPrimaryClick = {})
+                        3 -> OnboardingContent(currentPage = 2, isCompleting = false, onBackClick = {}, onSkipClick = {}, onPrimaryClick = {})
                         4 -> AuthEntryContent(false, null, {}, {}, {})
                         5 -> LoginContent(
                             uiState = LoginUiState(email = "alex.miller@example.com", password = "••••••••••••"),
-                            isDebugEntryEnabled = true,
                             onBackClick = {},
                             onEmailChange = {},
                             onPasswordChange = {},
@@ -78,9 +77,6 @@ class P4ScreenshotCaptureTest {
                             onToggleRememberMe = {},
                             onForgotPasswordClick = {},
                             onSubmitClick = {},
-                            onExternalProviderClick = {},
-                            onTestErrorsClick = {},
-                            onFillValidDemoClick = {},
                             onSignUpClick = {},
                         )
                         6 -> LoginContent(
@@ -92,7 +88,6 @@ class P4ScreenshotCaptureTest {
                                 emailError = "✕ Invalid email. Format must be name@example.com, not empty.",
                                 passwordError = "✕ Password cannot be empty (minimum 8 characters required).",
                             ),
-                            isDebugEntryEnabled = true,
                             onBackClick = {},
                             onEmailChange = {},
                             onPasswordChange = {},
@@ -100,9 +95,6 @@ class P4ScreenshotCaptureTest {
                             onToggleRememberMe = {},
                             onForgotPasswordClick = {},
                             onSubmitClick = {},
-                            onExternalProviderClick = {},
-                            onTestErrorsClick = {},
-                            onFillValidDemoClick = {},
                             onSignUpClick = {},
                         )
                         7 -> SignUpContent(
@@ -112,7 +104,6 @@ class P4ScreenshotCaptureTest {
                                 password = "••••••••••••",
                                 confirmPassword = "••••••••••••",
                             ),
-                            isDebugEntryEnabled = true,
                             onBackClick = {},
                             onFullNameChange = {},
                             onEmailChange = {},
@@ -121,8 +112,6 @@ class P4ScreenshotCaptureTest {
                             onTogglePasswordVisibility = {},
                             onToggleConfirmPasswordVisibility = {},
                             onSubmitClick = {},
-                            onTestErrorsClick = {},
-                            onFillValidDemoClick = {},
                             onLogInClick = {},
                         )
                         8 -> SignUpContent(
@@ -138,7 +127,6 @@ class P4ScreenshotCaptureTest {
                                 passwordError = "✕ Weak password: Minimum 8 characters required with symbol & number.",
                                 confirmPasswordError = "✕ Confirmation mismatch: Passwords do not match.",
                             ),
-                            isDebugEntryEnabled = true,
                             onBackClick = {},
                             onFullNameChange = {},
                             onEmailChange = {},
@@ -147,8 +135,6 @@ class P4ScreenshotCaptureTest {
                             onTogglePasswordVisibility = {},
                             onToggleConfirmPasswordVisibility = {},
                             onSubmitClick = {},
-                            onTestErrorsClick = {},
-                            onFillValidDemoClick = {},
                             onLogInClick = {},
                         )
                         9 -> ForgotPasswordContent(

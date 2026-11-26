@@ -33,8 +33,8 @@ import java.util.concurrent.atomic.AtomicLong
 
 class FakeDeviceDataSource(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-    private val scanDelayMs: Long = 350L,
-    private val connectStepDelayMs: Long = 180L,
+    private val scanDelayMs: Long = DEFAULT_SCAN_DELAY_MS,
+    private val connectStepDelayMs: Long = 350L,
 ) : DeviceDataSource {
 
     override val providerType: DeviceProviderType = DeviceProviderType.SIMULATED
@@ -411,4 +411,8 @@ class FakeDeviceDataSource(
         ),
         ConnectionDiagnosticStage(4, "Telemetry channel sync", DiagnosticStageStatus.ABORTED, "Aborted"),
     )
+
+    companion object {
+        const val DEFAULT_SCAN_DELAY_MS = 3_500L
+    }
 }

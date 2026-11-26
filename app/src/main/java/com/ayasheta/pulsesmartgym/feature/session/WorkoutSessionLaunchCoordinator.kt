@@ -152,19 +152,15 @@ fun WorkoutSessionLaunchOverlays(
                 decorFitsSystemWindows = false,
             ),
         ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.55f))
-                    .clickable(onClick = coordinator::dismissConflict),
-                contentAlignment = Alignment.BottomCenter,
-            ) {
+            com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseAnimatedBottomSheetOverlay(
+                onDismissRequest = coordinator::dismissConflict,
+                scrimAlphaMax = 0.55f,
+            ) { sheetModifier ->
                 Column(
-                    modifier = Modifier
+                    modifier = sheetModifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
                         .background(Color.White)
-                        .clickable(enabled = false, onClick = {})
                         .navigationBarsPadding()
                         .padding(horizontal = 16.dp, vertical = 24.dp)
                         .testTag("dialog_active_session_conflict"),

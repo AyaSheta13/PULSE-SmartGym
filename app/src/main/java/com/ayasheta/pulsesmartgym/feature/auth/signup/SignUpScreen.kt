@@ -48,7 +48,6 @@ import com.ayasheta.pulsesmartgym.feature.auth.components.PulseValidationBanner
 @Composable
 fun SignUpScreen(
     viewModel: SignUpViewModel,
-    isDebugEntryEnabled: Boolean,
     onBackClick: () -> Unit,
     onLogInClick: () -> Unit,
     onNavigateToPersonalInfo: () -> Unit,
@@ -65,7 +64,6 @@ fun SignUpScreen(
 
     SignUpContent(
         uiState = uiState,
-        isDebugEntryEnabled = isDebugEntryEnabled,
         onBackClick = onBackClick,
         onFullNameChange = viewModel::onFullNameChange,
         onEmailChange = viewModel::onEmailChange,
@@ -74,8 +72,6 @@ fun SignUpScreen(
         onTogglePasswordVisibility = viewModel::togglePasswordVisibility,
         onToggleConfirmPasswordVisibility = viewModel::toggleConfirmPasswordVisibility,
         onSubmitClick = viewModel::submitSignUp,
-        onTestErrorsClick = { viewModel.triggerValidationErrorsSample(isDebugEntryEnabled) },
-        onFillValidDemoClick = { viewModel.clearErrorsAndFillDemoRegistration(isDebugEntryEnabled) },
         onLogInClick = onLogInClick,
         modifier = modifier,
     )
@@ -84,7 +80,6 @@ fun SignUpScreen(
 @Composable
 fun SignUpContent(
     uiState: SignUpUiState,
-    isDebugEntryEnabled: Boolean,
     onBackClick: () -> Unit,
     onFullNameChange: (String) -> Unit,
     onEmailChange: (String) -> Unit,
@@ -93,8 +88,6 @@ fun SignUpContent(
     onTogglePasswordVisibility: () -> Unit,
     onToggleConfirmPasswordVisibility: () -> Unit,
     onSubmitClick: () -> Unit,
-    onTestErrorsClick: () -> Unit,
-    onFillValidDemoClick: () -> Unit,
     onLogInClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -219,74 +212,39 @@ fun SignUpContent(
                 ),
             )
 
-            if (uiState.hasErrors && isDebugEntryEnabled) {
-                PulsePrimaryCta(
-                    text = "Use Valid Demo Registration",
-                    onClick = onFillValidDemoClick,
-                    height = 48.dp,
-                )
-            } else {
-                PulsePrimaryCta(
-                    text = "Create Account",
-                    onClick = onSubmitClick,
-                    isLoading = uiState.isLoading,
-                )
+            PulsePrimaryCta(
+                text = "Create Account",
+                onClick = onSubmitClick,
+                isLoading = uiState.isLoading,
+            )
 
-                if (isDebugEntryEnabled) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(PulseAuthColors.ErrorBannerBg)
-                            .border(
-                                width = 1.dp,
-                                color = PulseTheme.color.primary,
-                                shape = RoundedCornerShape(10.dp),
-                            )
-                            .clickable(role = Role.Button, onClick = onTestErrorsClick),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        BasicText(
-                            text = "⚠ Test Sign Up Validation Errors (4 Scenarios)",
-                            style = TextStyle(
-                                fontFamily = PulseTheme.typography.supportingContent.fontFamily,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = PulseAuthColors.DebugButtonText,
-                            ),
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(32.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable(role = Role.Button, onClick = onLogInClick),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    BasicText(
-                        text = "Already have an account?",
-                        style = TextStyle(
-                            fontFamily = PulseTheme.typography.contentPrimary.fontFamily,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Normal,
-                            color = PulseTheme.color.shadeSecondary,
-                        ),
-                    )
-                    BasicText(
-                        text = "Log In",
-                        style = TextStyle(
-                            fontFamily = PulseTheme.typography.cardTitle.fontFamily,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = PulseTheme.color.primary,
-                        ),
-                    )
-                }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(32.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(role = Role.Button, onClick = onLogInClick),
+                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BasicText(
+                    text = "Already have an account?",
+                    style = TextStyle(
+                        fontFamily = PulseTheme.typography.contentPrimary.fontFamily,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Normal,
+                        color = PulseTheme.color.shadeSecondary,
+                    ),
+                )
+                BasicText(
+                    text = "Log In",
+                    style = TextStyle(
+                        fontFamily = PulseTheme.typography.cardTitle.fontFamily,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = PulseTheme.color.primary,
+                    ),
+                )
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -300,7 +258,6 @@ private fun SignUpPreview() {
     PulseTheme {
         SignUpContent(
             uiState = SignUpUiState(),
-            isDebugEntryEnabled = true,
             onBackClick = {},
             onFullNameChange = {},
             onEmailChange = {},
@@ -309,8 +266,6 @@ private fun SignUpPreview() {
             onTogglePasswordVisibility = {},
             onToggleConfirmPasswordVisibility = {},
             onSubmitClick = {},
-            onTestErrorsClick = {},
-            onFillValidDemoClick = {},
             onLogInClick = {},
         )
     }

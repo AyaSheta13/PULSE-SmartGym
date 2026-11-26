@@ -298,7 +298,6 @@ fun rememberPulseEntryProvider(
             }
             LoginScreen(
                 viewModel = viewModel,
-                isDebugEntryEnabled = isDebugEntryEnabled,
                 onBackClick = { navigator.navigateBack() },
                 onForgotPasswordClick = { navigator.navigate(ForgotPassword) },
                 onSignUpClick = { navigator.navigate(SignUp) },
@@ -316,7 +315,6 @@ fun rememberPulseEntryProvider(
             }
             SignUpScreen(
                 viewModel = viewModel,
-                isDebugEntryEnabled = isDebugEntryEnabled,
                 onBackClick = { navigator.navigateBack() },
                 onLogInClick = { navigator.navigate(Login) },
                 onNavigateToPersonalInfo = { navigator.navigate(ProfileSetupPersonalInfo) },

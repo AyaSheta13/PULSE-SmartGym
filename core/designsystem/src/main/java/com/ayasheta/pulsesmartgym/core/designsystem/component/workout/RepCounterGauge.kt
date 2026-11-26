@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -65,12 +66,38 @@ fun PulseRepCounterGauge(
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = PulseTheme.corners.xLarge,
-        contentPadding = PaddingValues(PulseTheme.space.xLarge),
+        contentPadding = PaddingValues(0.dp),
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
+        Box(modifier = Modifier.fillMaxWidth()) {
+            Canvas(
+                modifier = Modifier
+                    .matchParentSize()
+                    .testTag("rep_counter_card_decorations"),
+            ) {
+                val haloRadius = 96.dp.toPx()
+                drawCircle(
+                    color = Color(0x16FF623E),
+                    radius = haloRadius,
+                    center = androidx.compose.ui.geometry.Offset(
+                        x = size.width - 48.dp.toPx(),
+                        y = 48.dp.toPx(),
+                    ),
+                )
+                drawCircle(
+                    color = Color(0x1C39B8FD),
+                    radius = haloRadius,
+                    center = androidx.compose.ui.geometry.Offset(
+                        x = 48.dp.toPx(),
+                        y = size.height - 48.dp.toPx(),
+                    ),
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(PulseTheme.space.xLarge),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
             Box(
                 modifier = Modifier
                     .size(224.dp)
@@ -168,6 +195,7 @@ fun PulseRepCounterGauge(
                     onClick = onIncrementRep,
                 )
             }
+        }
         }
     }
 }

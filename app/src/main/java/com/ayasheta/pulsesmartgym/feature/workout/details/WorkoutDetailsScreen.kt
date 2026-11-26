@@ -258,7 +258,7 @@ fun WorkoutDetailsScreenContent(
                 }
 
                 // Fixed Bottom Action Bar
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .shadow(
@@ -266,54 +266,64 @@ fun WorkoutDetailsScreenContent(
                             ambientColor = Color(0x0D000000),
                             spotColor = Color(0x0D000000),
                         )
-                        .background(Color.White)
-                        .border(BorderStroke(1.dp, WorkoutPalette.CardBorder))
-                        .navigationBarsPadding()
-                        .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                        .background(Color.White),
                 ) {
                     Box(
                         modifier = Modifier
-                            .weight(232f)
-                            .height(52.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(WorkoutPalette.PrimaryCoral)
-                            .clickable { onStartWorkoutClick(uiState.planId) }
-                            .testTag("details_start_workout_button"),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        BasicText(
-                            text = "Start Workout",
-                            style = PulseTheme.typography.ctaPrimary.copy(
-                                fontSize = 15.sp,
-                                lineHeight = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                            ),
-                        )
-                    }
-
-                    Box(
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(WorkoutPalette.CardBorder),
+                    )
+                    Row(
                         modifier = Modifier
-                            .weight(112f)
-                            .height(52.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(Color.White)
-                            .border(BorderStroke(1.dp, Color(0xFFE5E0DC)), RoundedCornerShape(16.dp))
-                            .clickable { onEditPlanClick(uiState.planId) }
-                            .testTag("details_edit_plan_button"),
-                        contentAlignment = Alignment.Center,
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        BasicText(
-                            text = "Edit Plan",
-                            style = PulseTheme.typography.ctaPrimary.copy(
-                                fontSize = 14.sp,
-                                lineHeight = 18.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = WorkoutPalette.TextPrimary,
-                            ),
-                        )
+                        Box(
+                            modifier = Modifier
+                                .weight(232f)
+                                .height(52.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(WorkoutPalette.PrimaryCoral)
+                                .clickable { onStartWorkoutClick(uiState.planId) }
+                                .testTag("details_start_workout_button"),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            BasicText(
+                                text = "Start Workout",
+                                style = PulseTheme.typography.ctaPrimary.copy(
+                                    fontSize = 15.sp,
+                                    lineHeight = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                ),
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(112f)
+                                .height(52.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color.White)
+                                .border(BorderStroke(1.dp, Color(0xFFE5E0DC)), RoundedCornerShape(16.dp))
+                                .clickable { onEditPlanClick(uiState.planId) }
+                                .testTag("details_edit_plan_button"),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            BasicText(
+                                text = "Edit Plan",
+                                style = PulseTheme.typography.ctaPrimary.copy(
+                                    fontSize = 14.sp,
+                                    lineHeight = 18.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = WorkoutPalette.TextPrimary,
+                                ),
+                            )
+                        }
                     }
                 }
             }

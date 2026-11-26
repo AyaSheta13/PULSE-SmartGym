@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -43,6 +44,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ayasheta.pulsesmartgym.core.designsystem.component.progress.PulseLoadingIndicator
+import com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseAnimatedBottomSheetOverlay
 import com.ayasheta.pulsesmartgym.core.designsystem.component.workout.PulseRestTimerCard
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
 import com.ayasheta.pulsesmartgym.core.designsystem.vectors.Back
@@ -404,8 +406,9 @@ private fun SessionTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(64.dp)
             .background(WorkoutPalette.Background)
+            .statusBarsPadding()
+            .height(64.dp)
             .padding(horizontal = 16.dp)
             .testTag("session_top_bar"),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -553,14 +556,12 @@ fun EndWorkoutEarlyModal(
     inWindow: Boolean = false,
 ) {
     val modalBody: @Composable () -> Unit = {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.55f))
-                .clickable(enabled = !isEnding, onClick = onKeepWorkingOut)
-                .testTag("modal_end_early_scrim"),
-            contentAlignment = Alignment.BottomCenter,
-        ) {
+        PulseAnimatedBottomSheetOverlay(
+            onDismissRequest = onKeepWorkingOut,
+            scrimAlphaMax = 0.55f,
+            dismissEnabled = !isEnding,
+            modifier = Modifier.testTag("modal_end_early_scrim"),
+        ) { sheetModifier ->
             val navBarBottom = if (inWindow) {
                 0.dp
             } else {
@@ -568,12 +569,11 @@ fun EndWorkoutEarlyModal(
             }
             val sheetBottomPadding = (navBarBottom + 8.dp).coerceAtLeast(32.dp)
             Column(
-                modifier = Modifier
+                modifier = sheetModifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
                     .background(Color.White)
                     .border(BorderStroke(1.dp, WorkoutPalette.InputBackground), RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                    .clickable(enabled = false, onClick = {})
                     .padding(start = 16.dp, end = 16.dp, top = 25.dp, bottom = sheetBottomPadding)
                     .testTag("modal_end_workout_early"),
                 verticalArrangement = Arrangement.spacedBy(16.dp),

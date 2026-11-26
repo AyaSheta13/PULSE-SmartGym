@@ -1260,14 +1260,12 @@ fun DeletePlanConfirmationModal(
     inWindow: Boolean = false,
 ) {
     val modalBody: @Composable () -> Unit = {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.55f))
-                .clickable(enabled = !isDeleting, onClick = onKeepPlan)
-                .testTag("modal_delete_plan_scrim"),
-            contentAlignment = Alignment.BottomCenter,
-        ) {
+        com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseAnimatedBottomSheetOverlay(
+            onDismissRequest = onKeepPlan,
+            scrimAlphaMax = 0.55f,
+            dismissEnabled = !isDeleting,
+            modifier = Modifier.testTag("modal_delete_plan_scrim"),
+        ) { sheetModifier ->
             val navBarBottom = if (inWindow || LocalRenderModalsInWindow.current) {
                 0.dp
             } else {
@@ -1275,12 +1273,11 @@ fun DeletePlanConfirmationModal(
             }
             val sheetBottomPadding = (navBarBottom + 8.dp).coerceAtLeast(32.dp)
             Column(
-                modifier = Modifier
+                modifier = sheetModifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
                     .background(Color.White)
                     .border(BorderStroke(1.dp, WorkoutPalette.InputBackground), RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                    .clickable(enabled = false, onClick = {})
                     .padding(start = 16.dp, end = 16.dp, top = 25.dp, bottom = sheetBottomPadding)
                     .testTag("modal_delete_plan"),
                 verticalArrangement = Arrangement.spacedBy(16.dp),

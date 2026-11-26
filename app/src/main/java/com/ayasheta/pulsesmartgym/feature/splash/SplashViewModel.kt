@@ -30,6 +30,7 @@ class SplashViewModel(
     private val preferencesRepository: UserPreferencesRepository,
     private val authRepository: AuthRepository,
     private val userProfileRepository: UserProfileRepository,
+    private val minDisplayDurationMs: Long = DEFAULT_MIN_DISPLAY_DURATION_MS,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SplashUiState())
@@ -41,7 +42,9 @@ class SplashViewModel(
         if (hasStarted) return
         hasStarted = true
         viewModelScope.launch {
-            val minDisplayJob = async { delay(450L) }
+            val minDisplayJob = async {
+                if (minDisplayDurationMs > 0L) delay(minDisplayDurationMs)
+            }
             val prefs = preferencesRepository.observePreferences().first()
             val authState = authRepository.restoreSession()
             val destination = when {
@@ -59,5 +62,9 @@ class SplashViewModel(
                 destination = destination,
             )
         }
+    }
+
+    companion object {
+        const val DEFAULT_MIN_DISPLAY_DURATION_MS = 2_200L
     }
 }

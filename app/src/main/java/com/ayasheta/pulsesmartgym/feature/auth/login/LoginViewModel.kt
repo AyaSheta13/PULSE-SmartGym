@@ -32,9 +32,6 @@ data class LoginUiState(
 ) {
     val hasErrors: Boolean
         get() = bannerTitle != null || emailError != null || passwordError != null
-
-    val isValidationErrorState: Boolean
-        get() = emailError != null || passwordError != null
 }
 
 class LoginViewModel(
@@ -82,16 +79,6 @@ class LoginViewModel(
         val next = !_uiState.value.rememberMe
         savedStateHandle[KEY_REMEMBER_ME] = next
         _uiState.update { it.copy(rememberMe = next) }
-    }
-
-    fun onExternalProviderClick(providerName: String) {
-        if (_uiState.value.isLoading) return
-        _uiState.update {
-            it.copy(
-                bannerTitle = "$providerName Sign-In Unavailable",
-                bannerMessage = "$providerName OAuth sign-in is not yet supported in this offline build. Please use local email login or Continue as Guest.",
-            )
-        }
     }
 
     fun submitLogin() {
@@ -162,34 +149,6 @@ class LoginViewModel(
                     }
                 }
             }
-        }
-    }
-
-    fun triggerValidationErrorSample(isDebugEnabled: Boolean) {
-        if (!isDebugEnabled) return
-        _uiState.update {
-            it.copy(
-                email = "invalid-email-format",
-                password = "",
-                bannerTitle = "Incorrect Email or Password",
-                bannerMessage = "The email or password does not match any local profile on this device.",
-                emailError = "✕ Invalid email. Format must be name@example.com, not empty.",
-                passwordError = "✕ Password cannot be empty (minimum 8 characters required).",
-            )
-        }
-    }
-
-    fun clearErrorsAndFillDebugCredentials(isDebugEnabled: Boolean) {
-        if (!isDebugEnabled) return
-        _uiState.update {
-            it.copy(
-                email = "alex.miller@example.com",
-                password = "Pulse@2026!",
-                bannerTitle = null,
-                bannerMessage = null,
-                emailError = null,
-                passwordError = null,
-            )
         }
     }
 
