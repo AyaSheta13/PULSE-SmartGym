@@ -1,6 +1,6 @@
 # P9 Visual QA Report
 
-All 9 P9 screen states were re-captured on `Medium_Phone_API_36.0` (`emulator-5554`) at `390 × 884` via `P9ScreenshotCaptureTest` after the P9 Final Acceptance Patch and compared against the Figma exports in `docs/visual-qa/p9/figma/`.
+All 9 P9 screen states were re-captured on `Medium_Phone_API_36.0` (`emulator-5554`) at `390 × 884` via `P9ScreenshotCaptureTest` and compared against the Figma exports in `docs/visual-qa/p9/figma/`.
 
 ## Pixel-Tolerance Comparison (`±16` RGB tolerance)
 
@@ -17,6 +17,6 @@ All 9 P9 screen states were re-captured on `Medium_Phone_API_36.0` (`emulator-55
 | `09_partial_workout_summary.png` | `390 × 884` | `86.22%` | `docs/visual-qa/p9/comparison/09_partial_workout_summary_compare.png` |
 
 ## Visual Fixes Verified
-- **Training Progress (`06_progress_populated.png`)**: `14.9 tonnes (14,872 kg)` and `No prior volume • 75% weekly target` now wrap cleanly with zero ellipsis truncation; Key Lift PRs display real October dates (`Oct 22`, `Oct 19`, `Oct 24`) instead of epoch-zero (`Jan 1, 1970`).
-- **Session Details (`04_session_details_complete.png`)**: `16 sets`, `140 repetitions`, and `7,472 kg volume` render in a `FlowRow` on a single row with zero truncation, and wrap cleanly for larger KG/LBS or partial labels.
-- **Workout Summary (`08_workout_complete_summary.png`)**: `42m 15s`, `16 completed sets`, and `7,472 kg volume` render in a `FlowRow` with zero truncation.
+- **Training Progress (`06_progress_populated.png`)**: `FlowRow` metric value/unit layout and 2-line delta labels eliminated truncation on `"tonnes (14,872 kg)"` and `"No prior volume • 75% weekly target"`. Fixture PR timestamps now use session timestamps (`Oct 22`, `Oct 19`, `Oct 24`) instead of `Jan 1, 1970`.
+- **Session Details (`04_session_details_complete.png`)**: Replaced equal-weight `Row` with `FlowRow` so `"16 sets"`, `"140 repetitions"`, and `"7,472 kg volume"` fit on a single row with zero ellipsis truncation and wrap cleanly for larger KG/LBS values.
+- **Workout Complete Summary (`08_workout_complete_summary.png`)**: Replaced equal-weight `Row` with `FlowRow` so `"42m 15s"`, `"16 completed sets"`, and `"7,472 kg volume"` display without truncation.
