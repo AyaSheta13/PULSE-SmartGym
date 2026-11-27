@@ -1,11 +1,16 @@
 package com.ayasheta.pulsesmartgym.core.data.repository.workout
 
+import com.ayasheta.pulsesmartgym.core.data.local.database.DefaultWorkoutPlanSeed
+import com.ayasheta.pulsesmartgym.core.data.local.database.ExerciseCatalogSeed
 import com.ayasheta.pulsesmartgym.core.data.local.database.PulseTransactionRunner
 import com.ayasheta.pulsesmartgym.core.data.local.database.dao.ExerciseDao
+import com.ayasheta.pulsesmartgym.core.data.local.database.dao.OwnerSeedStateDao
 import com.ayasheta.pulsesmartgym.core.data.local.database.dao.WorkoutPlanDao
+import com.ayasheta.pulsesmartgym.core.data.local.database.entity.OwnerSeedStateEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.PlanExerciseEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.PlannedSetEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.WorkoutPlanEntity
+import com.ayasheta.pulsesmartgym.core.data.local.preferences.PulsePreferencesDataSource
 import com.ayasheta.pulsesmartgym.core.data.mapper.toDomain
 import com.ayasheta.pulsesmartgym.core.model.common.DataError
 import com.ayasheta.pulsesmartgym.core.model.common.DomainResult
@@ -13,19 +18,118 @@ import com.ayasheta.pulsesmartgym.core.model.common.PulseValidators
 import com.ayasheta.pulsesmartgym.core.model.repository.WorkoutPlanRepository
 import com.ayasheta.pulsesmartgym.core.model.workout.WorkoutPlan
 import com.ayasheta.pulsesmartgym.core.model.workout.WorkoutPlanDraft
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 
 class RoomWorkoutPlanRepository(
     private val workoutPlanDao: WorkoutPlanDao,
     private val exerciseDao: ExerciseDao,
     private val transactionRunner: PulseTransactionRunner,
+    private val preferencesDataSource: PulsePreferencesDataSource? = null,
+    private val seedDefaultPlansOnFirstUse: Boolean = false,
     private val clockMs: () -> Long = { System.currentTimeMillis() },
+    private val ownerSeedStateDao: OwnerSeedStateDao? = null,
 ) : WorkoutPlanRepository {
 
-    override fun observePlans(ownerId: String): Flow<List<WorkoutPlan>> =
-        workoutPlanDao.observeAllPlans(ownerId).map { list -> list.map { it.toDomain() } }
+    constructor(
+        workoutPlanDao: WorkoutPlanDao,
+        exerciseDao: ExerciseDao,
+        transactionRunner: PulseTransactionRunner,
+        clockMs: () -> Long,
+    ) : this(
+        workoutPlanDao = workoutPlanDao,
+        exerciseDao = exerciseDao,
+        transactionRunner = transactionRunner,
+        preferencesDataSource = null,
+        seedDefaultPlansOnFirstUse = false,
+        clockMs = clockMs,
+    )
+
+    private val seedMutex = Mutex()
+    private val checkedOwners = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    private suspend fun ensureDefaultPlansSeeded(ownerId: String) {
+        if (!seedDefaultPlansOnFirstUse || PulseValidators.validateOwnerId(ownerId) != null) return
+        if (ownerId in checkedOwners) return
+        seedMutex.withLock {
+            if (ownerId in checkedOwners) return@withLock
+            val legacyPrefSeeded = preferencesDataSource?.readDefaultPlansSeededState(ownerId)
+            // If no Room seed-state DAO is attached, fail closed when DataStore read fails.
+            if (ownerSeedStateDao == null && preferencesDataSource != null && legacyPrefSeeded == null) {
+                return@withLock
+            }
+            if (ownerSeedStateDao == null && legacyPrefSeeded == true) {
+                checkedOwners.add(ownerId)
+                return@withLock
+            }
+            transactionRunner.runInTransaction {
+                val roomSeedState = ownerSeedStateDao?.get(ownerId)
+                if (roomSeedState?.starterPlansSeeded == true) {
+                    return@runInTransaction
+                }
+                val now = clockMs()
+                if (legacyPrefSeeded == true) {
+                    ownerSeedStateDao?.upsert(
+                        OwnerSeedStateEntity(
+                            ownerProfileId = ownerId,
+                            starterPlansSeeded = true,
+                            seededAtEpochMs = now,
+                        ),
+                    )
+                    return@runInTransaction
+                }
+                exerciseDao.insertAllIgnore(ExerciseCatalogSeed.defaultExercises)
+                if (workoutPlanDao.countPlans(ownerId) == 0) {
+                    val drafts = DefaultWorkoutPlanSeed.defaultPlanDrafts()
+                    drafts.forEachIndexed { index, draft ->
+                        val slug = draft.name.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')
+                        val planId = "seed_${ownerId}_$slug"
+                        val orderOffset = (drafts.size - index).toLong()
+                        val planEntity = WorkoutPlanEntity(
+                            id = planId,
+                            ownerProfileId = ownerId,
+                            name = draft.name.trim(),
+                            description = draft.description?.trim(),
+                            createdAtEpochMs = now + index,
+                            updatedAtEpochMs = now + orderOffset,
+                        )
+                        val (exerciseEntities, setEntities) = buildChildEntities(planId, draft)
+                        workoutPlanDao.insertPlan(planEntity)
+                        if (exerciseEntities.isNotEmpty()) workoutPlanDao.insertPlanExercises(exerciseEntities)
+                        if (setEntities.isNotEmpty()) workoutPlanDao.insertPlannedSets(setEntities)
+                    }
+                }
+                ownerSeedStateDao?.upsert(
+                    OwnerSeedStateEntity(
+                        ownerProfileId = ownerId,
+                        starterPlansSeeded = true,
+                        seededAtEpochMs = now,
+                    ),
+                )
+            }
+            try {
+                preferencesDataSource?.markDefaultPlansSeeded(ownerId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                // Room owner_seed_state already persisted the seed marker atomically.
+            }
+            checkedOwners.add(ownerId)
+        }
+    }
+
+    override fun observePlans(ownerId: String): Flow<List<WorkoutPlan>> = flow {
+        ensureDefaultPlansSeeded(ownerId)
+        emitAll(
+            workoutPlanDao.observeAllPlans(ownerId).map { list -> list.map { it.toDomain() } },
+        )
+    }
 
     override fun observePlan(ownerId: String, planId: String): Flow<WorkoutPlan?> =
         workoutPlanDao.observePlan(ownerId, planId).map { it?.toDomain() }
@@ -54,6 +158,13 @@ class RoomWorkoutPlanRepository(
             workoutPlanDao.insertPlan(planEntity)
             if (exerciseEntities.isNotEmpty()) workoutPlanDao.insertPlanExercises(exerciseEntities)
             if (setEntities.isNotEmpty()) workoutPlanDao.insertPlannedSets(setEntities)
+            ownerSeedStateDao?.upsert(
+                OwnerSeedStateEntity(
+                    ownerProfileId = ownerId,
+                    starterPlansSeeded = true,
+                    seededAtEpochMs = now,
+                ),
+            )
 
             val created = workoutPlanDao.getPlan(ownerId, planId)?.toDomain()
                 ?: return@runInTransaction DomainResult.Failure(DataError.StorageError("Failed to read created workout plan"))

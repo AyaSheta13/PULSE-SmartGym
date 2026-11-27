@@ -334,6 +334,11 @@ class FakeDeviceDataSource(
         trackingWindowId: String,
         classification: RepClassification = RepClassification.FULL,
         totalDurationMs: Long? = 1_800L,
+        concentricDurationMs: Long? = 820L,
+        eccentricDurationMs: Long? = 980L,
+        angularRomDegrees: Double? = 84.0,
+        linearRomCm: Double? = 42.5,
+        peakAccelerationMetersPerSecondSquared: Double? = 2.65,
         eventId: String = "sim_rep_${eventSeqCounter.incrementAndGet()}",
         sequenceNumber: Long = eventSeqCounter.get(),
         connectionGenerationOverride: Long? = null,
@@ -351,6 +356,11 @@ class FakeDeviceDataSource(
             sequenceNumber = sequenceNumber,
             classification = classification,
             totalDurationMs = totalDurationMs,
+            concentricDurationMs = concentricDurationMs,
+            eccentricDurationMs = eccentricDurationMs,
+            angularRomDegrees = angularRomDegrees,
+            linearRomCm = linearRomCm,
+            peakAccelerationMetersPerSecondSquared = peakAccelerationMetersPerSecondSquared,
             origin = originOverride,
         )
         _events.emit(DeviceEvent.RepRecorded(rep))

@@ -214,6 +214,7 @@ class SessionDetailsViewModel(
                         weightText = wText,
                         durationText = dText,
                         modeLabel = mLabel,
+                        repMeasurements = set.repRecords,
                     )
                 }
 
@@ -228,6 +229,9 @@ class SessionDetailsViewModel(
                 )
             }
 
+            val perfSummary = com.ayasheta.pulsesmartgym.core.model.history.WorkoutPerformanceAnalytics
+                .summarizeSession(session)
+                .takeIf { it.hasAnyMeasurements }
             return SessionDetailsUiState.Loaded(
                 sessionId = session.id,
                 planName = session.planNameSnapshot,
@@ -239,6 +243,7 @@ class SessionDetailsViewModel(
                 volumeChipText = volumeChipText,
                 breakdownHeaderRight = breakdownHeaderRight,
                 exercises = exercises,
+                performanceSummary = perfSummary,
             )
         }
     }

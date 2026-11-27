@@ -160,9 +160,14 @@ object HistoryUiMapper {
         }
         val lowerName = (exerciseName ?: planName).lowercase(Locale.US)
         return when {
+            "db flat press" in lowerName || "dumbbell flat" in lowerName -> R.drawable.ex_thumb_db_flat_press
             "bench" in lowerName -> R.drawable.ex_thumb_bench_press
+            "smith" in lowerName -> R.drawable.ex_thumb_smith_squat
             "squat" in lowerName -> R.drawable.ex_thumb_back_squat
+            "cable row" in lowerName -> R.drawable.ex_thumb_cable_row
+            "pulldown" in lowerName -> R.drawable.ex_thumb_lat_pulldown
             "row" in lowerName -> R.drawable.ex_thumb_barbell_row
+            "pushdown" in lowerName || "tricep" in lowerName -> R.drawable.ex_thumb_tricep_pushdown
             "incline" in lowerName -> R.drawable.ex_thumb_incline_press
             "curl" in lowerName -> R.drawable.ex_thumb_bicep_curl
             "lower" in lowerName || "leg" in lowerName -> R.drawable.plan_thumb_lower_body

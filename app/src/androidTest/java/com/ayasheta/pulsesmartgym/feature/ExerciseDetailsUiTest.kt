@@ -99,8 +99,10 @@ class ExerciseDetailsUiTest {
             }
         }
 
-        composeRule.onNodeWithTag("picker_info_ex_bench_press").performClick()
+        composeRule.onNodeWithTag("picker_details_ex_bench_press").performClick()
         assertEquals("ex_bench_press", detailsId)
         assertEquals(null, toggledId)
+        composeRule.onNodeWithTag("picker_toggle_ex_bench_press").performClick()
+        assertEquals("ex_bench_press", toggledId)
     }
 }

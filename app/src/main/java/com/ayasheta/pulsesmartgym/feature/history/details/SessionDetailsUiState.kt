@@ -1,5 +1,7 @@
 package com.ayasheta.pulsesmartgym.feature.history.details
 
+import com.ayasheta.pulsesmartgym.core.model.device.RepMeasurement
+import com.ayasheta.pulsesmartgym.core.model.history.SessionPerformanceSummary
 import com.ayasheta.pulsesmartgym.core.model.session.SessionStatus
 
 data class RecordedSetDetailUiModel(
@@ -8,6 +10,7 @@ data class RecordedSetDetailUiModel(
     val weightText: String,
     val durationText: String?,
     val modeLabel: String,
+    val repMeasurements: List<RepMeasurement> = emptyList(),
 )
 
 data class SessionDetailExerciseUiModel(
@@ -37,5 +40,6 @@ sealed interface SessionDetailsUiState {
         val volumeChipText: String,
         val breakdownHeaderRight: String,
         val exercises: List<SessionDetailExerciseUiModel>,
+        val performanceSummary: SessionPerformanceSummary? = null,
     ) : SessionDetailsUiState
 }

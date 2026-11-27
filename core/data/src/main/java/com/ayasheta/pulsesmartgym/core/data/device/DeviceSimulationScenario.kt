@@ -17,13 +17,14 @@ object SimulatedDeviceCatalog {
     val demoCapabilities = DeviceCapabilities(
         automaticRepEvents = true,
         fullPartialClassification = true,
-        angularRom = false,
-        linearRom = false,
+        angularRom = true,
+        linearRom = true,
         repDuration = true,
-        concentricDuration = false,
-        eccentricDuration = false,
+        concentricDuration = true,
+        eccentricDuration = true,
         batteryTelemetry = true,
         velocity = false,
+        peakAcceleration = true,
         supportedTrackingCategories = setOf(
             TrackingCategory.LINEAR,
             TrackingCategory.ANGULAR,

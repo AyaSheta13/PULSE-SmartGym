@@ -3,6 +3,8 @@ package com.ayasheta.pulsesmartgym.feature.session.execution
 import com.ayasheta.pulsesmartgym.core.designsystem.component.chips.PulseBluetoothChipStatus
 import com.ayasheta.pulsesmartgym.core.model.common.WeightLoad
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
+import com.ayasheta.pulsesmartgym.core.model.device.RepMeasurement
+import com.ayasheta.pulsesmartgym.core.model.exercise.ExerciseTrackingConfiguration
 import com.ayasheta.pulsesmartgym.core.model.session.SessionSetTarget
 import com.ayasheta.pulsesmartgym.core.model.session.SessionStatus
 
@@ -58,8 +60,14 @@ sealed interface SetExecutionUiState {
         val isFallbackManual: Boolean,
         val modeLabel: String,
         val bluetoothChipStatus: PulseBluetoothChipStatus,
+        val isTelemetrySimulated: Boolean = false,
         val trackingCompatibilityNotice: String?,
         val startedElapsedRealtimeMs: Long?,
+        val currentElapsedRealtimeMs: Long = 0L,
+        val frozenElapsedDurationMs: Long? = null,
+        val sessionStartedAtEpochMs: Long = 0L,
+        val repRecords: List<RepMeasurement> = emptyList(),
+        val trackingConfig: ExerciseTrackingConfiguration? = null,
         val errorMessage: String?,
         val isReconnecting: Boolean,
         val reconnectError: String?,

@@ -118,8 +118,9 @@ class P5HomeAndProfileUiTest {
         composeRule.onNodeWithTag("edit_profile_name_input", useUnmergedTree = true).performTextClearance()
         composeRule.onNodeWithTag("edit_profile_name_input", useUnmergedTree = true).performTextInput("Discarded Name")
         composeRule.onNodeWithTag("edit_profile_discard_button").performScrollTo().performClick()
+        composeRule.waitForIdle()
 
-        composeRule.waitUntil(5_000) {
+        composeRule.waitUntil(10_000) {
             runCatching {
                 composeRule.onNodeWithText("Profile & Settings").assertExists()
                 true

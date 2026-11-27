@@ -1,21 +1,23 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# PULSE Smart Gym — R8 / ProGuard Release Rules
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Preserve Kotlinx Serialization metadata & generated serializers for Navigation 3 NavKeys
+-keepattributes *Annotation*, Signature, InnerClasses, EnclosingMethod
+-keep @kotlinx.serialization.Serializable class com.ayasheta.pulsesmartgym.** { *; }
+-keepclassmembers class com.ayasheta.pulsesmartgym.** {
+    *** Companion;
+}
+-keepclasseswithmembers class com.ayasheta.pulsesmartgym.** {
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-keepclassmembers class com.ayasheta.pulsesmartgym.**$$serializer {
+    *;
+}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Preserve Room entities, DAOs, and Database implementations
+-keep class * extends androidx.room.RoomDatabase
+-keep @androidx.room.Entity class * { *; }
+-keep @androidx.room.Dao interface * { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Keep BLE / ParcelUuid / GATT callbacks intact
+-keepclassmembers class * extends android.bluetooth.BluetoothGattCallback { *; }
+-keepclassmembers class * extends android.bluetooth.le.ScanCallback { *; }

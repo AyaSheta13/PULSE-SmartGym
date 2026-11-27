@@ -10,4 +10,7 @@ data object MyDevice : NavKey
 data object DeviceDiscovery : NavKey
 
 @Serializable
+data object HardwareDiagnostics : NavKey
+
+@Serializable
 data object EditProfile : NavKey

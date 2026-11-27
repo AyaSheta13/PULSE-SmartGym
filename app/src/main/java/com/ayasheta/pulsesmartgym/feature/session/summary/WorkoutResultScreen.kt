@@ -295,6 +295,59 @@ fun WorkoutResultScreenContent(
                                 .padding(16.dp)
                                 .testTag("summary_breakdown_card"),
                         ) {
+                            uiState.performanceSummary?.let { perf ->
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 12.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFFFAF8F6))
+                                        .border(BorderStroke(1.dp, Color(0xFFECE8E3)), RoundedCornerShape(12.dp))
+                                        .padding(12.dp)
+                                        .testTag("result_performance_summary"),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    BasicText(
+                                        text = "Performance Summary (${perf.measuredRepCount}/${perf.totalRecordedReps} measured reps)",
+                                        style = PulseTheme.typography.label.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = WorkoutPalette.TextPrimary,
+                                        ),
+                                    )
+                                    val measuredExercises = perf.exerciseSummaries.filter { it.hasAnyMeasurements }
+                                    measuredExercises.forEach { exPerf ->
+                                        val exLine = listOfNotNull(
+                                            exPerf.averageRepDurationMs?.let {
+                                                String.format(java.util.Locale.US, "%.2fs rep", it / 1000.0)
+                                            },
+                                            exPerf.averageAngularRomDegrees?.let {
+                                                String.format(java.util.Locale.US, "%.1f° ROM", it)
+                                            },
+                                            exPerf.averageLinearRomCm?.let {
+                                                String.format(java.util.Locale.US, "%.1f cm ROM", it)
+                                            },
+                                            exPerf.maxPeakAccelerationMps2?.let {
+                                                String.format(java.util.Locale.US, "%.2f m/s²", it)
+                                            },
+                                        ).joinToString(" · ")
+                                        val sensorClassification = if (exPerf.sensorClassifiedFullRepCount + exPerf.sensorClassifiedPartialRepCount > 0) {
+                                            " • ${exPerf.sensorClassifiedFullRepCount}F/${exPerf.sensorClassifiedPartialRepCount}P sensor"
+                                        } else {
+                                            ""
+                                        }
+                                        if (exLine.isNotEmpty()) {
+                                            BasicText(
+                                                text = "${exPerf.exerciseName}: $exLine$sensorClassification",
+                                                style = PulseTheme.typography.label.copy(
+                                                    fontSize = 11.sp,
+                                                    color = WorkoutPalette.TextMuted,
+                                                ),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,

@@ -39,5 +39,6 @@ data class RepMeasurement(
     val eccentricDurationMs: Long? = null,
     val angularRomDegrees: Double? = null,
     val linearRomCm: Double? = null,
+    val peakAccelerationMetersPerSecondSquared: Double? = null,
     val origin: MeasurementOrigin = MeasurementOrigin.MANUAL_INPUT,
 )

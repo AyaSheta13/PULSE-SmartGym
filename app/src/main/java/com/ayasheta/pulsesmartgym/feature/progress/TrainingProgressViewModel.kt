@@ -31,6 +31,7 @@ class TrainingProgressViewModel(
     private val savedStateHandle: SavedStateHandle = SavedStateHandle(),
     private val todayProvider: () -> LocalDate = { LocalDate.now() },
     private val zoneProvider: () -> ZoneId = { ZoneId.systemDefault() },
+    private val isDemoEnvironment: Boolean = false,
 ) : ViewModel() {
 
     private val weekOffsetKey = "progress_selected_week_offset"
@@ -80,7 +81,7 @@ class TrainingProgressViewModel(
                                 userPreferencesRepository.observePreferences(),
                                 selectedWeekOffsetFlow,
                             ) { sessions, profile, prefs, weekOffset ->
-                                ProgressUiMapper.mapToUiState(
+                                val mapped = ProgressUiMapper.mapToUiState(
                                     sessions = sessions,
                                     weeklyTarget = profile?.weeklyWorkouts,
                                     unit = prefs.preferredWeightUnit,
@@ -88,6 +89,32 @@ class TrainingProgressViewModel(
                                     today = todayProvider(),
                                     zoneId = zoneProvider(),
                                 )
+                                if (mapped is TrainingProgressUiState.Populated) {
+                                    val today = todayProvider()
+                                    val zoneId = zoneProvider()
+                                    val referenceDate = today.minusWeeks(weekOffset.coerceAtLeast(0).toLong())
+                                    val weekStart = referenceDate.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+                                    val weekStartMs = weekStart.atStartOfDay(zoneId).toInstant().toEpochMilli()
+                                    val weekEndExclusiveMs = weekStart.plusDays(7).atStartOfDay(zoneId).toInstant().toEpochMilli()
+                                    val exerciseKeys = sessions
+                                        .flatMap { it.exercises }
+                                        .map { com.ayasheta.pulsesmartgym.core.model.history.WorkoutPerformanceAnalytics.stableExerciseKey(it) }
+                                        .distinct()
+                                    val trends = exerciseKeys.mapNotNull { exKey ->
+                                        com.ayasheta.pulsesmartgym.core.model.history.WorkoutPerformanceAnalytics
+                                            .calculateExerciseTrends(
+                                                sessions = sessions,
+                                                exerciseKey = exKey,
+                                                includeSimulated = isDemoEnvironment,
+                                                windowStartEpochMs = weekStartMs,
+                                                windowEndExclusiveEpochMs = weekEndExclusiveMs,
+                                            )
+                                            ?.takeIf { it.totalMeasuredReps > 0 }
+                                    }
+                                    mapped.copy(performanceTrends = trends)
+                                } else {
+                                    mapped
+                                }
                             }.onStart {
                                 emit(TrainingProgressUiState.Loading)
                             }.catch { throwable ->

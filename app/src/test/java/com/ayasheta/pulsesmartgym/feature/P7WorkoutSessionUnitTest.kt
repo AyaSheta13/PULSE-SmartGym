@@ -143,7 +143,7 @@ class P7WorkoutSessionUnitTest {
         )
 
         val active = vm.uiState.awaitValue { it is WorkoutSessionUiState.Active } as WorkoutSessionUiState.Active
-        assertEquals("Not Connected", active.connectionLabel)
+        assertEquals("Disconnected", active.connectionLabel)
 
         // Clock advance + refreshElapsedTime
         nowMs = 75_000L

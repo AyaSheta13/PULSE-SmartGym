@@ -50,6 +50,7 @@ data class DeviceLinkState(
     val capabilities: DeviceCapabilities = DeviceCapabilities(),
     val batteryPercent: Int? = null,
     val isTelemetrySimulated: Boolean = false,
+    val isCalibrated: Boolean = false,
     val hasSearched: Boolean = false,
     val diagnosticStages: List<ConnectionDiagnosticStage> = emptyList(),
     val failureReason: String? = null,

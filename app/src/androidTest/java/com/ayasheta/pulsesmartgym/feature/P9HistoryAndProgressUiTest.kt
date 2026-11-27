@@ -85,15 +85,15 @@ class P9HistoryAndProgressUiTest {
 
         activityRule.onNodeWithTag("session_set_start_${exId}_1").performClick()
         activityRule.waitUntil(5_000) {
-            runCatching { activityRule.onNodeWithTag("button_ready_start_set").assertExists(); true }.getOrDefault(false)
+            runCatching { activityRule.onNodeWithTag("button_set_execution_primary").assertExists(); true }.getOrDefault(false)
         }
-        activityRule.onNodeWithTag("button_ready_start_set").performClick()
+        activityRule.onNodeWithTag("button_set_execution_primary").performClick()
         activityRule.waitUntil(5_000) {
-            runCatching { activityRule.onNodeWithTag("button_finish_set").assertExists(); true }.getOrDefault(false)
+            runCatching { activityRule.onNodeWithText("Finish Set").assertExists(); true }.getOrDefault(false)
         }
         repeat(8) { activityRule.onNodeWithContentDescription("Add one rep").performClick() }
         activityRule.onNodeWithContentDescription("Increase weight").performClick()
-        activityRule.onNodeWithTag("button_finish_set").performClick()
+        activityRule.onNodeWithTag("button_set_execution_primary").performClick()
 
         activityRule.waitUntil(5_000) {
             runCatching { activityRule.onNodeWithTag("button_finish_workout").assertExists(); true }.getOrDefault(false)

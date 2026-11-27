@@ -22,8 +22,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -38,15 +41,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ayasheta.pulsesmartgym.core.designsystem.component.button.Button as PulsePrimaryButton
 import com.ayasheta.pulsesmartgym.core.designsystem.component.progress.PulseLoadingIndicator
-import com.ayasheta.pulsesmartgym.core.designsystem.component.workout.PulseRepCounterGauge
-import com.ayasheta.pulsesmartgym.core.designsystem.component.workout.PulseWeightSelectorCard
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
 import com.ayasheta.pulsesmartgym.core.designsystem.vectors.CheckMark
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
 import com.ayasheta.pulsesmartgym.core.model.session.SessionSetTarget
 import com.ayasheta.pulsesmartgym.core.model.session.SessionStatus
+import kotlinx.coroutines.delay
 import com.ayasheta.pulsesmartgym.feature.session.dashboard.EndWorkoutEarlyModal
-import com.ayasheta.pulsesmartgym.feature.session.dashboard.SessionUiMapper
 import com.ayasheta.pulsesmartgym.feature.session.ready.SetExecutionTopBar
 import com.ayasheta.pulsesmartgym.feature.session.ready.SetFallbackMessage
 import com.ayasheta.pulsesmartgym.feature.session.ready.StopCircleIcon
@@ -131,6 +132,7 @@ fun SetExecutionScreen(
         onDecrementRep = viewModel::decrementRep,
         onIncrementWeight = viewModel::incrementWeight,
         onDecrementWeight = viewModel::decrementWeight,
+        onApplyDirectWeight = viewModel::setDirectWeight,
         onSimulateFullRep = viewModel::simulateFullRep,
         onSimulatePartialRep = viewModel::simulatePartialRep,
         onSimulateDrop = viewModel::simulateConnectionDrop,
@@ -153,6 +155,7 @@ fun SetExecutionScreenContent(
     onDecrementRep: () -> Unit,
     onIncrementWeight: () -> Unit,
     onDecrementWeight: () -> Unit,
+    onApplyDirectWeight: (String) -> String? = { null },
     onSimulateFullRep: () -> Unit = {},
     onSimulatePartialRep: () -> Unit = {},
     onSimulateDrop: () -> Unit = {},
@@ -164,6 +167,7 @@ fun SetExecutionScreenContent(
     modifier: Modifier = Modifier,
 ) {
     val renderInWindow = LocalRenderModalsInWindow.current
+    var showDirectWeightSheet by rememberSaveable { mutableStateOf(false) }
 
     Box(
         modifier = modifier
@@ -228,34 +232,35 @@ fun SetExecutionScreenContent(
                 }
 
                 is SetExecutionUiState.Active -> {
-                    val phaseSubtitle = when (uiState.phase) {
-                        SetExecutionPhase.Ready -> "Set ${uiState.setIndex} of ${uiState.totalSetsForExercise} • Ready"
-                        SetExecutionPhase.InProgress -> "Set ${uiState.setIndex} of ${uiState.totalSetsForExercise} • In Progress"
-                        SetExecutionPhase.Saving -> "Set ${uiState.setIndex} of ${uiState.totalSetsForExercise} • Saving"
-                        SetExecutionPhase.ConnectionLost -> "Set ${uiState.setIndex} of ${uiState.totalSetsForExercise} • Connection Lost"
-                        SetExecutionPhase.RecoverableError -> "Set ${uiState.setIndex} of ${uiState.totalSetsForExercise} • Retry Save"
-                        SetExecutionPhase.Completed -> "Set ${uiState.setIndex} of ${uiState.totalSetsForExercise} • Completed"
-                    }
-
                     SetExecutionTopBar(
                         title = uiState.exerciseName,
-                        subtitle = phaseSubtitle,
+                        subtitle = uiState.planName,
                         modeLabel = uiState.modeLabel,
                         onBackClick = onBackClick,
+                        bluetoothStatus = uiState.bluetoothChipStatus,
+                        isSimulated = uiState.isTelemetrySimulated,
                     )
 
                     val unitLabel = if (uiState.preferredWeightUnit == WeightUnit.KG) "kg" else "lbs"
-                    val targetLoadText = SessionUiMapper.formatWeightLoad(uiState.targetLoad, uiState.preferredWeightUnit)
-                    val targetPillText = if (targetLoadText != null) {
-                        "TARGET: ${uiState.targetReps} REPS @ ${targetLoadText.uppercase()}"
-                    } else {
-                        "TARGET: ${uiState.targetReps} REPS"
-                    }
                     val weightNumberText = formatLoadNumber(uiState.actualLoad, uiState.preferredWeightUnit)
-                    val targetCardLabel = if (targetLoadText != null) {
-                        "Target: $targetLoadText"
-                    } else {
-                        "Bodyweight"
+
+                    var workoutElapsedSec by remember(uiState.sessionId, uiState.sessionStartedAtEpochMs) {
+                        mutableLongStateOf(
+                            if (uiState.sessionStartedAtEpochMs > 0L) {
+                                ((System.currentTimeMillis() - uiState.sessionStartedAtEpochMs).coerceAtLeast(0L)) / 1000L
+                            } else {
+                                0L
+                            },
+                        )
+                    }
+                    LaunchedEffect(uiState.sessionId, uiState.sessionStartedAtEpochMs) {
+                        if (uiState.sessionStartedAtEpochMs > 0L) {
+                            while (true) {
+                                workoutElapsedSec =
+                                    ((System.currentTimeMillis() - uiState.sessionStartedAtEpochMs).coerceAtLeast(0L)) / 1000L
+                                delay(1_000L)
+                            }
+                        }
                     }
 
                     Column(
@@ -263,58 +268,16 @@ fun SetExecutionScreenContent(
                             .weight(1f)
                             .fillMaxWidth()
                             .verticalScroll(rememberScrollState())
-                            .navigationBarsPadding()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            BasicText(
-                                text = uiState.planName,
-                                style = PulseTheme.typography.cardTitle.copy(
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = WorkoutPalette.TextPrimary,
-                                ),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
-                            )
-                            val restSeconds = uiState.targetRestSeconds
-                            if (restSeconds != null && restSeconds > 0) {
-                                BasicText(
-                                    text = "Rest: ${restSeconds}s",
-                                    style = PulseTheme.typography.label.copy(
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = WorkoutPalette.TextMuted,
-                                    ),
-                                    modifier = Modifier.testTag("set_execution_rest_info"),
-                                )
-                            }
-                        }
+                        WorkoutInfoCard(
+                            workoutElapsedSec = workoutElapsedSec,
+                            restSeconds = uiState.targetRestSeconds,
+                        )
 
-                        Box(
-                            modifier = Modifier
-                                .clip(PulseTheme.corners.fullRounded)
-                                .background(PulseTheme.color.surfaceMuted)
-                                .padding(horizontal = 14.dp, vertical = 6.dp)
-                                .testTag("set_execution_target_pill"),
-                        ) {
-                            BasicText(
-                                text = targetPillText,
-                                style = PulseTheme.typography.label.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 0.4.sp,
-                                    color = PulseTheme.color.shadeSecondary,
-                                ),
-                            )
-                        }
-
-                        if (uiState.trackingCompatibilityNotice != null && !uiState.isStarted) {
+                        if (uiState.trackingCompatibilityNotice != null) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -352,35 +315,35 @@ fun SetExecutionScreenContent(
                             }
                         }
 
-                        // Unified Counter Card — stays mounted at identical coordinates across Ready & InProgress
+                        // Unified Repetition & Weight Card
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .alpha(if (uiState.isStarted) 1f else 0.92f)
-                                .testTag("set_execution_counter_card"),
+                                .alpha(if (uiState.isStarted) 1f else 0.94f),
                         ) {
-                            PulseRepCounterGauge(
+                            UnifiedRepAndWeightCard(
                                 currentReps = uiState.totalDisplayedReps,
                                 targetReps = uiState.targetReps,
+                                weightNumberText = weightNumberText,
+                                unitLabel = unitLabel,
+                                overlineLabel = if (uiState.isDeviceAssisted) "AUTO REPS" else "REPS DONE",
+                                canAdjustReps = uiState.canAdjustRepsManually,
+                                canAdjustWeight = uiState.canAdjustWeight,
                                 onDecrementRep = { if (uiState.canAdjustRepsManually) onDecrementRep() },
                                 onIncrementRep = { if (uiState.canAdjustRepsManually) onIncrementRep() },
-                                overlineLabel = if (uiState.isDeviceAssisted) "AUTO REPS" else "REPS DONE",
-                                adjustLabel = when {
-                                    !uiState.isStarted -> "Start set to count"
-                                    uiState.isDeviceAssisted -> "Tracking via device"
-                                    else -> "Adjust count"
-                                },
+                                onDecrementWeight = { if (uiState.canAdjustWeight) onDecrementWeight() },
+                                onIncrementWeight = { if (uiState.canAdjustWeight) onIncrementWeight() },
+                                onEditWeightClick = { if (uiState.canAdjustWeight) showDirectWeightSheet = true },
                             )
                         }
 
-                        PulseWeightSelectorCard(
-                            weightText = weightNumberText,
-                            unitLabel = unitLabel,
-                            setSubtitle = "Actual load used for Set ${uiState.setIndex}",
-                            targetText = targetCardLabel,
-                            onDecrementClick = { if (uiState.canAdjustWeight) onDecrementWeight() },
-                            onIncrementClick = { if (uiState.canAdjustWeight) onIncrementWeight() },
-                            modifier = Modifier.testTag("set_execution_weight_card"),
+                        LivePerformanceWaveformCard(
+                            repRecords = uiState.repRecords,
+                            targetReps = uiState.targetReps,
+                            isStarted = uiState.isStarted,
+                            isDeviceAssisted = uiState.isDeviceAssisted,
+                            isFallbackManual = uiState.isFallbackManual,
+                            isSimulated = uiState.isTelemetrySimulated,
                         )
 
                         if (uiState.showSimulateButtons) {
@@ -411,9 +374,18 @@ fun SetExecutionScreenContent(
                                 )
                             }
                         }
+                    }
 
-                        Spacer(modifier = Modifier.height(4.dp))
-
+                    // Pinned Bottom Action Area — always visible without scrolling, respects system navigation insets
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(WorkoutPalette.Background)
+                            .navigationBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         val primaryCaption = when (uiState.phase) {
                             SetExecutionPhase.Ready -> "Start Set"
                             SetExecutionPhase.Saving -> "Saving Set..."
@@ -458,29 +430,43 @@ fun SetExecutionScreenContent(
                             )
                         }
                     }
-
-                    ConnectionLostRecoverySheet(
-                        visible = uiState.showConnectionLostModal,
-                        setIndex = uiState.setIndex,
-                        fullReps = uiState.fullReps,
-                        partialReps = uiState.partialReps,
-                        recordedSetsCount = uiState.recordedSetsCount,
-                        isReconnecting = uiState.isReconnecting,
-                        reconnectErrorMessage = uiState.reconnectError,
-                        onReconnectClick = onReconnectDevice,
-                        onContinueManuallyClick = onContinueManually,
-                    )
-
-                    EndWorkoutEarlyModal(
-                        visible = uiState.showEndEarlyConfirmation,
-                        recordedSetsCount = uiState.recordedSetsCount,
-                        isEnding = uiState.isEndingEarly,
-                        onKeepWorkingOut = onDismissEndEarly,
-                        onEndWorkout = onConfirmEndEarly,
-                        inWindow = renderInWindow,
-                    )
                 }
             }
+        }
+
+        if (uiState is SetExecutionUiState.Active) {
+            val unitLabel = if (uiState.preferredWeightUnit == WeightUnit.KG) "kg" else "lbs"
+            val weightNumberText = formatLoadNumber(uiState.actualLoad, uiState.preferredWeightUnit)
+
+            SetLoadBottomSheet(
+                visible = showDirectWeightSheet,
+                initialWeightText = weightNumberText,
+                unitLabel = unitLabel,
+                inWindow = renderInWindow,
+                onDismiss = { showDirectWeightSheet = false },
+                onApply = onApplyDirectWeight,
+            )
+
+            ConnectionLostRecoverySheet(
+                visible = uiState.showConnectionLostModal,
+                setIndex = uiState.setIndex,
+                fullReps = uiState.fullReps,
+                partialReps = uiState.partialReps,
+                recordedSetsCount = uiState.recordedSetsCount,
+                isReconnecting = uiState.isReconnecting,
+                reconnectErrorMessage = uiState.reconnectError,
+                onReconnectClick = onReconnectDevice,
+                onContinueManuallyClick = onContinueManually,
+            )
+
+            EndWorkoutEarlyModal(
+                visible = uiState.showEndEarlyConfirmation,
+                recordedSetsCount = uiState.recordedSetsCount,
+                isEnding = uiState.isEndingEarly,
+                onKeepWorkingOut = onDismissEndEarly,
+                onEndWorkout = onConfirmEndEarly,
+                inWindow = renderInWindow,
+            )
         }
     }
 }

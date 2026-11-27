@@ -63,6 +63,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTopAppBar
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTopAppBarStyle
 import com.ayasheta.pulsesmartgym.core.designsystem.component.progress.PulseLoadingIndicator
+import com.ayasheta.pulsesmartgym.core.designsystem.vectors.Plus
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
 import com.ayasheta.pulsesmartgym.core.designsystem.vectors.CheckMark
 import com.ayasheta.pulsesmartgym.core.designsystem.vectors.Trash
@@ -656,13 +657,11 @@ private fun ExercisesSectionHeader(
                     .border(BorderStroke(1.5.dp, WorkoutPalette.PrimaryCoralDark), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                BasicText(
-                    text = "+",
-                    style = PulseTheme.typography.label.copy(
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = WorkoutPalette.PrimaryCoralDark,
-                    ),
+                Image(
+                    imageVector = Plus,
+                    contentDescription = null,
+                    colorFilter = ColorFilter.tint(WorkoutPalette.PrimaryCoralDark),
+                    modifier = Modifier.size(10.dp),
                 )
             }
             BasicText(
@@ -710,13 +709,11 @@ private fun EmptyExercisesCard(
                 .background(Color(0xFFFFF0EB)),
             contentAlignment = Alignment.Center,
         ) {
-            BasicText(
-                text = "+",
-                style = PulseTheme.typography.cardTitle.copy(
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFFFF5733),
-                ),
+            Image(
+                imageVector = Plus,
+                contentDescription = null,
+                colorFilter = ColorFilter.tint(Color(0xFFFF5733)),
+                modifier = Modifier.size(22.dp),
             )
         }
         BasicText(
@@ -1013,13 +1010,11 @@ private fun StepperTile(
                     .testTag(increaseTag),
                 contentAlignment = Alignment.Center,
             ) {
-                BasicText(
-                    text = "+",
-                    style = PulseTheme.typography.cardTitle.copy(
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = WorkoutPalette.TextEditorPrimary,
-                    ),
+                Image(
+                    imageVector = Plus,
+                    contentDescription = "Increase",
+                    colorFilter = ColorFilter.tint(WorkoutPalette.TextEditorPrimary),
+                    modifier = Modifier.size(14.dp),
                 )
             }
         }
@@ -1081,13 +1076,19 @@ private fun PerSetEditorRow(
                     color = WorkoutPalette.TextPrimary,
                 ),
             )
-            BasicText(
-                text = "+",
-                style = PulseTheme.typography.label.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold),
+            Box(
                 modifier = Modifier
                     .clickable { onUpdate(set.targetReps + 1, null, null, false) }
-                    .padding(horizontal = 4.dp),
-            )
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    imageVector = Plus,
+                    contentDescription = "Increase reps",
+                    colorFilter = ColorFilter.tint(WorkoutPalette.TextPrimary),
+                    modifier = Modifier.size(12.dp),
+                )
+            }
         }
 
         Row(
@@ -1117,16 +1118,22 @@ private fun PerSetEditorRow(
                     color = WorkoutPalette.TextPrimary,
                 ),
             )
-            BasicText(
-                text = "+",
-                style = PulseTheme.typography.label.copy(fontSize = 13.sp, fontWeight = FontWeight.Bold),
+            Box(
                 modifier = Modifier
                     .clickable {
                         val currentRest = set.targetRestSeconds ?: EditorExerciseDraftItem.DEFAULT_REST_SECONDS
                         onUpdate(null, currentRest + 15, null, false)
                     }
-                    .padding(horizontal = 4.dp),
-            )
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    imageVector = Plus,
+                    contentDescription = "Increase rest",
+                    colorFilter = ColorFilter.tint(WorkoutPalette.TextPrimary),
+                    modifier = Modifier.size(12.dp),
+                )
+            }
         }
 
         Row(

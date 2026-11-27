@@ -8,11 +8,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ayasheta.pulsesmartgym.core.data.local.database.converter.PulseTypeConverters
 import com.ayasheta.pulsesmartgym.core.data.local.database.dao.ExerciseDao
 import com.ayasheta.pulsesmartgym.core.data.local.database.dao.LocalAccountDao
+import com.ayasheta.pulsesmartgym.core.data.local.database.dao.OwnerSeedStateDao
 import com.ayasheta.pulsesmartgym.core.data.local.database.dao.UserProfileDao
 import com.ayasheta.pulsesmartgym.core.data.local.database.dao.WorkoutPlanDao
 import com.ayasheta.pulsesmartgym.core.data.local.database.dao.WorkoutSessionDao
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.ExerciseEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.LocalAccountEntity
+import com.ayasheta.pulsesmartgym.core.data.local.database.entity.OwnerSeedStateEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.PerformedSetEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.PlanExerciseEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.PlannedSetEntity
@@ -38,8 +40,9 @@ import com.ayasheta.pulsesmartgym.core.data.local.database.entity.WorkoutSession
         RepRecordEntity::class,
         LocalAccountEntity::class,
         UserProfileEntity::class,
+        OwnerSeedStateEntity::class,
     ],
-    version = 3,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(PulseTypeConverters::class)
@@ -49,6 +52,7 @@ abstract class PulseDatabase : RoomDatabase() {
     abstract fun workoutSessionDao(): WorkoutSessionDao
     abstract fun localAccountDao(): LocalAccountDao
     abstract fun userProfileDao(): UserProfileDao
+    abstract fun ownerSeedStateDao(): OwnerSeedStateDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -106,6 +110,29 @@ abstract class PulseDatabase : RoomDatabase() {
                         `deadlineEpochMs` INTEGER NOT NULL,
                         PRIMARY KEY(`sessionId`),
                         FOREIGN KEY(`sessionId`) REFERENCES `workout_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `rep_records` ADD COLUMN `peakAccelerationMetersPerSecondSquared` REAL DEFAULT NULL",
+                )
+            }
+        }
+
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `owner_seed_state` (
+                        `ownerProfileId` TEXT NOT NULL,
+                        `starterPlansSeeded` INTEGER NOT NULL,
+                        `seededAtEpochMs` INTEGER NOT NULL,
+                        PRIMARY KEY(`ownerProfileId`)
                     )
                     """.trimIndent(),
                 )

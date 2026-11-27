@@ -27,6 +27,9 @@ interface WorkoutPlanDao {
     @Query("SELECT * FROM workout_plans WHERE id = :planId AND ownerProfileId = :ownerId")
     suspend fun getPlan(ownerId: String, planId: String): WorkoutPlanWithExercises?
 
+    @Query("SELECT COUNT(*) FROM workout_plans WHERE ownerProfileId = :ownerId")
+    suspend fun countPlans(ownerId: String): Int
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertPlan(plan: WorkoutPlanEntity)
 

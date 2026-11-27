@@ -71,10 +71,11 @@ import java.time.ZonedDateTime
 @OptIn(ExperimentalCoroutinesApi::class, DelicateCoroutinesApi::class)
 class P5HomeAndProfileUnitTest {
 
-    private val mainThreadSurrogate = newSingleThreadContext("P5TestMain")
+    private lateinit var mainThreadSurrogate: kotlinx.coroutines.ExecutorCoroutineDispatcher
 
     @Before
     fun setUp() {
+        mainThreadSurrogate = newSingleThreadContext("P5TestMain")
         Dispatchers.setMain(mainThreadSurrogate)
     }
 

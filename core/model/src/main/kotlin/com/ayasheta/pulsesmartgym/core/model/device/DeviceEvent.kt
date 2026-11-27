@@ -12,6 +12,7 @@ data class DeviceRepEvent(
     val eccentricDurationMs: Long? = null,
     val angularRomDegrees: Double? = null,
     val linearRomCm: Double? = null,
+    val peakAccelerationMetersPerSecondSquared: Double? = null,
     val origin: MeasurementOrigin,
 )
 

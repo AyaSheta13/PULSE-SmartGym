@@ -16,11 +16,13 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -29,6 +31,7 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -37,6 +40,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import com.ayasheta.pulsesmartgym.core.designsystem.vectors.Plus
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -315,7 +319,9 @@ fun ExercisePickerScreenContent(
                 }
 
                 else -> {
+                    val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier
                             .fillMaxSize()
                             .testTag("picker_exercise_list"),
@@ -411,7 +417,7 @@ private fun ExercisePickerRowCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(82.dp)
+            .heightIn(min = 82.dp)
             .shadow(
                 elevation = 2.dp,
                 shape = RoundedCornerShape(16.dp),
@@ -421,14 +427,55 @@ private fun ExercisePickerRowCard(
             .clip(RoundedCornerShape(16.dp))
             .background(Color.White)
             .border(BorderStroke(1.dp, WorkoutPalette.CardBorder), RoundedCornerShape(16.dp))
-            .clickable(onClick = onToggle)
-            .padding(horizontal = 14.dp)
+            .padding(start = 6.dp, end = 12.dp, top = 10.dp, bottom = 10.dp)
             .testTag("picker_exercise_${item.id}"),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // Left: Circular selection control (26dp visual inside 48dp accessible touch target)
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onToggle)
+                .testTag("picker_toggle_${item.id}"),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(26.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (item.isSelected) Color(0xFFFF623E) else WorkoutPalette.InputBackground,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (item.isSelected) {
+                    Image(
+                        imageVector = CheckMark,
+                        contentDescription = "Selected",
+                        colorFilter = ColorFilter.tint(Color.White),
+                        modifier = Modifier.size(14.dp),
+                    )
+                } else {
+                    Image(
+                        imageVector = Plus,
+                        contentDescription = "Select exercise",
+                        colorFilter = ColorFilter.tint(WorkoutPalette.TextPrimary),
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+            }
+        }
+
+        // Middle + Right: Exercise photograph -> Exercise info -> Right-facing chevron
         Row(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = 60.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(onClick = onInfoClick)
+                .testTag("picker_details_${item.id}"),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -437,22 +484,23 @@ private fun ExercisePickerRowCard(
                 contentDescription = item.name,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(64.dp)
+                    .size(60.dp)
                     .clip(RoundedCornerShape(12.dp)),
             )
 
             Column(
+                modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 BasicText(
                     text = item.name,
                     style = PulseTheme.typography.cardTitle.copy(
                         fontSize = 15.sp,
-                        lineHeight = 22.sp,
+                        lineHeight = 20.sp,
                         fontWeight = FontWeight.Medium,
                         color = WorkoutPalette.TextPrimary,
                     ),
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Row(
@@ -493,60 +541,18 @@ private fun ExercisePickerRowCard(
                     }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.width(8.dp))
-
-        Box(
-            modifier = Modifier
-                .size(34.dp)
-                .clip(CircleShape)
-                .background(WorkoutPalette.PrimaryCoralTint)
-                .clickable(onClick = onInfoClick)
-                .testTag("picker_info_${item.id}"),
-            contentAlignment = Alignment.Center,
-        ) {
             BasicText(
-                text = "i",
-                style = PulseTheme.typography.label.copy(
-                    fontSize = 13.sp,
+                text = "›",
+                style = PulseTheme.typography.cardTitle.copy(
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    color = WorkoutPalette.PrimaryCoralDark,
+                    color = WorkoutPalette.TextMuted,
                 ),
+                modifier = Modifier
+                    .padding(horizontal = 4.dp)
+                    .testTag("picker_chevron_${item.id}"),
             )
-        }
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        Box(
-            modifier = Modifier
-                .width(36.dp)
-                .height(44.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(
-                    if (item.isSelected) WorkoutPalette.PrimaryCoral else WorkoutPalette.InputBackground,
-                )
-                .clickable(onClick = onToggle)
-                .testTag("picker_toggle_${item.id}"),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (item.isSelected) {
-                Image(
-                    imageVector = CheckMark,
-                    contentDescription = "Selected",
-                    colorFilter = ColorFilter.tint(Color.White),
-                    modifier = Modifier.size(16.dp),
-                )
-            } else {
-                BasicText(
-                    text = "+",
-                    style = PulseTheme.typography.cardTitle.copy(
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = WorkoutPalette.TextBrownMuted,
-                    ),
-                )
-            }
         }
     }
 }

@@ -334,7 +334,7 @@ class PreP11SessionGuideAndOnboardingUiTest {
         // Manual fallback preserves progress screenshot
         isFallbackManual = true
         composeRule.waitForIdle()
-        composeRule.onNodeWithText("Adjust count").assertIsDisplayed()
+        composeRule.onNodeWithText("Manual • No telemetry").assertIsDisplayed()
         saveScreenshot("android_set_execution_manual_fallback.png")
     }
 

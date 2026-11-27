@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -166,38 +167,43 @@ fun AuthEntryContent(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Hero Visual Card (Figma 607:350 — ContentScale.Fit on harmonious background)
-            val heroModifier = if (useScrollFallback) {
+            // Hero Visual Card (Figma 607:350 — container matches 378:436 intrinsic ratio with zero blank strips)
+            val heroWrapperModifier = if (useScrollFallback) {
                 Modifier
                     .fillMaxWidth()
-                    .height(220.dp)
+                    .height(240.dp)
             } else {
                 Modifier
                     .fillMaxWidth()
                     .weight(1f, fill = true)
-                    .heightIn(min = 160.dp, max = 320.dp)
+                    .heightIn(min = 160.dp)
             }
             Box(
-                modifier = heroModifier
-                    .shadow(
-                        elevation = 8.dp,
-                        shape = RoundedCornerShape(24.dp),
-                        ambientColor = Color(0x14000000),
-                        spotColor = Color(0x14000000),
-                    )
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Color(0xFFFEF6F3))
-                    .border(1.dp, Color(0xFFEFE2DE), RoundedCornerShape(24.dp))
-                    .testTag("welcome_hero_card"),
+                modifier = heroWrapperModifier,
+                contentAlignment = Alignment.Center,
             ) {
-                Image(
-                    painter = painterResource(id = R.drawable.onboarding_hero_1),
-                    contentDescription = "PULSE Smart Gym",
-                    contentScale = ContentScale.Fit,
+                Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .testTag("welcome_hero_image"),
-                )
+                        .aspectRatio(378f / 436f, matchHeightConstraintsFirst = true)
+                        .shadow(
+                            elevation = 8.dp,
+                            shape = RoundedCornerShape(24.dp),
+                            ambientColor = Color(0x14000000),
+                            spotColor = Color(0x14000000),
+                        )
+                        .clip(RoundedCornerShape(24.dp))
+                        .border(1.dp, Color(0xFFEFE2DE), RoundedCornerShape(24.dp))
+                        .testTag("welcome_hero_card"),
+                ) {
+                    Image(
+                        painter = painterResource(id = R.drawable.onboarding_hero_1),
+                        contentDescription = "PULSE Smart Gym",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .testTag("welcome_hero_image"),
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(14.dp))

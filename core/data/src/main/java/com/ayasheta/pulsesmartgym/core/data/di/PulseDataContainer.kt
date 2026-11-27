@@ -6,6 +6,8 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
 import com.ayasheta.pulsesmartgym.core.data.device.DefaultDeviceRepository
 import com.ayasheta.pulsesmartgym.core.data.device.FakeDeviceDataSource
+import com.ayasheta.pulsesmartgym.core.data.device.RealBleDeviceDataSource
+import com.ayasheta.pulsesmartgym.core.data.device.ble.AndroidBleTransport
 import com.ayasheta.pulsesmartgym.core.data.local.database.PulseDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +38,7 @@ open class PulseDataContainer(
     context: Context,
     private val customDatabase: PulseDatabase? = null,
     private val customPreferencesDataSource: PulsePreferencesDataSource? = null,
+    private val seedDefaultPlansOnFirstUse: Boolean = true,
 ) {
     private val appContext = context.applicationContext
     private val isDebuggable = (appContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
@@ -48,6 +51,8 @@ open class PulseDataContainer(
         ).addMigrations(
             PulseDatabase.MIGRATION_1_2,
             PulseDatabase.MIGRATION_2_3,
+            PulseDatabase.MIGRATION_3_4,
+            PulseDatabase.MIGRATION_4_5,
         ).build()
     }
 
@@ -68,6 +73,9 @@ open class PulseDataContainer(
             workoutPlanDao = database.workoutPlanDao(),
             exerciseDao = database.exerciseDao(),
             transactionRunner = transactionRunner,
+            preferencesDataSource = preferencesDataSource,
+            seedDefaultPlansOnFirstUse = seedDefaultPlansOnFirstUse,
+            ownerSeedStateDao = database.ownerSeedStateDao(),
         )
     }
 
@@ -95,12 +103,24 @@ open class PulseDataContainer(
         )
     }
 
+    val isDeveloperModeAvailable: Boolean
+        get() = isDebuggable
+
     open val fakeDeviceDataSource: FakeDeviceDataSource by lazy {
         FakeDeviceDataSource()
     }
 
+    open val realBleDeviceDataSource: RealBleDeviceDataSource by lazy {
+        RealBleDeviceDataSource(
+            transport = AndroidBleTransport(appContext),
+        )
+    }
+
     open val deviceRepository: DeviceRepository by lazy {
-        DefaultDeviceRepository(fakeDataSource = fakeDeviceDataSource)
+        DefaultDeviceRepository(
+            fakeDataSource = fakeDeviceDataSource,
+            realBleDataSource = realBleDeviceDataSource,
+        )
     }
 
     open val authRepository: AuthRepository by lazy {
@@ -122,7 +142,10 @@ open class PulseDataContainer(
     }
 
     companion object {
-        fun createIsolatedForTesting(context: Context): IsolatedTestContainer {
+        fun createIsolatedForTesting(
+            context: Context,
+            seedDefaultPlansOnFirstUse: Boolean = false,
+        ): IsolatedTestContainer {
             val appContext = context.applicationContext
             val tempDir = File(appContext.cacheDir, "pulse_isolated_test_${System.nanoTime()}").apply {
                 mkdirs()
@@ -139,6 +162,7 @@ open class PulseDataContainer(
                 context = appContext,
                 customDatabase = isolatedDb,
                 customPreferencesDataSource = PulsePreferencesDataSource(isolatedDataStore),
+                seedDefaultPlansOnFirstUse = seedDefaultPlansOnFirstUse,
             )
             return IsolatedTestContainer(container) {
                 isolatedDb.close()

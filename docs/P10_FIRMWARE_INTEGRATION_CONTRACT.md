@@ -7,10 +7,10 @@ This document defines the exact replacement boundary between the PULSE Smart Gym
 
 | Layer | File | Responsibility |
 | --- | --- | --- |
-| Domain Contracts | `core/model/src/main/kotlin/.../device/DeviceContracts.kt` | `DeviceConnectionState`, `ExecutionEnvironmentKind`, `TrackingMode`, `MeasurementOrigin`, `RepMeasurement` |
-| Domain Contracts | `core/model/src/main/kotlin/.../device/DeviceCapabilities.kt` | Capability flags (`automaticRepEvents`, `fullPartialClassification`, `angularRom`, `linearRom`, `repDuration`) |
+| Domain Contracts | `core/model/src/main/kotlin/.../device/DeviceContracts.kt` | `DeviceConnectionState`, `ExecutionEnvironmentKind`, `TrackingMode`, `MeasurementOrigin`, `RepMeasurement` (including `peakAccelerationMetersPerSecondSquared`) |
+| Domain Contracts | `core/model/src/main/kotlin/.../device/DeviceCapabilities.kt` | Capability flags (`automaticRepEvents`, `fullPartialClassification`, `angularRom`, `linearRom`, `repDuration`, `peakAcceleration`) |
 | Domain Contracts | `core/model/src/main/kotlin/.../device/DeviceDescriptor.kt` | Discovered/connected device metadata (`id`, `name`, `providerType`, `rssiDbm`, `capabilities`) |
-| Domain Contracts | `core/model/src/main/kotlin/.../device/DeviceEvent.kt` | Inbound telemetry events (`DeviceRepEvent`, `DeviceBatteryUpdated`, `DeviceLinkLost`, `DeviceDiagnosticEvent`) |
+| Domain Contracts | `core/model/src/main/kotlin/.../device/DeviceEvent.kt` | Inbound telemetry events (`DeviceRepEvent` with `peakAccelerationMetersPerSecondSquared`, `DeviceBatteryUpdated`, `DeviceLinkLost`, `DeviceDiagnosticEvent`) |
 | Domain Contracts | `core/model/src/main/kotlin/.../device/DeviceDataSource.kt` | Hardware-agnostic source interface (`startScan`, `stopScan`, `connect`, `cancelConnection`, `disconnect`, `reconnect`) |
 | Domain Contracts | `core/model/src/main/kotlin/.../device/DeviceRepository.kt` | App-facing reactive repository (`linkState`, `discoveredDevices`, `events`, `activeProviderType`, `isDemoSessionActive`) |
 | Simulator | `core/data/src/main/java/.../device/FakeDeviceDataSource.kt` | Deterministic `DeviceDataSource` for Demo Mode; emits `MeasurementOrigin.SIMULATED_TELEMETRY` |
@@ -22,6 +22,7 @@ This document defines the exact replacement boundary between the PULSE Smart Gym
 - `SIMULATED` provider events MUST carry `MeasurementOrigin.SIMULATED_TELEMETRY` and are ONLY accepted inside `ExecutionEnvironmentKind.DEMO`.
 - `REAL_BLE` provider events MUST carry `MeasurementOrigin.SENSOR_TELEMETRY` when hardware integration is added after firmware contract sign-off.
 - `SIMULATED` provider never authorizes automatic tracking on `ExecutionEnvironmentKind.GENUINE` sessions.
+- **Effective Capability Policy (`ExerciseTrackingCatalog.resolveEffectiveCapabilities`)**: Device capabilities are intersected with per-exercise configuration (`ExerciseTrackingConfiguration`) and execution environment (`ExecutionEnvironmentKind`). Unsupported dimensions (e.g. angular ROM on a linear-only exercise) are gated out before normalization, and unconfigured physical tracking never enables automatic rep detection.
 
 ## Android Permission Policy (`BluetoothPermissionPolicy.kt`)
 - **API 24–30**: `Manifest.permission.BLUETOOTH`, `BLUETOOTH_ADMIN`, and runtime `ACCESS_FINE_LOCATION` (`maxSdkVersion = 30`).

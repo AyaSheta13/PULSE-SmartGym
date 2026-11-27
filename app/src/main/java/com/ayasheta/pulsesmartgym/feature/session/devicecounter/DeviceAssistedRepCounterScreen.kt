@@ -2,6 +2,7 @@ package com.ayasheta.pulsesmartgym.feature.session.devicecounter
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -32,7 +33,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.testTag
+import com.ayasheta.pulsesmartgym.core.designsystem.vectors.Plus
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -366,9 +369,11 @@ fun DeviceAssistedRepCounterContent(
                                         .clickable(onClick = onIncrementWeight),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    BasicText(
-                                        text = "+",
-                                        style = PulseTheme.typography.ctaPrimary.copy(fontSize = 18.sp, color = WorkoutPalette.TextPrimary),
+                                    Image(
+                                        imageVector = Plus,
+                                        contentDescription = "Increase weight",
+                                        colorFilter = ColorFilter.tint(WorkoutPalette.TextPrimary),
+                                        modifier = Modifier.size(16.dp),
                                     )
                                 }
                             }

@@ -1,5 +1,6 @@
 package com.ayasheta.pulsesmartgym.feature.session.dashboard
 
+import com.ayasheta.pulsesmartgym.core.designsystem.component.chips.PulseBluetoothChipStatus
 import com.ayasheta.pulsesmartgym.core.model.common.WeightLoad
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
 import com.ayasheta.pulsesmartgym.core.model.device.TrackingMode
@@ -89,7 +90,9 @@ sealed interface WorkoutSessionUiState {
         val actionError: String? = null,
         val restTimer: SessionRestTimerUiModel? = null,
         val isRestBusy: Boolean = false,
-        val connectionLabel: String = "Not Connected",
+        val connectionLabel: String = "Disconnected",
+        val bluetoothChipStatus: PulseBluetoothChipStatus = PulseBluetoothChipStatus.DISCONNECTED,
+        val isTelemetrySimulated: Boolean = false,
     ) : WorkoutSessionUiState {
         val formattedElapsedTime: String
             get() = SessionUiMapper.formatElapsedMmSs(elapsedSeconds)

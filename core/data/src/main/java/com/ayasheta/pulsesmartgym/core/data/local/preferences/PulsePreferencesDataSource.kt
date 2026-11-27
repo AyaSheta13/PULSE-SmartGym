@@ -8,9 +8,11 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
 import com.ayasheta.pulsesmartgym.core.model.profile.UserPreferences
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
@@ -34,7 +36,7 @@ data class PersistedSessionSnapshot(
     val rememberMe: Boolean = false,
 )
 
-class PulsePreferencesDataSource(
+open class PulsePreferencesDataSource(
     private val dataStore: DataStore<Preferences>,
 ) {
     val preferencesFlow: Flow<UserPreferences> = dataStore.data
@@ -137,6 +139,29 @@ class PulsePreferencesDataSource(
         }
     }
 
+    /**
+     * Reads whether default starter plans were already seeded for [ownerId].
+     * Returns `null` on preference read failure so callers never mistake an I/O error
+     * for "not seeded" and re-inject deleted starter plans.
+     */
+    open suspend fun readDefaultPlansSeededState(ownerId: String): Boolean? {
+        return try {
+            val prefs = dataStore.data.first()
+            ownerId in (prefs[KEY_SEEDED_DEFAULT_PLAN_OWNERS] ?: emptySet())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    open suspend fun markDefaultPlansSeeded(ownerId: String) {
+        dataStore.edit { prefs ->
+            val current = prefs[KEY_SEEDED_DEFAULT_PLAN_OWNERS] ?: emptySet()
+            prefs[KEY_SEEDED_DEFAULT_PLAN_OWNERS] = current + ownerId
+        }
+    }
+
     private companion object {
         val KEY_WEIGHT_UNIT = stringPreferencesKey("preferred_weight_unit")
         val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
@@ -145,5 +170,6 @@ class PulsePreferencesDataSource(
         val KEY_SESSION_KIND = stringPreferencesKey("active_session_kind")
         val KEY_SESSION_OWNER_ID = stringPreferencesKey("active_session_owner_id")
         val KEY_REMEMBER_ME = booleanPreferencesKey("remember_me")
+        val KEY_SEEDED_DEFAULT_PLAN_OWNERS = stringSetPreferencesKey("seeded_default_plan_owners")
     }
 }

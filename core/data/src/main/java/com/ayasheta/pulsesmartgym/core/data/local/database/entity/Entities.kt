@@ -256,6 +256,7 @@ data class RepRecordEntity(
     val eccentricDurationMs: Long?,
     val angularRomDegrees: Double?,
     val linearRomCm: Double?,
+    val peakAccelerationMetersPerSecondSquared: Double? = null,
     val origin: MeasurementOrigin,
 )
 

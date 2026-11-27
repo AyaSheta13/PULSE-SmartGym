@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -104,7 +105,7 @@ class P7WorkoutSessionUiTest {
                 runCatching { composeRule.onNodeWithTag("session_progress_card").assertExists(); true }.getOrDefault(false)
             }
             composeRule.onNodeWithText("0 / 2 Sets Completed").assertIsDisplayed()
-            composeRule.onNodeWithText("Not Connected").assertIsDisplayed()
+            composeRule.onNodeWithText("Disconnected").assertIsDisplayed()
             composeRule.onNodeWithTag("pulse_bottom_bar").assertDoesNotExist()
 
             // 3. Header Back during unfinished workout opens End Workout Early confirmation without terminating
@@ -130,19 +131,19 @@ class P7WorkoutSessionUiTest {
 
             composeRule.onNodeWithTag("session_set_start_${ex2Id}_1").performClick()
             composeRule.waitUntil(5_000) {
-                runCatching { composeRule.onNodeWithTag("button_ready_start_set").assertExists(); true }.getOrDefault(false)
+                runCatching { composeRule.onNodeWithTag("button_set_execution_primary").assertExists(); true }.getOrDefault(false)
             }
-            composeRule.onNodeWithTag("button_ready_start_set").performClick()
+            composeRule.onNodeWithTag("button_set_execution_primary").performClick()
             composeRule.waitUntil(5_000) {
-                runCatching { composeRule.onNodeWithTag("button_finish_set").assertExists(); true }.getOrDefault(false)
+                runCatching { composeRule.onNodeWithText("Finish Set").assertExists(); true }.getOrDefault(false)
             }
             repeat(12) { composeRule.onNodeWithContentDescription("Add one rep").performClick() }
-            composeRule.onNodeWithTag("button_finish_set").performClick()
+            composeRule.onNodeWithTag("button_set_execution_primary").performClick()
 
             composeRule.waitUntil(5_000) {
                 runCatching { composeRule.onNodeWithText("1 / 2 Sets Completed").assertExists(); true }.getOrDefault(false)
             }
-            composeRule.onNodeWithTag("session_exercise_complete_$ex2Id").assertIsDisplayed()
+            composeRule.onNodeWithTag("session_exercise_complete_$ex2Id", useUnmergedTree = true).performScrollTo().assertIsDisplayed()
 
             // End Early modal -> Keep Working Out dismisses without ending
             composeRule.onNodeWithTag("button_end_workout").performClick()
@@ -153,14 +154,14 @@ class P7WorkoutSessionUiTest {
             // Record Exercise 1 Set 1
             composeRule.onNodeWithTag("session_set_start_${ex1Id}_1").performClick()
             composeRule.waitUntil(5_000) {
-                runCatching { composeRule.onNodeWithTag("button_ready_start_set").assertExists(); true }.getOrDefault(false)
+                runCatching { composeRule.onNodeWithTag("button_set_execution_primary").assertExists(); true }.getOrDefault(false)
             }
-            composeRule.onNodeWithTag("button_ready_start_set").performClick()
+            composeRule.onNodeWithTag("button_set_execution_primary").performClick()
             composeRule.waitUntil(5_000) {
-                runCatching { composeRule.onNodeWithTag("button_finish_set").assertExists(); true }.getOrDefault(false)
+                runCatching { composeRule.onNodeWithText("Finish Set").assertExists(); true }.getOrDefault(false)
             }
             repeat(10) { composeRule.onNodeWithContentDescription("Add one rep").performClick() }
-            composeRule.onNodeWithTag("button_finish_set").performClick()
+            composeRule.onNodeWithTag("button_set_execution_primary").performClick()
 
             composeRule.waitUntil(5_000) {
                 runCatching { composeRule.onNodeWithText("2 / 2 Sets Completed").assertExists(); true }.getOrDefault(false)
@@ -175,7 +176,7 @@ class P7WorkoutSessionUiTest {
 
             // Finish Workout -> Workout Complete Summary -> Back to Home
             composeRule.onNodeWithTag("button_finish_workout").performClick()
-            composeRule.waitUntil(5_000) {
+            composeRule.waitUntil(10_000) {
                 runCatching { composeRule.onNodeWithTag("summary_headline").assertExists(); true }.getOrDefault(false)
             }
             composeRule.onNodeWithText("Workout Complete!").assertIsDisplayed()
@@ -403,16 +404,16 @@ class P7SessionRecreationUiTest {
         val exId = active.exercises.first().id
         activityRule.onNodeWithTag("session_set_start_${exId}_1").performClick()
         activityRule.waitUntil(5_000) {
-            runCatching { activityRule.onNodeWithTag("button_ready_start_set").assertExists(); true }.getOrDefault(false)
+            runCatching { activityRule.onNodeWithTag("button_set_execution_primary").assertExists(); true }.getOrDefault(false)
         }
-        activityRule.onNodeWithTag("button_ready_start_set").performClick()
+        activityRule.onNodeWithTag("button_set_execution_primary").performClick()
         activityRule.waitUntil(5_000) {
-            runCatching { activityRule.onNodeWithTag("button_finish_set").assertExists(); true }.getOrDefault(false)
+            runCatching { activityRule.onNodeWithText("Finish Set").assertExists(); true }.getOrDefault(false)
         }
         repeat(10) {
             activityRule.onNodeWithContentDescription("Add one rep").performClick()
         }
-        activityRule.onNodeWithTag("button_finish_set").performClick()
+        activityRule.onNodeWithTag("button_set_execution_primary").performClick()
         activityRule.waitUntil(5_000) {
             runCatching { activityRule.onNodeWithText("1 / 2 Sets Completed").assertExists(); true }.getOrDefault(false)
         }

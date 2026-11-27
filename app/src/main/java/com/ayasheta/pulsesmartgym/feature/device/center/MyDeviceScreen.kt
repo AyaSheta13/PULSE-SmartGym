@@ -47,6 +47,8 @@ fun MyDeviceScreen(
     onBackClick: () -> Unit,
     onSearchAndConnectClick: () -> Unit,
     onStartWorkoutWithAutoTracking: () -> Unit,
+    showDeveloperDiagnostics: Boolean = false,
+    onOpenDeveloperDiagnostics: () -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     MyDeviceScreenContent(
@@ -65,6 +67,8 @@ fun MyDeviceScreen(
         },
         onStartWorkoutWithAutoTracking = onStartWorkoutWithAutoTracking,
         onDisconnectClick = viewModel::disconnect,
+        showDeveloperDiagnostics = showDeveloperDiagnostics,
+        onOpenDeveloperDiagnostics = onOpenDeveloperDiagnostics,
     )
 }
 
@@ -77,6 +81,8 @@ fun MyDeviceScreenContent(
     onEnterDemoSimulationClick: () -> Unit,
     onStartWorkoutWithAutoTracking: () -> Unit,
     onDisconnectClick: () -> Unit,
+    showDeveloperDiagnostics: Boolean = false,
+    onOpenDeveloperDiagnostics: () -> Unit = {},
 ) {
     val link = uiState.linkState
     val isConnected = link.phase == DeviceConnectionState.CONNECTED
@@ -385,6 +391,42 @@ fun MyDeviceScreenContent(
                             color = Color(0xFF6B6763),
                         ),
                     )
+                }
+
+                if (showDeveloperDiagnostics) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color.White)
+                            .border(BorderStroke(1.dp, Color(0xFFE5DFD9)), RoundedCornerShape(14.dp))
+                            .clickable(onClick = onOpenDeveloperDiagnostics)
+                            .padding(horizontal = 16.dp, vertical = 14.dp)
+                            .testTag("button_open_hardware_diagnostics"),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            BasicText(
+                                text = "Developer Hardware Diagnostics",
+                                style = PulseTheme.typography.label.copy(
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = WorkoutPalette.TextPrimary,
+                                ),
+                            )
+                            BasicText(
+                                text = "Debug →",
+                                style = PulseTheme.typography.label.copy(
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = WorkoutPalette.PrimaryCoral,
+                                ),
+                            )
+                        }
+                    }
                 }
             }
         }
