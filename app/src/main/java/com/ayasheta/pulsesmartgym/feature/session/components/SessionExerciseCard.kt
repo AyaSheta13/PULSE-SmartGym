@@ -4,6 +4,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,6 +41,7 @@ fun SessionExerciseCard(
     actionsEnabled: Boolean,
     onSetActionClick: (sessionExerciseId: String, setIndex: Int) -> Unit,
     modifier: Modifier = Modifier,
+    onExerciseDetailsClick: (sessionExerciseId: String) -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -50,8 +53,14 @@ fun SessionExerciseCard(
             .testTag("session_exercise_card_${exercise.sessionExerciseId}"),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .clickable { onExerciseDetailsClick(exercise.sessionExerciseId) }
+                .padding(vertical = 4.dp)
+                .testTag("session_exercise_title_${exercise.sessionExerciseId}"),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             BasicText(
@@ -92,8 +101,17 @@ fun SessionExerciseCard(
                     )
                 }
             }
+            BasicText(
+                text = "›",
+                style = PulseTheme.typography.cardTitle.copy(
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = WorkoutPalette.TextMuted,
+                ),
+                modifier = Modifier.testTag("session_exercise_chevron_${exercise.sessionExerciseId}"),
+            )
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         SessionProgressBar(
             progressFraction = exercise.progressFraction,
             heightDp = 4,

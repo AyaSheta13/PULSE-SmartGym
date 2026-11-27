@@ -49,3 +49,10 @@ data class PartialWorkoutSummary(
 
 @Serializable
 data class SessionDetails(val sessionId: String) : NavKey
+
+@Serializable
+data class SessionExerciseDetails(
+    val sessionId: String,
+    val sessionExerciseId: String,
+    val environment: ExecutionEnvironmentKind = ExecutionEnvironmentKind.GENUINE,
+) : NavKey
