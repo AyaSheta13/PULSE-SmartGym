@@ -13,12 +13,12 @@ object DefaultWorkoutPlanSeed {
     fun defaultPlanDrafts(): List<WorkoutPlanDraft> = listOf(
         WorkoutPlanDraft(
             name = "Beginner Full Body",
-            description = "Balanced full-body routine covering squat, push, pull, hinge, and overhead press.",
+            description = "Balanced 10-set full-body routine covering squat, push, pull, hinge, and overhead press.",
             exercises = listOf(
-                planExercise("ex_back_squat", orderIndex = 0, sets = 3, reps = 10, restSeconds = 90),
-                planExercise("ex_db_flat_press", orderIndex = 1, sets = 3, reps = 10, restSeconds = 90),
-                planExercise("ex_cable_row", orderIndex = 2, sets = 3, reps = 10, restSeconds = 90),
-                planExercise("ex_romanian_deadlift", orderIndex = 3, sets = 2, reps = 10, restSeconds = 90),
+                planExercise("ex_back_squat", orderIndex = 0, sets = 2, reps = 10, restSeconds = 120),
+                planExercise("ex_db_flat_press", orderIndex = 1, sets = 2, reps = 10, restSeconds = 90),
+                planExercise("ex_cable_row", orderIndex = 2, sets = 2, reps = 10, restSeconds = 90),
+                planExercise("ex_romanian_deadlift", orderIndex = 3, sets = 2, reps = 10, restSeconds = 120),
                 planExercise("ex_db_shoulder_press", orderIndex = 4, sets = 2, reps = 12, restSeconds = 60),
             ),
         ),
@@ -38,7 +38,7 @@ object DefaultWorkoutPlanSeed {
             description = "Foundational lower-body routine targeting quads, hamstrings, glutes, and calves.",
             exercises = listOf(
                 planExercise("ex_leg_press", orderIndex = 0, sets = 3, reps = 12, restSeconds = 90),
-                planExercise("ex_romanian_deadlift", orderIndex = 1, sets = 3, reps = 10, restSeconds = 90),
+                planExercise("ex_romanian_deadlift", orderIndex = 1, sets = 3, reps = 10, restSeconds = 120),
                 planExercise("ex_leg_extension", orderIndex = 2, sets = 2, reps = 12, restSeconds = 60),
                 planExercise("ex_calf_raise", orderIndex = 3, sets = 3, reps = 15, restSeconds = 60),
             ),

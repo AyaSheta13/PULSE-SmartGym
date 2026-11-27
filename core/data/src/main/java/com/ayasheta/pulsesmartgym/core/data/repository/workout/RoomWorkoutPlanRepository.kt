@@ -48,14 +48,19 @@ class RoomWorkoutPlanRepository(
     )
 
     private val seedMutex = Mutex()
-    private val checkedOwners = mutableSetOf<String>()
+    private val checkedOwners = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     private suspend fun ensureDefaultPlansSeeded(ownerId: String) {
         if (!seedDefaultPlansOnFirstUse || PulseValidators.validateOwnerId(ownerId) != null) return
         if (ownerId in checkedOwners) return
         seedMutex.withLock {
             if (ownerId in checkedOwners) return@withLock
-            if (preferencesDataSource?.hasSeededDefaultPlans(ownerId) == true) {
+            val seededState = preferencesDataSource?.readDefaultPlansSeededState(ownerId)
+            // Fail closed if preferences cannot be read: never treat a read error as "never seeded".
+            if (preferencesDataSource != null && seededState == null) {
+                return@withLock
+            }
+            if (seededState == true) {
                 checkedOwners.add(ownerId)
                 return@withLock
             }
@@ -65,7 +70,8 @@ class RoomWorkoutPlanRepository(
                     val now = clockMs()
                     val drafts = DefaultWorkoutPlanSeed.defaultPlanDrafts()
                     drafts.forEachIndexed { index, draft ->
-                        val planId = UUID.randomUUID().toString()
+                        val slug = draft.name.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')
+                        val planId = "seed_${ownerId}_$slug"
                         val orderOffset = (drafts.size - index).toLong()
                         val planEntity = WorkoutPlanEntity(
                             id = planId,
@@ -82,7 +88,7 @@ class RoomWorkoutPlanRepository(
                     }
                 }
             }
-            preferencesDataSource?.markDefaultPlansSeeded(ownerId)
+            runCatching { preferencesDataSource?.markDefaultPlansSeeded(ownerId) }
             checkedOwners.add(ownerId)
         }
     }

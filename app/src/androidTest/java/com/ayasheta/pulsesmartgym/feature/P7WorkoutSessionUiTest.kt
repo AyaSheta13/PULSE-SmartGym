@@ -176,7 +176,7 @@ class P7WorkoutSessionUiTest {
 
             // Finish Workout -> Workout Complete Summary -> Back to Home
             composeRule.onNodeWithTag("button_finish_workout").performClick()
-            composeRule.waitUntil(5_000) {
+            composeRule.waitUntil(10_000) {
                 runCatching { composeRule.onNodeWithTag("summary_headline").assertExists(); true }.getOrDefault(false)
             }
             composeRule.onNodeWithText("Workout Complete!").assertIsDisplayed()

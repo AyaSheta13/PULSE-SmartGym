@@ -138,13 +138,16 @@ class PulsePreferencesDataSource(
         }
     }
 
-    suspend fun hasSeededDefaultPlans(ownerId: String): Boolean {
-        val prefs = dataStore.data
-            .catch { exception ->
-                if (exception is IOException) emit(emptyPreferences()) else throw exception
-            }
-            .first()
-        return ownerId in (prefs[KEY_SEEDED_DEFAULT_PLAN_OWNERS] ?: emptySet())
+    /**
+     * Reads whether default starter plans were already seeded for [ownerId].
+     * Returns `null` on preference read failure so callers never mistake an I/O error
+     * for "not seeded" and re-inject deleted starter plans.
+     */
+    suspend fun readDefaultPlansSeededState(ownerId: String): Boolean? {
+        return runCatching {
+            val prefs = dataStore.data.first()
+            ownerId in (prefs[KEY_SEEDED_DEFAULT_PLAN_OWNERS] ?: emptySet())
+        }.getOrNull()
     }
 
     suspend fun markDefaultPlansSeeded(ownerId: String) {

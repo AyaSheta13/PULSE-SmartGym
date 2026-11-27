@@ -71,7 +71,7 @@ internal object WorkoutPalette {
 fun resolveExerciseThumbnailRes(
     imageKey: String?,
     muscleGroup: MuscleGroup? = null,
-): Int = when (imageKey) {
+): Int = when (imageKey?.removePrefix("ex_")) {
     "bench_press", "db_flat_press" -> R.drawable.ex_thumb_bench_press
     "cable_row" -> R.drawable.ex_thumb_cable_row
     "cable_fly" -> R.drawable.ex_thumb_cable_fly
@@ -84,9 +84,10 @@ fun resolveExerciseThumbnailRes(
     "leg_extension" -> R.drawable.ex_thumb_leg_extension
     "romanian_deadlift" -> R.drawable.ex_thumb_romanian_deadlift
     "db_incline_press" -> R.drawable.ex_thumb_incline_press
-    "barbell_row", "lat_pulldown" -> R.drawable.ex_thumb_barbell_row
+    "barbell_row" -> R.drawable.ex_thumb_barbell_row
+    "lat_pulldown" -> R.drawable.ex_thumb_lat_pulldown
     "calf_raise" -> R.drawable.ex_thumb_calf_raise
-    "tricep_pushdown" -> R.drawable.ex_thumb_cable_row
+    "tricep_pushdown" -> R.drawable.ex_thumb_tricep_pushdown
     else -> when (muscleGroup) {
         MuscleGroup.LEGS -> R.drawable.plan_thumb_lower_body
         MuscleGroup.FULL_BODY, MuscleGroup.CORE -> R.drawable.plan_thumb_full_body

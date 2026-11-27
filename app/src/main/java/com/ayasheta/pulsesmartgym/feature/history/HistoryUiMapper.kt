@@ -162,7 +162,10 @@ object HistoryUiMapper {
         return when {
             "bench" in lowerName -> R.drawable.ex_thumb_bench_press
             "squat" in lowerName -> R.drawable.ex_thumb_back_squat
+            "cable row" in lowerName -> R.drawable.ex_thumb_cable_row
+            "pulldown" in lowerName -> R.drawable.ex_thumb_lat_pulldown
             "row" in lowerName -> R.drawable.ex_thumb_barbell_row
+            "pushdown" in lowerName || "tricep" in lowerName -> R.drawable.ex_thumb_tricep_pushdown
             "incline" in lowerName -> R.drawable.ex_thumb_incline_press
             "curl" in lowerName -> R.drawable.ex_thumb_bicep_curl
             "lower" in lowerName || "leg" in lowerName -> R.drawable.plan_thumb_lower_body

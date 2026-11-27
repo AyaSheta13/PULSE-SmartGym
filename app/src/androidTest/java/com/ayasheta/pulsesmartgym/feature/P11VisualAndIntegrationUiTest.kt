@@ -15,10 +15,15 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onLast
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -39,6 +44,7 @@ import com.ayasheta.pulsesmartgym.feature.session.execution.SetExecutionUiState
 import com.ayasheta.pulsesmartgym.feature.workout.picker.ExercisePickerItemUiModel
 import com.ayasheta.pulsesmartgym.feature.workout.picker.ExercisePickerScreenContent
 import com.ayasheta.pulsesmartgym.feature.workout.picker.ExercisePickerUiState
+import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -306,6 +312,185 @@ class P11VisualAndIntegrationUiTest {
                 }.getOrDefault(false)
             }
             saveScreenshot("p11_exercise_picker_plus.png")
+        }
+    }
+
+    @Test
+    fun exercisePhotoMappings_resolveDistinctlyForTricepPushdownLatPulldownAndHistory() {
+        val tricepRes = com.ayasheta.pulsesmartgym.feature.workout.components.resolveExerciseThumbnailRes("tricep_pushdown")
+        val cableRowRes = com.ayasheta.pulsesmartgym.feature.workout.components.resolveExerciseThumbnailRes("cable_row")
+        val latPulldownRes = com.ayasheta.pulsesmartgym.feature.workout.components.resolveExerciseThumbnailRes("lat_pulldown")
+        val barbellRowRes = com.ayasheta.pulsesmartgym.feature.workout.components.resolveExerciseThumbnailRes("barbell_row")
+
+        assertEquals(R.drawable.ex_thumb_tricep_pushdown, tricepRes)
+        assertEquals(R.drawable.ex_thumb_cable_row, cableRowRes)
+        assertEquals(R.drawable.ex_thumb_lat_pulldown, latPulldownRes)
+        assertEquals(R.drawable.ex_thumb_barbell_row, barbellRowRes)
+        assertTrue(tricepRes != cableRowRes)
+        assertTrue(latPulldownRes != barbellRowRes)
+
+        assertEquals(
+            R.drawable.ex_thumb_tricep_pushdown,
+            com.ayasheta.pulsesmartgym.feature.history.HistoryUiMapper.resolveHistoryThumbnail(
+                sourceExerciseId = "ex_tricep_pushdown",
+                exerciseName = "Cable Tricep Pushdown",
+                muscleGroup = com.ayasheta.pulsesmartgym.core.model.exercise.MuscleGroup.TRICEPS,
+                planName = "Upper Body Strength",
+            ),
+        )
+        assertEquals(
+            R.drawable.ex_thumb_lat_pulldown,
+            com.ayasheta.pulsesmartgym.feature.history.HistoryUiMapper.resolveHistoryThumbnail(
+                sourceExerciseId = "ex_lat_pulldown",
+                exerciseName = "Lat Pulldown",
+                muscleGroup = com.ayasheta.pulsesmartgym.core.model.exercise.MuscleGroup.BACK,
+                planName = "Upper Body Strength",
+            ),
+        )
+    }
+
+    @Test
+    fun starterPlanEndToEndJourney_startCompleteHistoryDetailsProgress_andEmptyStateAfterDelete() {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        com.ayasheta.pulsesmartgym.core.data.di.PulseDataContainer.createIsolatedForTesting(
+            context = context,
+            seedDefaultPlansOnFirstUse = true,
+        ).use { isolated ->
+            val container = isolated.container
+            val ownerId = kotlinx.coroutines.runBlocking {
+                val guest = (container.authRepository.continueAsGuest() as com.ayasheta.pulsesmartgym.core.model.common.DomainResult.Success).data
+                container.userProfileRepository.saveCompletedProfile(
+                    ownerId = guest.id,
+                    personalInfo = com.ayasheta.pulsesmartgym.core.model.profile.PersonalInfoDraft(
+                        "Aya Sheta",
+                        com.ayasheta.pulsesmartgym.core.model.profile.GenderIdentity.FEMALE,
+                        25,
+                        168,
+                        62.0,
+                    ),
+                    goals = com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoalsDraft(
+                        com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoal.STRENGTH,
+                        com.ayasheta.pulsesmartgym.core.model.profile.ExperienceLevel.BEGINNER,
+                        3,
+                    ),
+                )
+                container.userPreferencesRepository.setOnboardingCompleted(true)
+                guest.id
+            }
+
+            composeRule.setContent {
+                com.ayasheta.pulsesmartgym.app.PulseApp(
+                    isDebugEntryEnabled = true,
+                    initialFlow = com.ayasheta.pulsesmartgym.navigation.AppEntryFlow.MAIN,
+                    initialTab = com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTab.WORKOUTS,
+                    dataContainer = container,
+                )
+            }
+
+            composeRule.waitUntil(5_000) {
+                runCatching {
+                    composeRule.onNodeWithText("Beginner Full Body").assertExists()
+                    true
+                }.getOrDefault(false)
+            }
+
+            // Verify Upper Body Strength & Lower Body Foundation open cleanly in WorkoutDetails
+            composeRule.onNodeWithText("Upper Body Strength").performClick()
+            composeRule.waitUntil(5_000) {
+                runCatching { composeRule.onNodeWithTag("details_plan_name").assertExists(); true }.getOrDefault(false)
+            }
+            composeRule.onNodeWithText("Upper Body Strength").assertIsDisplayed()
+            composeRule.onNodeWithTag("details_start_workout_button").assertIsDisplayed()
+            androidx.test.espresso.Espresso.pressBack()
+
+            composeRule.waitUntil(5_000) {
+                runCatching { composeRule.onNodeWithText("Beginner Full Body").assertExists(); true }.getOrDefault(false)
+            }
+
+            // Open Beginner Full Body -> Start Workout -> Set Execution -> Finish Set -> Skip Rest -> End Early -> History -> Progress
+            composeRule.onNodeWithText("Beginner Full Body").performClick()
+            composeRule.waitUntil(5_000) {
+                runCatching { composeRule.onNodeWithTag("details_start_workout_button").assertExists(); true }.getOrDefault(false)
+            }
+            composeRule.onNodeWithTag("details_start_workout_button").performClick()
+            composeRule.waitUntil(10_000) {
+                runCatching { composeRule.onNodeWithTag("session_progress_card").assertExists(); true }.getOrDefault(false)
+            }
+            composeRule.onNodeWithText("Barbell Back Squat").assertIsDisplayed()
+            composeRule.onAllNodesWithText("Start").onFirst().performClick()
+            composeRule.waitUntil(5_000) {
+                runCatching { composeRule.onNodeWithTag("button_set_execution_primary").assertExists(); true }.getOrDefault(false)
+            }
+            composeRule.onNodeWithTag("button_set_execution_primary").performScrollTo().performClick()
+            composeRule.waitUntil(5_000) {
+                runCatching { composeRule.onNodeWithText("Finish Set").assertExists(); true }.getOrDefault(false)
+            }
+            repeat(5) {
+                composeRule.onNodeWithContentDescription("Add one rep").performClick()
+            }
+            composeRule.onNodeWithTag("button_set_execution_primary").performScrollTo().performClick()
+            composeRule.waitUntil(5_000) {
+                runCatching { composeRule.onNodeWithText("Skip Rest").assertExists(); true }.getOrDefault(false)
+            }
+            composeRule.onNodeWithText("Skip Rest").performClick()
+            composeRule.waitUntil(5_000) {
+                runCatching { composeRule.onNodeWithTag("button_end_workout").assertExists(); true }.getOrDefault(false)
+            }
+            composeRule.onNodeWithTag("button_end_workout").performClick()
+            composeRule.waitUntil(5_000) {
+                runCatching { composeRule.onNodeWithTag("button_confirm_end_workout").assertExists(); true }.getOrDefault(false)
+            }
+            composeRule.onNodeWithTag("button_confirm_end_workout").performClick()
+            composeRule.waitUntil(5_000) {
+                runCatching { composeRule.onNodeWithTag("summary_headline").assertExists(); true }.getOrDefault(false)
+            }
+            composeRule.onNodeWithTag("button_summary_back_home").performScrollTo().performClick()
+
+            // History -> Session Details -> Progress
+            composeRule.waitUntil(5_000) {
+                runCatching {
+                    composeRule.onNodeWithText(com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTab.HISTORY.label).assertExists()
+                    true
+                }.getOrDefault(false)
+            }
+            composeRule.onNodeWithText(com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTab.HISTORY.label).performClick()
+            composeRule.waitUntil(5_000) {
+                runCatching { composeRule.onNodeWithText("Beginner Full Body").assertExists(); true }.getOrDefault(false)
+            }
+            composeRule.onNodeWithText("Beginner Full Body").performClick()
+            composeRule.waitUntil(5_000) {
+                runCatching { composeRule.onNodeWithText("Barbell Back Squat").assertExists(); true }.getOrDefault(false)
+            }
+            androidx.test.espresso.Espresso.pressBack()
+
+            composeRule.waitUntil(5_000) {
+                runCatching {
+                    composeRule.onNodeWithText(com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTab.PROGRESS.label).assertExists()
+                    true
+                }.getOrDefault(false)
+            }
+            composeRule.onNodeWithContentDescription("Progress tab").performClick()
+            composeRule.waitUntil(5_000) {
+                runCatching { composeRule.onNodeWithTag("training_progress_screen").assertExists(); true }.getOrDefault(false)
+            }
+
+            // Delete all 3 starter plans -> verify true empty My Workouts state
+            kotlinx.coroutines.runBlocking {
+                val plans = container.workoutPlanRepository.observePlans(ownerId).first()
+                plans.forEach { container.workoutPlanRepository.deletePlan(ownerId, it.id) }
+            }
+            composeRule.onNodeWithContentDescription("Workouts tab").performClick()
+            composeRule.waitForIdle()
+            if (runCatching { composeRule.onNodeWithTag("details_plan_name").assertExists(); true }.getOrDefault(false) ||
+                runCatching { composeRule.onNodeWithTag("details_not_found").assertExists(); true }.getOrDefault(false)
+            ) {
+                androidx.test.espresso.Espresso.pressBack()
+            }
+            composeRule.waitUntil(10_000) {
+                runCatching { composeRule.onNodeWithTag("workouts_empty_state").assertExists(); true }.getOrDefault(false)
+            }
+            composeRule.onNodeWithText("No Workout Plans Yet").assertIsDisplayed()
+            saveScreenshot("p11_my_workouts_empty_after_delete.png")
         }
     }
 

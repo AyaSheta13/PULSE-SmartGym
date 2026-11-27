@@ -5,19 +5,26 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.ayasheta.pulsesmartgym.core.data.local.database.DefaultWorkoutPlanSeed
+import com.ayasheta.pulsesmartgym.core.data.local.database.ExerciseCatalogSeed
 import com.ayasheta.pulsesmartgym.core.data.local.database.PulseDatabase
 import com.ayasheta.pulsesmartgym.core.data.local.database.RoomTransactionRunner
 import com.ayasheta.pulsesmartgym.core.data.local.preferences.PulsePreferencesDataSource
 import com.ayasheta.pulsesmartgym.core.data.repository.workout.RoomWorkoutPlanRepository
 import com.ayasheta.pulsesmartgym.core.model.common.DomainResult
+import com.ayasheta.pulsesmartgym.core.model.common.PulseValidators
 import com.ayasheta.pulsesmartgym.core.model.workout.PlanExerciseDraft
 import com.ayasheta.pulsesmartgym.core.model.workout.PlannedSetDraft
 import com.ayasheta.pulsesmartgym.core.model.workout.WorkoutPlanDraft
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -32,98 +39,152 @@ class DefaultWorkoutPlanSeedingTest {
 
     private lateinit var context: Context
     private lateinit var dbFile: File
-    private lateinit var prefsDir: File
-    private lateinit var db: PulseDatabase
-    private lateinit var dataStoreScope: CoroutineScope
-    private lateinit var prefsDataSource: PulsePreferencesDataSource
-    private lateinit var txRunner: RoomTransactionRunner
+    private lateinit var prefsFile: File
+    private var db: PulseDatabase? = null
+    private var dataStoreScope: CoroutineScope? = null
+    private var prefsDataSource: PulsePreferencesDataSource? = null
 
     @Before
     fun setup() {
         context = ApplicationProvider.getApplicationContext()
-        dbFile = File(context.filesDir, "seed_test_${System.nanoTime()}.db")
-        prefsDir = File(context.cacheDir, "seed_prefs_${System.nanoTime()}").apply { mkdirs() }
-        db = Room.databaseBuilder(context, PulseDatabase::class.java, dbFile.absolutePath).build()
-        txRunner = RoomTransactionRunner(db)
-        dataStoreScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        val dataStore = PreferenceDataStoreFactory.create(
-            scope = dataStoreScope,
-            produceFile = { File(prefsDir, "prefs.preferences_pb") },
-        )
-        prefsDataSource = PulsePreferencesDataSource(dataStore)
-        kotlinx.coroutines.runBlocking {
-            db.exerciseDao().insertAllIgnore(com.ayasheta.pulsesmartgym.core.data.local.database.ExerciseCatalogSeed.defaultExercises)
-        }
+        val id = System.nanoTime()
+        dbFile = File(context.filesDir, "seed_test_$id.db")
+        prefsFile = File(context.cacheDir, "seed_prefs_$id.preferences_pb")
+        openResources()
     }
 
     @After
     fun tearDown() {
-        db.close()
-        dataStoreScope.cancel()
+        closeResources()
         if (dbFile.exists()) dbFile.delete()
-        prefsDir.deleteRecursively()
+        if (prefsFile.exists()) prefsFile.delete()
     }
 
-    private fun newPlanRepo(): RoomWorkoutPlanRepository = RoomWorkoutPlanRepository(
-        workoutPlanDao = db.workoutPlanDao(),
-        exerciseDao = db.exerciseDao(),
-        transactionRunner = txRunner,
-        preferencesDataSource = prefsDataSource,
-        seedDefaultPlansOnFirstUse = true,
-    )
+    private fun openResources() {
+        val openedDb = Room.databaseBuilder(context, PulseDatabase::class.java, dbFile.absolutePath).build()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        val dataStore = PreferenceDataStoreFactory.create(
+            scope = scope,
+            produceFile = { prefsFile },
+        )
+        db = openedDb
+        dataStoreScope = scope
+        prefsDataSource = PulsePreferencesDataSource(dataStore)
+        runBlocking {
+            openedDb.exerciseDao().insertAllIgnore(ExerciseCatalogSeed.defaultExercises)
+        }
+    }
+
+    private fun closeResources() {
+        db?.close()
+        db = null
+        dataStoreScope?.cancel()
+        dataStoreScope = null
+        prefsDataSource = null
+    }
+
+    private fun newPlanRepo(): RoomWorkoutPlanRepository {
+        val currentDb = requireNotNull(db)
+        return RoomWorkoutPlanRepository(
+            workoutPlanDao = currentDb.workoutPlanDao(),
+            exerciseDao = currentDb.exerciseDao(),
+            transactionRunner = RoomTransactionRunner(currentDb),
+            preferencesDataSource = requireNotNull(prefsDataSource),
+            seedDefaultPlansOnFirstUse = true,
+        )
+    }
 
     @Test
-    fun firstUseSeedsThreeCrediblePlans_idempotentAcrossReopens_andRespectsDeletes() = runTest {
-        val ownerId = "first_time_user"
+    fun starterDrafts_resolveAllCatalogExercises_andPassDomainValidators() {
+        val catalogIds = ExerciseCatalogSeed.defaultExercises.map { it.id }.toSet()
+        val drafts = DefaultWorkoutPlanSeed.defaultPlanDrafts()
+        assertEquals(3, drafts.size)
+        for (draft in drafts) {
+            assertEquals(null, PulseValidators.validatePlanName(draft.name))
+            assertTrue(draft.exercises.isNotEmpty())
+            for (ex in draft.exercises) {
+                assertTrue("Missing exercise ${ex.exerciseId}", ex.exerciseId in catalogIds)
+                assertTrue(ex.plannedSets.isNotEmpty())
+                for (set in ex.plannedSets) {
+                    assertTrue(set.targetReps in 1..PulseValidators.MAX_TARGET_REPS)
+                    assertTrue((set.targetRestSeconds ?: 0) in 0..PulseValidators.MAX_REST_SECONDS)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun concurrentFirstUse_andGenuineDbReopen_seedOnce_andRespectEditsAndDeletes() = runTest {
+        val guestOwner = "guest_owner_1"
+        val registeredOwner = "account_owner_2"
         val repo1 = newPlanRepo()
 
-        // 1. First observation seeds exactly 3 plans
-        val initialPlans = repo1.observePlans(ownerId).first()
-        assertEquals(3, initialPlans.size)
+        // 1. Concurrent first-time observation across multiple collectors
+        val concurrentResults = coroutineScope {
+            List(4) { async { repo1.observePlans(guestOwner).first() } }.awaitAll()
+        }
+        assertTrue(concurrentResults.all { it.size == 3 })
         assertEquals(
             setOf("Beginner Full Body", "Upper Body Strength", "Lower Body Foundation"),
-            initialPlans.map { it.name }.toSet(),
+            concurrentResults.first().map { it.name }.toSet(),
         )
-        assertTrue(initialPlans.all { it.exercises.isNotEmpty() })
 
-        // 2. Re-observing and recreating repository instance never duplicates plans
-        val repo2 = newPlanRepo()
-        val secondRead = repo2.observePlans(ownerId).first()
-        assertEquals(3, secondRead.size)
+        // 2. Owner isolation: registered account gets its own 3 starter plans
+        val regPlans = repo1.observePlans(registeredOwner).first()
+        assertEquals(3, regPlans.size)
 
-        // 3. Coexistence with user-created plan
-        val customResult = repo2.createPlan(
-            ownerId = ownerId,
-            draft = WorkoutPlanDraft(
-                name = "Custom Core Day",
-                exercises = listOf(
-                    PlanExerciseDraft(
-                        exerciseId = "ex_bench_press",
-                        orderIndex = 0,
-                        plannedSets = listOf(PlannedSetDraft(setIndex = 1, targetReps = 10, targetRestSeconds = 60)),
-                    ),
-                ),
-            ),
+        // 3. Edit one starter plan -> edit persists across genuine DB + DataStore reopen
+        val fullBody = concurrentResults.first().first { it.name == "Beginner Full Body" }
+        val editedDraft = WorkoutPlanDraft(
+            name = "Beginner Full Body Edited",
+            description = fullBody.description,
+            exercises = fullBody.exercises.map { ex ->
+                PlanExerciseDraft(
+                    exerciseId = ex.exerciseId,
+                    orderIndex = ex.orderIndex,
+                    notes = ex.notes,
+                    plannedSets = ex.plannedSets.map { s ->
+                        PlannedSetDraft(s.setIndex, s.targetReps, s.targetLoad, s.targetRestSeconds)
+                    },
+                )
+            },
         )
-        assertTrue(customResult is DomainResult.Success)
-        assertEquals(4, repo2.observePlans(ownerId).first().size)
+        assertTrue(repo1.updatePlan(guestOwner, fullBody.id, editedDraft) is DomainResult.Success)
 
-        // 4. Deleting all plans keeps empty state on subsequent launches (never re-seeds)
-        for (plan in repo2.observePlans(ownerId).first()) {
-            assertTrue(repo2.deletePlan(ownerId, plan.id) is DomainResult.Success)
+        // 4. Delete one starter plan -> 2 plans remain
+        val upper = concurrentResults.first().first { it.name == "Upper Body Strength" }
+        assertTrue(repo1.deletePlan(guestOwner, upper.id) is DomainResult.Success)
+        assertEquals(2, repo1.observePlans(guestOwner).first().size)
+
+        // 5. Genuine close & reopen of Room DB and DataStore -> no duplicates, no re-seed of deleted plan
+        closeResources()
+        openResources()
+        val repoAfterReopen = newPlanRepo()
+        val reopenedGuestPlans = repoAfterReopen.observePlans(guestOwner).first()
+        assertEquals(2, reopenedGuestPlans.size)
+        assertTrue(reopenedGuestPlans.any { it.name == "Beginner Full Body Edited" })
+        assertEquals(3, repoAfterReopen.observePlans(registeredOwner).first().size)
+
+        // 6. Delete all remaining guest plans, close & reopen -> stays 0 plans (true empty state)
+        for (plan in reopenedGuestPlans) {
+            assertTrue(repoAfterReopen.deletePlan(guestOwner, plan.id) is DomainResult.Success)
         }
-        assertEquals(0, repo2.observePlans(ownerId).first().size)
+        assertEquals(0, repoAfterReopen.observePlans(guestOwner).first().size)
 
-        val repo3 = newPlanRepo()
-        assertEquals(0, repo3.observePlans(ownerId).first().size)
+        closeResources()
+        openResources()
+        val repoAfterDeleteReopen = newPlanRepo()
+        assertEquals(0, repoAfterDeleteReopen.observePlans(guestOwner).first().size)
+        // Registered owner remains completely isolated
+        assertEquals(3, repoAfterDeleteReopen.observePlans(registeredOwner).first().size)
     }
 
     @Test
-    fun existingUserWithCustomPlan_doesNotReceiveDuplicateDefaultPlans() = runTest {
-        val ownerId = "existing_user"
+    fun existingUserWithCustomPlan_andCrashRecoveryBeforeMarker_neverDuplicates() = runTest {
+        val existingOwner = "existing_owner"
         val repo = newPlanRepo()
         val created = repo.createPlan(
-            ownerId = ownerId,
+            ownerId = existingOwner,
             draft = WorkoutPlanDraft(
                 name = "My Existing Plan",
                 exercises = listOf(
@@ -137,8 +198,32 @@ class DefaultWorkoutPlanSeedingTest {
         )
         assertTrue(created is DomainResult.Success)
 
-        val plans = repo.observePlans(ownerId).first()
+        val plans = repo.observePlans(existingOwner).first()
         assertEquals(1, plans.size)
         assertEquals("My Existing Plan", plans.first().name)
+
+        // Simulate recovery when Room already committed starter plans before DataStore marker was written:
+        // a brand-new DataStore (marker = false) with existing plans in Room must NOT insert duplicates.
+        val currentDb = requireNotNull(db)
+        val freshPrefsFile = File(context.cacheDir, "recovery_prefs_${System.nanoTime()}.preferences_pb")
+        val recScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val freshPrefs = PulsePreferencesDataSource(
+                PreferenceDataStoreFactory.create(scope = recScope, produceFile = { freshPrefsFile }),
+            )
+            val recoveredRepo = RoomWorkoutPlanRepository(
+                workoutPlanDao = currentDb.workoutPlanDao(),
+                exerciseDao = currentDb.exerciseDao(),
+                transactionRunner = RoomTransactionRunner(currentDb),
+                preferencesDataSource = freshPrefs,
+                seedDefaultPlansOnFirstUse = true,
+            )
+            val recoveredPlans = recoveredRepo.observePlans(existingOwner).first()
+            assertEquals(1, recoveredPlans.size)
+            assertEquals(true, freshPrefs.readDefaultPlansSeededState(existingOwner))
+        } finally {
+            recScope.cancel()
+            if (freshPrefsFile.exists()) freshPrefsFile.delete()
+        }
     }
 }

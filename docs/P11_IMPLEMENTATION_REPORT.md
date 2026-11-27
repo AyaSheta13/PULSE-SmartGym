@@ -45,6 +45,6 @@ All checks executed after the final code/test edit on `Medium_Phone_API_36.0` (A
 - `:core:data:testDebugUnitTest`: **PASS** (5 unit tests, 0 failures, 0 skipped)
 - `:core:designsystem:testDebugUnitTest`: **PASS** (4 unit tests, 0 failures, 0 skipped)
 - `:app:testDebugUnitTest`: **PASS** (71 unit tests, 0 failures, 0 skipped)
-- `:core:data:connectedDebugAndroidTest`: **PASS** (31 instrumentation tests, 0 failures, 0 skipped)
-- `:app:connectedDebugAndroidTest`: **PASS** (60 instrumentation tests, 0 failures, 0 skipped)
+- `:core:data:connectedDebugAndroidTest`: **PASS** (32 instrumentation tests, 0 failures, 0 skipped)
+- `:app:connectedDebugAndroidTest`: **PASS** (62 instrumentation tests, 0 failures, 0 skipped)
 - `:app:assembleDebug` & `:app:assembleRelease`: **PASS**
