@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ayasheta.pulsesmartgym.core.designsystem.vectors.Plus
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTopAppBar
 import com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTopAppBarStyle
@@ -366,13 +367,11 @@ private fun CreateNewPlanInlineCard(
                 .background(WorkoutPalette.InputBackground),
             contentAlignment = Alignment.Center,
         ) {
-            BasicText(
-                text = "+",
-                style = PulseTheme.typography.cardTitle.copy(
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = WorkoutPalette.TextBrownMuted,
-                ),
+            Image(
+                imageVector = Plus,
+                contentDescription = null,
+                colorFilter = ColorFilter.tint(WorkoutPalette.TextBrownMuted),
+                modifier = Modifier.size(16.dp),
             )
         }
         BasicText(
@@ -409,13 +408,11 @@ private fun EmptyWorkoutsCard(
                 .background(WorkoutPalette.PrimaryCoralTint),
             contentAlignment = Alignment.Center,
         ) {
-            BasicText(
-                text = "+",
-                style = PulseTheme.typography.cardTitle.copy(
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = WorkoutPalette.PrimaryCoral,
-                ),
+            Image(
+                imageVector = Plus,
+                contentDescription = null,
+                colorFilter = ColorFilter.tint(WorkoutPalette.PrimaryCoral),
+                modifier = Modifier.size(22.dp),
             )
         }
         BasicText(

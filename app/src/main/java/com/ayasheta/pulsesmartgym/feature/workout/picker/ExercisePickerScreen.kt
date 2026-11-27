@@ -40,6 +40,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import com.ayasheta.pulsesmartgym.core.designsystem.vectors.Plus
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -457,13 +458,11 @@ private fun ExercisePickerRowCard(
                         modifier = Modifier.size(14.dp),
                     )
                 } else {
-                    BasicText(
-                        text = "+",
-                        style = PulseTheme.typography.cardTitle.copy(
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = WorkoutPalette.TextPrimary,
-                        ),
+                    Image(
+                        imageVector = Plus,
+                        contentDescription = "Select exercise",
+                        colorFilter = ColorFilter.tint(WorkoutPalette.TextPrimary),
+                        modifier = Modifier.size(14.dp),
                     )
                 }
             }

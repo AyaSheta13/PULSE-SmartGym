@@ -1,11 +1,14 @@
 package com.ayasheta.pulsesmartgym.core.data.repository.workout
 
+import com.ayasheta.pulsesmartgym.core.data.local.database.DefaultWorkoutPlanSeed
+import com.ayasheta.pulsesmartgym.core.data.local.database.ExerciseCatalogSeed
 import com.ayasheta.pulsesmartgym.core.data.local.database.PulseTransactionRunner
 import com.ayasheta.pulsesmartgym.core.data.local.database.dao.ExerciseDao
 import com.ayasheta.pulsesmartgym.core.data.local.database.dao.WorkoutPlanDao
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.PlanExerciseEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.PlannedSetEntity
 import com.ayasheta.pulsesmartgym.core.data.local.database.entity.WorkoutPlanEntity
+import com.ayasheta.pulsesmartgym.core.data.local.preferences.PulsePreferencesDataSource
 import com.ayasheta.pulsesmartgym.core.data.mapper.toDomain
 import com.ayasheta.pulsesmartgym.core.model.common.DataError
 import com.ayasheta.pulsesmartgym.core.model.common.DomainResult
@@ -14,18 +17,82 @@ import com.ayasheta.pulsesmartgym.core.model.repository.WorkoutPlanRepository
 import com.ayasheta.pulsesmartgym.core.model.workout.WorkoutPlan
 import com.ayasheta.pulsesmartgym.core.model.workout.WorkoutPlanDraft
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 
 class RoomWorkoutPlanRepository(
     private val workoutPlanDao: WorkoutPlanDao,
     private val exerciseDao: ExerciseDao,
     private val transactionRunner: PulseTransactionRunner,
+    private val preferencesDataSource: PulsePreferencesDataSource? = null,
+    private val seedDefaultPlansOnFirstUse: Boolean = false,
     private val clockMs: () -> Long = { System.currentTimeMillis() },
 ) : WorkoutPlanRepository {
 
-    override fun observePlans(ownerId: String): Flow<List<WorkoutPlan>> =
-        workoutPlanDao.observeAllPlans(ownerId).map { list -> list.map { it.toDomain() } }
+    constructor(
+        workoutPlanDao: WorkoutPlanDao,
+        exerciseDao: ExerciseDao,
+        transactionRunner: PulseTransactionRunner,
+        clockMs: () -> Long,
+    ) : this(
+        workoutPlanDao = workoutPlanDao,
+        exerciseDao = exerciseDao,
+        transactionRunner = transactionRunner,
+        preferencesDataSource = null,
+        seedDefaultPlansOnFirstUse = false,
+        clockMs = clockMs,
+    )
+
+    private val seedMutex = Mutex()
+    private val checkedOwners = mutableSetOf<String>()
+
+    private suspend fun ensureDefaultPlansSeeded(ownerId: String) {
+        if (!seedDefaultPlansOnFirstUse || PulseValidators.validateOwnerId(ownerId) != null) return
+        if (ownerId in checkedOwners) return
+        seedMutex.withLock {
+            if (ownerId in checkedOwners) return@withLock
+            if (preferencesDataSource?.hasSeededDefaultPlans(ownerId) == true) {
+                checkedOwners.add(ownerId)
+                return@withLock
+            }
+            transactionRunner.runInTransaction {
+                exerciseDao.insertAllIgnore(ExerciseCatalogSeed.defaultExercises)
+                if (workoutPlanDao.countPlans(ownerId) == 0) {
+                    val now = clockMs()
+                    val drafts = DefaultWorkoutPlanSeed.defaultPlanDrafts()
+                    drafts.forEachIndexed { index, draft ->
+                        val planId = UUID.randomUUID().toString()
+                        val orderOffset = (drafts.size - index).toLong()
+                        val planEntity = WorkoutPlanEntity(
+                            id = planId,
+                            ownerProfileId = ownerId,
+                            name = draft.name.trim(),
+                            description = draft.description?.trim(),
+                            createdAtEpochMs = now + index,
+                            updatedAtEpochMs = now + orderOffset,
+                        )
+                        val (exerciseEntities, setEntities) = buildChildEntities(planId, draft)
+                        workoutPlanDao.insertPlan(planEntity)
+                        if (exerciseEntities.isNotEmpty()) workoutPlanDao.insertPlanExercises(exerciseEntities)
+                        if (setEntities.isNotEmpty()) workoutPlanDao.insertPlannedSets(setEntities)
+                    }
+                }
+            }
+            preferencesDataSource?.markDefaultPlansSeeded(ownerId)
+            checkedOwners.add(ownerId)
+        }
+    }
+
+    override fun observePlans(ownerId: String): Flow<List<WorkoutPlan>> = flow {
+        ensureDefaultPlansSeeded(ownerId)
+        emitAll(
+            workoutPlanDao.observeAllPlans(ownerId).map { list -> list.map { it.toDomain() } },
+        )
+    }
 
     override fun observePlan(ownerId: String, planId: String): Flow<WorkoutPlan?> =
         workoutPlanDao.observePlan(ownerId, planId).map { it?.toDomain() }

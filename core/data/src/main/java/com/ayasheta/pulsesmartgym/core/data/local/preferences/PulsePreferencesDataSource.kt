@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
 import com.ayasheta.pulsesmartgym.core.model.profile.UserPreferences
@@ -137,6 +138,22 @@ class PulsePreferencesDataSource(
         }
     }
 
+    suspend fun hasSeededDefaultPlans(ownerId: String): Boolean {
+        val prefs = dataStore.data
+            .catch { exception ->
+                if (exception is IOException) emit(emptyPreferences()) else throw exception
+            }
+            .first()
+        return ownerId in (prefs[KEY_SEEDED_DEFAULT_PLAN_OWNERS] ?: emptySet())
+    }
+
+    suspend fun markDefaultPlansSeeded(ownerId: String) {
+        dataStore.edit { prefs ->
+            val current = prefs[KEY_SEEDED_DEFAULT_PLAN_OWNERS] ?: emptySet()
+            prefs[KEY_SEEDED_DEFAULT_PLAN_OWNERS] = current + ownerId
+        }
+    }
+
     private companion object {
         val KEY_WEIGHT_UNIT = stringPreferencesKey("preferred_weight_unit")
         val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
@@ -145,5 +162,6 @@ class PulsePreferencesDataSource(
         val KEY_SESSION_KIND = stringPreferencesKey("active_session_kind")
         val KEY_SESSION_OWNER_ID = stringPreferencesKey("active_session_owner_id")
         val KEY_REMEMBER_ME = booleanPreferencesKey("remember_me")
+        val KEY_SEEDED_DEFAULT_PLAN_OWNERS = stringSetPreferencesKey("seeded_default_plan_owners")
     }
 }

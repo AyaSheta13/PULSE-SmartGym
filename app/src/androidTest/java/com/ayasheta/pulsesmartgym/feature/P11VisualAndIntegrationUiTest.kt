@@ -240,6 +240,75 @@ class P11VisualAndIntegrationUiTest {
         saveScreenshot("p11_set_execution_live_metrics.png")
     }
 
+    @Test
+    fun defaultPlansSeededOnFirstUse_andPlusIconsRenderedInWorkoutsEditorAndPicker() {
+        val context: Context = ApplicationProvider.getApplicationContext()
+        com.ayasheta.pulsesmartgym.core.data.di.PulseDataContainer.createIsolatedForTesting(
+            context = context,
+            seedDefaultPlansOnFirstUse = true,
+        ).use { isolated ->
+            val container = isolated.container
+            kotlinx.coroutines.runBlocking {
+                val guest = (container.authRepository.continueAsGuest() as com.ayasheta.pulsesmartgym.core.model.common.DomainResult.Success).data
+                container.userProfileRepository.saveCompletedProfile(
+                    ownerId = guest.id,
+                    personalInfo = com.ayasheta.pulsesmartgym.core.model.profile.PersonalInfoDraft(
+                        "Aya Sheta",
+                        com.ayasheta.pulsesmartgym.core.model.profile.GenderIdentity.FEMALE,
+                        25,
+                        168,
+                        62.0,
+                    ),
+                    goals = com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoalsDraft(
+                        com.ayasheta.pulsesmartgym.core.model.profile.FitnessGoal.STRENGTH,
+                        com.ayasheta.pulsesmartgym.core.model.profile.ExperienceLevel.BEGINNER,
+                        3,
+                    ),
+                )
+                container.userPreferencesRepository.setOnboardingCompleted(true)
+            }
+
+            composeRule.setContent {
+                com.ayasheta.pulsesmartgym.app.PulseApp(
+                    isDebugEntryEnabled = true,
+                    initialFlow = com.ayasheta.pulsesmartgym.navigation.AppEntryFlow.MAIN,
+                    initialTab = com.ayasheta.pulsesmartgym.core.designsystem.component.generic.PulseTab.WORKOUTS,
+                    dataContainer = container,
+                )
+            }
+
+            composeRule.waitUntil(5_000) {
+                runCatching {
+                    composeRule.onNodeWithText("Beginner Full Body").assertExists()
+                    true
+                }.getOrDefault(false)
+            }
+            composeRule.onNodeWithText("Upper Body Strength").assertIsDisplayed()
+            composeRule.onNodeWithText("Lower Body Foundation").assertIsDisplayed()
+            saveScreenshot("p11_my_workouts_seeded.png")
+
+            // Open Create New Workout Plan -> verify centered Plus icons & empty exercises card
+            composeRule.onNodeWithTag("button_create_new_plan_inline").performClick()
+            composeRule.waitUntil(5_000) {
+                runCatching {
+                    composeRule.onNodeWithTag("editor_empty_exercises").assertExists()
+                    true
+                }.getOrDefault(false)
+            }
+            saveScreenshot("p11_create_plan_empty_plus.png")
+
+            // Open Select Exercises -> verify circular Plus selection controls
+            composeRule.onNodeWithTag("editor_add_exercise_button").performClick()
+            composeRule.waitUntil(5_000) {
+                runCatching {
+                    composeRule.onNodeWithTag("picker_exercise_list").assertExists()
+                    true
+                }.getOrDefault(false)
+            }
+            saveScreenshot("p11_exercise_picker_plus.png")
+        }
+    }
+
     private fun saveScreenshot(fileName: String) {
         val context: Context = ApplicationProvider.getApplicationContext()
         val outDir = File(context.filesDir, "visual_qa")

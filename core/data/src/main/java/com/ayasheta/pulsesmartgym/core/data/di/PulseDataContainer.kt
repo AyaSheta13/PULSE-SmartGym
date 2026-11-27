@@ -36,6 +36,7 @@ open class PulseDataContainer(
     context: Context,
     private val customDatabase: PulseDatabase? = null,
     private val customPreferencesDataSource: PulsePreferencesDataSource? = null,
+    private val seedDefaultPlansOnFirstUse: Boolean = true,
 ) {
     private val appContext = context.applicationContext
     private val isDebuggable = (appContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
@@ -69,6 +70,8 @@ open class PulseDataContainer(
             workoutPlanDao = database.workoutPlanDao(),
             exerciseDao = database.exerciseDao(),
             transactionRunner = transactionRunner,
+            preferencesDataSource = preferencesDataSource,
+            seedDefaultPlansOnFirstUse = seedDefaultPlansOnFirstUse,
         )
     }
 
@@ -123,7 +126,10 @@ open class PulseDataContainer(
     }
 
     companion object {
-        fun createIsolatedForTesting(context: Context): IsolatedTestContainer {
+        fun createIsolatedForTesting(
+            context: Context,
+            seedDefaultPlansOnFirstUse: Boolean = false,
+        ): IsolatedTestContainer {
             val appContext = context.applicationContext
             val tempDir = File(appContext.cacheDir, "pulse_isolated_test_${System.nanoTime()}").apply {
                 mkdirs()
@@ -140,6 +146,7 @@ open class PulseDataContainer(
                 context = appContext,
                 customDatabase = isolatedDb,
                 customPreferencesDataSource = PulsePreferencesDataSource(isolatedDataStore),
+                seedDefaultPlansOnFirstUse = seedDefaultPlansOnFirstUse,
             )
             return IsolatedTestContainer(container) {
                 isolatedDb.close()
