@@ -146,4 +146,106 @@ class WorkoutPerformanceAnalyticsTest {
         assertEquals(2.5, trend.maxPeakAccelerationMps2!!, 0.001)
         assertNull(trend.averageAngularRomDegrees)
     }
+
+    @Test
+    fun calculateExerciseTrends_usesRepetitionWeightedAverages_andFiltersByWeekWindow() {
+        fun makeSession(id: String, endedMs: Long, repCount: Int, linearCm: Double): WorkoutSession {
+            val reps = (1..repCount).map { idx ->
+                RepMeasurement(
+                    repIndex = idx,
+                    classification = RepClassification.FULL,
+                    totalDurationMs = 1500L,
+                    linearRomCm = linearCm,
+                    origin = MeasurementOrigin.SENSOR_TELEMETRY,
+                )
+            }
+            return WorkoutSession(
+                id = id,
+                ownerProfileId = "o1",
+                sourcePlanId = "p1",
+                planNameSnapshot = "Upper",
+                status = SessionStatus.COMPLETED,
+                startedAtEpochMs = endedMs - 10_000L,
+                endedAtEpochMs = endedMs,
+                exercises = listOf(
+                    SessionExercise(
+                        id = "se_$id",
+                        sessionId = id,
+                        sourceExerciseId = "ex_bench_press",
+                        exerciseNameSnapshot = "Barbell Bench Press",
+                        muscleGroupSnapshot = MuscleGroup.CHEST,
+                        equipmentSnapshot = EquipmentCategory.BARBELL,
+                        trackingCategorySnapshot = TrackingCategory.LINEAR,
+                        orderIndex = 0,
+                        plannedSets = emptyList(),
+                        performedSets = listOf(
+                            PerformedSet(
+                                id = "ps_$id",
+                                sessionId = id,
+                                sessionExerciseId = "se_$id",
+                                setIndex = 1,
+                                fullReps = repCount,
+                                partialReps = 0,
+                                actualLoad = WeightLoad(80_000L),
+                                completedAtEpochMs = endedMs,
+                                trackingMode = TrackingMode.DEVICE_ASSISTED,
+                                origin = MeasurementOrigin.SENSOR_TELEMETRY,
+                                repRecords = reps,
+                            ),
+                        ),
+                    ),
+                ),
+            )
+        }
+
+        // Session A: 10 reps @ 40 cm, Session B: 2 reps @ 20 cm -> weighted avg = 440 / 12 = 36.6667 cm
+        val sessionA = makeSession("s_a", 100_000L, 10, 40.0)
+        val sessionB = makeSession("s_b", 200_000L, 2, 20.0)
+        val outsideWindow = makeSession("s_old", 10_000L, 5, 10.0)
+
+        val trend = WorkoutPerformanceAnalytics.calculateExerciseTrends(
+            sessions = listOf(outsideWindow, sessionA, sessionB),
+            exerciseKey = "ex_bench_press",
+            windowStartEpochMs = 50_000L,
+            windowEndExclusiveEpochMs = 250_000L,
+        )!!
+
+        assertEquals(2, trend.points.size)
+        assertEquals(36.6667, trend.averageLinearRomCm!!, 0.001)
+        assertEquals(12, trend.linearRomSampleCount)
+        assertEquals(12, trend.totalSensorFullReps)
+        assertEquals(0, trend.totalManualReps)
+    }
+
+    @Test
+    fun effectiveCapabilityPolicy_gatesUnsupportedDimensionsAndUnconfiguredPhysicalTracking() {
+        val deviceCaps = com.ayasheta.pulsesmartgym.core.model.device.DeviceCapabilities(
+            automaticRepEvents = true,
+            fullPartialClassification = true,
+            angularRom = true,
+            linearRom = true,
+            repDuration = true,
+            peakAcceleration = true,
+        )
+        val linearConfig = com.ayasheta.pulsesmartgym.core.model.exercise.ExerciseTrackingCatalog.forExercise(
+            "ex_bench_press",
+            TrackingCategory.LINEAR,
+        )
+        val demoEffective = com.ayasheta.pulsesmartgym.core.model.exercise.ExerciseTrackingCatalog.resolveEffectiveCapabilities(
+            deviceCapabilities = deviceCaps,
+            exerciseConfig = linearConfig,
+            environment = com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind.DEMO,
+        )
+        assertEquals(true, demoEffective.automaticRepEvents)
+        assertEquals(true, demoEffective.linearRom)
+        assertEquals(false, demoEffective.angularRom)
+
+        val uncalibratedGenuine = com.ayasheta.pulsesmartgym.core.model.exercise.ExerciseTrackingCatalog.resolveEffectiveCapabilities(
+            deviceCapabilities = deviceCaps,
+            exerciseConfig = linearConfig,
+            environment = com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind.GENUINE,
+            hasCalibration = false,
+        )
+        assertEquals(false, uncalibratedGenuine.automaticRepEvents)
+    }
 }

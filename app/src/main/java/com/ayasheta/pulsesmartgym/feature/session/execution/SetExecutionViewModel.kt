@@ -68,6 +68,7 @@ class SetExecutionViewModel(
     private val loadGramsKey = "${stateKeyPrefix}_load_grams"
     private val loadInitKey = "${stateKeyPrefix}_load_init"
     private val startElapsedKey = "${stateKeyPrefix}_start_elapsed"
+    private val frozenDurationKey = "${stateKeyPrefix}_frozen_duration"
     private val fallbackKey = "${stateKeyPrefix}_fallback"
     private val deviceAssistedKey = "${stateKeyPrefix}_device_assisted"
     private val draftJsonKey = "${stateKeyPrefix}_draft_json"
@@ -109,6 +110,9 @@ class SetExecutionViewModel(
     private val errorMessageFlow = MutableStateFlow<String?>(null)
     private val showEndEarlyFlow = MutableStateFlow(false)
     private val isEndingEarlyFlow = MutableStateFlow(false)
+    private val frozenDurationMsFlow = MutableStateFlow<Long?>(
+        savedStateHandle.get<Long>(frozenDurationKey),
+    )
 
     private val completionStateFlow = MutableStateFlow<SetExecutionUiState.Completed?>(
         if (savedStateHandle.get<Boolean>(completedKey) == true) {
@@ -227,11 +231,20 @@ class SetExecutionViewModel(
                                     controls.load
                                 }
 
+                                val exerciseConfig = ExerciseTrackingCatalog.forExercise(
+                                    exerciseId = exercise.sourceExerciseId,
+                                    trackingCategory = exercise.trackingCategorySnapshot,
+                                )
+                                val effectiveCaps = ExerciseTrackingCatalog.resolveEffectiveCapabilities(
+                                    deviceCapabilities = link.capabilities,
+                                    exerciseConfig = exerciseConfig,
+                                    environment = executionEnvironment,
+                                )
                                 val isDeviceConnected = link.phase == DeviceConnectionState.CONNECTED
                                 val canStartDevice = !forceManualMode &&
                                     executionEnvironment == ExecutionEnvironmentKind.DEMO &&
                                     isDeviceConnected &&
-                                    link.capabilities.automaticRepEvents
+                                    effectiveCaps.automaticRepEvents
 
                                 if (controls.phase == SetExecutionPhase.Ready) {
                                     isDeviceAssistedFlow.value = canStartDevice
@@ -305,12 +318,10 @@ class SetExecutionViewModel(
                                     trackingCompatibilityNotice = compatibilityNotice,
                                     startedElapsedRealtimeMs = savedStateHandle.get<Long>(startElapsedKey),
                                     currentElapsedRealtimeMs = elapsedRealtimeMs(),
+                                    frozenElapsedDurationMs = frozenDurationMsFlow.value,
                                     sessionStartedAtEpochMs = session.startedAtEpochMs,
                                     repRecords = ledger,
-                                    trackingConfig = ExerciseTrackingCatalog.forExercise(
-                                        exerciseId = exercise.sourceExerciseId,
-                                        trackingCategory = exercise.trackingCategorySnapshot,
-                                    ),
+                                    trackingConfig = exerciseConfig,
                                     errorMessage = statuses.errorMessage,
                                     isReconnecting = statuses.isReconnecting,
                                     reconnectError = statuses.reconnectError,
@@ -350,6 +361,17 @@ class SetExecutionViewModel(
                     return@collect
                 }
 
+                val exerciseConfig = ExerciseTrackingCatalog.forExercise(
+                    exerciseId = exercise?.sourceExerciseId,
+                    trackingCategory = exercise?.trackingCategorySnapshot
+                        ?: com.ayasheta.pulsesmartgym.core.model.exercise.TrackingCategory.COMPOUND,
+                )
+                val effectiveCaps = ExerciseTrackingCatalog.resolveEffectiveCapabilities(
+                    deviceCapabilities = link.capabilities,
+                    exerciseConfig = exerciseConfig,
+                    environment = executionEnvironment,
+                )
+
                 val normalized = DeviceEventNormalizer.normalizeAndValidate(
                     event = event.rep,
                     expectedProviderType = link.providerType,
@@ -357,7 +379,7 @@ class SetExecutionViewModel(
                     expectedTrackingWindowId = trackingWindowId,
                     isConnected = link.phase == DeviceConnectionState.CONNECTED,
                     isSubmitting = phaseFlow.value == SetExecutionPhase.Saving || completionStateFlow.value != null,
-                    capabilities = link.capabilities,
+                    capabilities = effectiveCaps,
                     seenEventIds = seenEventIds,
                     nextRepIndex = ledgerFlow.value.size + 1,
                     isOwnerAuthenticated = ownerId != null,
@@ -405,8 +427,13 @@ class SetExecutionViewModel(
 
         if (restored != null) {
             ledgerFlow.value = restored.repRecords
-            fullRepsFlow.value = restored.repRecords.count { it.classification == RepClassification.FULL }
-            partialRepsFlow.value = restored.repRecords.count { it.classification == RepClassification.PARTIAL }
+            if (restored.repRecords.isNotEmpty()) {
+                fullRepsFlow.value = restored.repRecords.count { it.classification == RepClassification.FULL }
+                partialRepsFlow.value = restored.repRecords.count { it.classification == RepClassification.PARTIAL }
+            } else {
+                fullRepsFlow.value = restored.fullReps
+                partialRepsFlow.value = restored.partialReps
+            }
             seenEventIds.clear()
             seenEventIds.addAll(restored.acceptedEventIds)
             if (restored.hasInitializedLoad) {
@@ -415,12 +442,18 @@ class SetExecutionViewModel(
                 hasInitializedLoad = true
                 savedStateHandle[loadInitKey] = true
             }
+            if (restored.hadDeviceTracking) {
+                isDeviceAssistedFlow.value = true
+                savedStateHandle[deviceAssistedKey] = true
+            }
             if (restored.isManualFallback) {
                 isFallbackManualFlow.value = true
                 savedStateHandle[fallbackKey] = true
             }
+            val nowElapsed = elapsedRealtimeMs()
             if (restored.setStartedAtElapsedMs != null && savedStateHandle.get<Long>(startElapsedKey) == null) {
-                savedStateHandle[startElapsedKey] = restored.setStartedAtElapsedMs
+                val safeStart = restored.setStartedAtElapsedMs.coerceAtMost(nowElapsed)
+                savedStateHandle[startElapsedKey] = safeStart
             }
         }
     }
@@ -435,8 +468,8 @@ class SetExecutionViewModel(
             exerciseId = exerciseId,
             setIndex = setIndex,
             trackingWindowId = trackingWindowId,
-            fullReps = ledger.count { it.classification == RepClassification.FULL },
-            partialReps = ledger.count { it.classification == RepClassification.PARTIAL },
+            fullReps = fullRepsFlow.value,
+            partialReps = partialRepsFlow.value,
             repRecords = ledger,
             acceptedEventIds = seenEventIds.toSet(),
             origin = when {
@@ -485,6 +518,17 @@ class SetExecutionViewModel(
     fun incrementRep() {
         val current = _uiState.value as? SetExecutionUiState.Active ?: return
         if (!current.canAdjustRepsManually) return
+        val isFallbackWithLedger = isDeviceAssistedFlow.value
+        if (!isFallbackWithLedger) {
+            if (fullRepsFlow.value + partialRepsFlow.value >= 999) {
+                errorMessageFlow.value = "Maximum supported manual set size (999 reps) reached."
+                return
+            }
+            fullRepsFlow.value += 1
+            errorMessageFlow.value = null
+            persistDraft()
+            return
+        }
         if (ledgerFlow.value.size >= SetDraftSavedStateCodec.MAX_SAVED_LEDGER_RECORDS) {
             errorMessageFlow.value =
                 "Maximum supported set size (${SetDraftSavedStateCodec.MAX_SAVED_LEDGER_RECORDS} reps) reached."
@@ -495,7 +539,7 @@ class SetExecutionViewModel(
         val rep = RepMeasurement(
             repIndex = nextIndex,
             classification = RepClassification.FULL,
-            origin = if (isFallbackManualFlow.value) MeasurementOrigin.MANUAL_CORRECTION else MeasurementOrigin.MANUAL_INPUT,
+            origin = MeasurementOrigin.MANUAL_CORRECTION,
         )
         ledgerFlow.value = ledgerFlow.value + rep
         fullRepsFlow.value = ledgerFlow.value.count { it.classification == RepClassification.FULL }
@@ -506,6 +550,15 @@ class SetExecutionViewModel(
     fun decrementRep() {
         val current = _uiState.value as? SetExecutionUiState.Active ?: return
         if (!current.canAdjustRepsManually) return
+        val isFallbackWithLedger = isDeviceAssistedFlow.value
+        if (!isFallbackWithLedger) {
+            if (fullRepsFlow.value > 0) {
+                fullRepsFlow.value -= 1
+                errorMessageFlow.value = null
+                persistDraft()
+            }
+            return
+        }
         if (ledgerFlow.value.isNotEmpty()) {
             val updated = ledgerFlow.value.dropLast(1)
             ledgerFlow.value = updated
@@ -621,7 +674,13 @@ class SetExecutionViewModel(
 
         viewModelScope.launch {
             val startedMs = savedStateHandle.get<Long>(startElapsedKey)
-            val durationMs = startedMs?.let { (elapsedRealtimeMs() - it).coerceAtLeast(0L) }
+            val frozenMs = frozenDurationMsFlow.value
+                ?: startedMs?.let { (elapsedRealtimeMs() - it).coerceAtLeast(0L) }
+            if (frozenMs != null && frozenDurationMsFlow.value == null) {
+                frozenDurationMsFlow.value = frozenMs
+                savedStateHandle[frozenDurationKey] = frozenMs
+            }
+            val durationMs = frozenMs
             val trackingMode = if (current.isDeviceAssisted && !current.isFallbackManual) {
                 TrackingMode.DEVICE_ASSISTED
             } else {

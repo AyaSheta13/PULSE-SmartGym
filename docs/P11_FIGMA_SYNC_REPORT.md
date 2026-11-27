@@ -2,16 +2,18 @@
 
 **Figma File**: `https://www.figma.com/design/UvskyKTyxlIOd68wQkp5cQ/PULSE---Smart-Gym` (`UvskyKTyxlIOd68wQkp5cQ`)
 
-## Synchronized Frames & Components
-All updates were applied directly using editable native Figma nodes, auto-layout frames, and existing design system components (zero pasted screenshots):
+All updates were applied directly using editable native Figma nodes, auto-layout frames, and existing design system components (zero pasted screenshots).
 
-1. **Welcome (`281:2`) & Onboarding 1–3 (`57:20531`, `57:20254`, `57:20391`)**:
-   - Resized hero image containers to match each asset's intrinsic aspect ratio (`378:436` for Welcome & Onboarding 1, `1672:941` for Onboarding 2, `377:436` for Onboarding 3) with `scaleMode = "FILL"`, zero blank bands, and badges anchored inside the rounded image bounds.
-2. **Exercise Picker (`57:19181`)**:
-   - Reordered all 14 exercise cards to `[26px Circular Selection Control]` -> `[64px Thumbnail + Wrapped Title & Badges]` -> `[Right Chevron ›]`, removing the old `i` info button.
-3. **Workout Session (`57:20057`) & Set Execution (`894:958`, `61:637`, `57:18098`)**:
-   - Updated telemetry badges to `"Connected (Sim)"` (decoupled from `"Manual"` tracking mode).
-   - Added `Live Performance Card` (2x2 grid: `SET DURATION`, `RANGE OF MOTION`, `PEAK ACCEL`, `REP DURATION`) and collapsed `Repetition Breakdown Card` (`Show ▼`) to `State=InProgress (Connected)` (`894:794`) and `State=InProgress (Manual)` (`894:876`) without overlap.
-4. **Session Details (`57:18737`) & Training Progress (`283:2`)**:
-   - Added `Session Performance` summary card (`AVG ROM`, `PEAK ACCEL`, `AVG REP`) to `57:18737`.
-   - Added `Performance Trends` card (`PEAK ACCEL`, `AVG ROM`, `AVG REP`) to `283:2`.
+## Complete Android-to-Figma Reconciliation Matrix
+
+| Section | Screen / Component | Figma Node ID(s) | P11 Reconciliation Status & Changes |
+| --- | --- | --- | --- |
+| **Section A — Design Foundations** | Set Execution — Unified States (`COMPONENT_SET`) | `894:958` (`894:712`, `894:794`, `894:876`) | Normalized all 3 variants (`State=Ready`, `State=InProgress (Connected)`, `State=InProgress (Manual)`) to `390 x 884` outer frames; pinned Top App Bar & bottom action area (`894:768`, `894:850`, `894:932`); added `Live Performance Card` + `Repetition Breakdown Card` inside scrollable `358 x 692` region in both Ready (`912:696`, `912:714`) and InProgress states; updated badges to `"Connected (Sim)"` (`I894:782;470:47`, `I894:864;470:47`, `I894:946;470:47`). |
+| **Section B — Splash & Onboarding** | Splash, Onboarding 1–3 | `57:20479`, `57:20531`, `57:20254`, `57:20391` | Resized hero containers (`139:8` -> `350x404`, `139:27` -> `350x197`, `139:45` -> `350x405`) to match intrinsic photo aspect ratios with `scaleMode = "FILL"` and anchored badges. |
+| **Section C — Authentication & Profile** | Welcome, Log In, Sign Up, Forgot Password, Profile Setup, Validation Errors | `281:2`, `281:25`, `281:64`, `281:95`, `282:2`, `282:55`, `533:328`, `533:356` | Resized Welcome hero (`607:350`) to `358x413` (`378:436`) and repositioned value prop/pills/actions (`607:357`, `607:360`, `607:367`); verified remaining auth/profile screens. |
+| **Section D — Main Application** | Home, Home Empty, My Workouts, History, Progress, Profile | `57:19799`, `316:290`, `57:19917`, `57:18450`, `283:2`, `283:110` | Added `Performance Trends` card (`905:708`) to `283:2`; verified Home, My Workouts, History, Profile. |
+| **Section E — Workout Planning** | Exercise Picker, Create/Edit Plan, Workout Details, Exercise Details | `57:19181`, `605:338`, `57:18885`, `335:2`, `335:65`, `626:322`, `626:329`, `626:336`, `882:643`, `892:649`, `892:699`, `892:749` | Reordered all 14 Exercise Picker cards (`57:19191`..`57:19425`) to `[26px Circle Select]` -> `[Photo + Wrapped Title/Badges]` -> `[Chevron ›]` (`904:696`..`904:710`); verified planning & exercise details frames. |
+| **Section F — Workout Execution** | Workout Session (States A–E, Rest Dismissed), Live Workout, End Early | `57:20057`, `61:715`, `61:793`, `61:871`, `646:349`, `776:639`, `61:637`, `57:18098`, `653:447`, `61:1248` | Updated `"Connected"` telemetry chips to `"Connected (Sim)"` across all active session states (`I646:350;470:47`, `I646:596;470:47`, `I646:844;470:47`, `I646:1092;470:47`, `I646:1342;470:47`, `I776:640;470:47`, `I471:123;470:47`, `I471:136;470:47`). |
+| **Section G — History & Analytics** | Workout Complete, Partial Summary, Session Details, Empty States | `57:18241`, `776:892`, `57:18737`, `788:632`, `61:284`, `310:312`, `788:703` | Added exercise-specific `Session Performance` card (`915:696`) to `57:18241` and `Session Performance` card (`905:696`) to `57:18737`. |
+| **Section H — Device Connection** | My Device (Disconnected/Connected), Discovery States, Connection Lost | `420:68`..`420:76`, `451:2` | Updated `"Connected"` badge on `420:75` (`651:367`) & `420:74` (`436:39`) to `"Connected (Sim)"`. |
+| **Section I — Overlays & System States** | Edit Profile, Privacy, Units, Account Preferences, Delete Plan | `283:197`, `316:515`, `316:530`, `528:328`, `61:1454` | Verified all modal/sheet overlays (`390x884`). |

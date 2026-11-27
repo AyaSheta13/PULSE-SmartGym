@@ -22,6 +22,7 @@ This document defines the exact replacement boundary between the PULSE Smart Gym
 - `SIMULATED` provider events MUST carry `MeasurementOrigin.SIMULATED_TELEMETRY` and are ONLY accepted inside `ExecutionEnvironmentKind.DEMO`.
 - `REAL_BLE` provider events MUST carry `MeasurementOrigin.SENSOR_TELEMETRY` when hardware integration is added after firmware contract sign-off.
 - `SIMULATED` provider never authorizes automatic tracking on `ExecutionEnvironmentKind.GENUINE` sessions.
+- **Effective Capability Policy (`ExerciseTrackingCatalog.resolveEffectiveCapabilities`)**: Device capabilities are intersected with per-exercise configuration (`ExerciseTrackingConfiguration`) and execution environment (`ExecutionEnvironmentKind`). Unsupported dimensions (e.g. angular ROM on a linear-only exercise) are gated out before normalization, and unconfigured physical tracking never enables automatic rep detection.
 
 ## Android Permission Policy (`BluetoothPermissionPolicy.kt`)
 - **API 24–30**: `Manifest.permission.BLUETOOTH`, `BLUETOOTH_ADMIN`, and runtime `ACCESS_FINE_LOCATION` (`maxSdkVersion = 30`).

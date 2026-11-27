@@ -64,6 +64,7 @@ sealed interface SetExecutionUiState {
         val trackingCompatibilityNotice: String?,
         val startedElapsedRealtimeMs: Long?,
         val currentElapsedRealtimeMs: Long = 0L,
+        val frozenElapsedDurationMs: Long? = null,
         val sessionStartedAtEpochMs: Long = 0L,
         val repRecords: List<RepMeasurement> = emptyList(),
         val trackingConfig: ExerciseTrackingConfiguration? = null,

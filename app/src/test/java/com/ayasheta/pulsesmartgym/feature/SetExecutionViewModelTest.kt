@@ -252,6 +252,56 @@ class SetExecutionViewModelTest {
         connectionGeneration = 1L,
     )
 
+    @Test
+    fun ordinaryManualSet_supportsOver100RepsUpTo999_withoutSyntheticLedger() = runBlocking {
+        val sessionRepo = ExecTestSessionRepo().apply { putSession(sampleSession()) }
+        val deviceRepo = ExecTestDeviceRepo(disconnectedLink())
+        val draftStore = SetDraftStore()
+        var nowMs = 1_000L
+        val vm = SetExecutionViewModel(
+            sessionId = "sess_1",
+            exerciseId = "se_1",
+            setIndex = 1,
+            authRepository = ExecTestAuthRepo(),
+            workoutSessionRepository = sessionRepo,
+            userPreferencesRepository = ExecTestPrefsRepo(),
+            deviceRepository = deviceRepo,
+            setDraftStore = draftStore,
+            savedStateHandle = SavedStateHandle(),
+            elapsedRealtimeMs = { nowMs },
+            executionEnvironment = ExecutionEnvironmentKind.GENUINE,
+            forceManualMode = true,
+        )
+        while (vm.uiState.value !is SetExecutionUiState.Active) kotlinx.coroutines.yield()
+        vm.startSet()
+        while ((vm.uiState.value as SetExecutionUiState.Active).phase != SetExecutionPhase.InProgress) kotlinx.coroutines.yield()
+
+        repeat(125) { vm.incrementRep() }
+        while ((vm.uiState.value as SetExecutionUiState.Active).fullReps < 125) kotlinx.coroutines.yield()
+        val active = vm.uiState.value as SetExecutionUiState.Active
+        assertEquals(125, active.fullReps)
+        assertEquals(0, active.repRecords.size)
+        assertNull(active.errorMessage)
+
+        // Recreation preserves 125 ordinary manual reps
+        val recreated = SetExecutionViewModel(
+            sessionId = "sess_1",
+            exerciseId = "se_1",
+            setIndex = 1,
+            authRepository = ExecTestAuthRepo(),
+            workoutSessionRepository = sessionRepo,
+            userPreferencesRepository = ExecTestPrefsRepo(),
+            deviceRepository = deviceRepo,
+            setDraftStore = draftStore,
+            savedStateHandle = SavedStateHandle(),
+            elapsedRealtimeMs = { nowMs + 500L },
+            executionEnvironment = ExecutionEnvironmentKind.GENUINE,
+            forceManualMode = true,
+        )
+        while (recreated.uiState.value !is SetExecutionUiState.Active) kotlinx.coroutines.yield()
+        assertEquals(125, (recreated.uiState.value as SetExecutionUiState.Active).fullReps)
+    }
+
     private fun sampleSession(): WorkoutSession = WorkoutSession(
         id = "sess_1",
         ownerProfileId = "owner_1",

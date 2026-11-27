@@ -1,32 +1,50 @@
-# P11 Implementation Report — Global Integration, Visual Fidelity, Motion QA & Figma Synchronization
+# P11 Implementation Report — Final Acceptance & Integration
 
 ## Summary
 Completed P11 end-to-end across Android (`core:model`, `core:designsystem`, `core:data`, `app`), Room schema migration (`v3 -> v4`), visual/motion/accessibility QA, and Figma synchronization (`UvskyKTyxlIOd68wQkp5cQ`).
 
-## Key Deliverables Implemented
-1. **Welcome & Onboarding Hero Aspect Ratio Fix (`AuthEntryScreen.kt`, `OnboardingScreen.kt`)**:
-   - Matched each hero container to its image's intrinsic aspect ratio (`378:436` for Welcome & Onboarding 1, `1672:941` for Onboarding 2, `377:436` for Onboarding 3) with `ContentScale.Crop`, rounded `24.dp` corners, badges anchored inside image bounds, and zero vertical scroll across 360dp, 390dp, and 412dp viewports.
-2. **Exercise Picker Refinement (`ExercisePickerScreen.kt`)**:
-   - Updated card layout to `[26dp Circular Selection Control (48dp touch target, left)] -> [64dp Exercise Photo] -> [2-line Wrapped Title + Badges] -> [Right Chevron >]`, removing the `i` info button.
-   - Preserved `LazyListState` scroll position, search query, muscle filter, and selection across navigation to `ExerciseDetails`.
-3. **Unified Reactive Device Connection Status (`BluetoothStatusChip.kt`, `WorkoutSessionViewModel.kt`, `SetExecutionViewModel.kt`, `ReadyStartSetScreen.kt`, `PulseNavigationEntryProvider.kt`)**:
-   - `WorkoutSessionViewModel` and `SetExecutionViewModel` observe `DeviceRepository.linkState` reactively.
-   - `PulseBluetoothChip` clearly labels simulated hardware as `"Connected (Sim)"`, keeping connection status separate from manual/automatic tracking mode.
-4. **Live Workout Metrics & End-to-End Measurement Integration**:
-   - Added `peakAccelerationMetersPerSecondSquared` across `DeviceContracts.kt`, `DeviceEvent.kt`, `DeviceCapabilities.kt`, `DeviceEventNormalizer.kt`, `FakeDeviceDataSource.kt`, `DeviceSimulationScenario.kt`, `Entities.kt`, `DataMappers.kt`, `RoomWorkoutSessionRepository.kt`, and `SetDraftStore.kt`.
-   - Bumped `PulseDatabase` to `version = 4` with `MIGRATION_3_4` (and exported `4.json` schema).
-   - Added `ExerciseTrackingConfig.kt` (`ExerciseTrackingCatalog` covering 18 exercises) and `WorkoutPerformanceAnalytics.kt`.
-   - Integrated `LivePerformanceCard` (2x2) and collapsed-by-default `ExpandableRepetitionBreakdown` into `SetExecutionScreen.kt`.
-   - Integrated `SessionPerformanceSummary` into `WorkoutResultScreen.kt` and `SessionDetailsScreen.kt`, and `PerformanceTrendsCard` into `TrainingProgressScreen.kt`.
-5. **Figma Synchronization & Documentation**:
-   - Synchronized Welcome, Onboarding 1–3, Exercise Picker, Workout Session, Set Execution, Session Details, and Training Progress in Figma (`UvskyKTyxlIOd68wQkp5cQ`) using native editable nodes/components.
-   - Created `P11_SCREEN_INVENTORY.md`, `P11_VISUAL_QA_REPORT.md`, `P11_MOTION_QA_REPORT.md`, `P11_ACCESSIBILITY_REPORT.md`, `P11_FIGMA_SYNC_REPORT.md`, and updated `P10_FIRMWARE_INTEGRATION_CONTRACT.md`.
+## Key Deliverables & Technical Details
 
-## Verification Results
-- `:core:model:build` (including 8 unit tests): **PASS** (8 tests, 0 failures, 0 skipped)
-- `:core:data:testDebugUnitTest`: **PASS** (5 tests, 0 failures, 0 skipped)
-- `:core:designsystem:testDebugUnitTest`: **PASS** (4 tests, 0 failures, 0 skipped)
-- `:app:testDebugUnitTest`: **PASS** (70 tests, 0 failures, 0 skipped)
-- `:core:data:connectedDebugAndroidTest` (`Medium_Phone_API_36.0`): **PASS** (27 tests, 0 failures, 0 skipped)
-- `:app:connectedDebugAndroidTest` (`Medium_Phone_API_36.0`): **PASS** (59 tests, 0 failures, 0 skipped)
+### 1. Performance Analytics & Measurement Formulas (`WorkoutPerformanceAnalytics.kt`)
+- **Repetition-Weighted Averages**: Session & trend averages are computed directly from eligible measured repetitions (`sum(valid_metric) / count(valid_metric)`) rather than averaging per-session averages.
+- **Null & Invalid Handling**: A repetition is counted as measured only when it has at least one valid, finite measurement (`totalDurationMs > 0`, `angularRomDegrees > 0`, `linearRomCm > 0`, `peakAccelerationMetersPerSecondSquared >= 0`). Missing/null values are excluded from denominators and never substituted with `0`.
+- **Exercise Comparability & Compatibility**: Performance summaries are grouped by stable exercise key (`sourceExerciseId ?: "unmapped:<name>"`), keeping angular ROM (`°`) and linear ROM (`cm`) separate. `WorkoutResultScreen` and `SessionDetailsScreen` display exercise-specific ROM statistics rather than a single workout-wide ROM average across unrelated exercises. `MeasurementCompatibilityStatus` (`COMPATIBLE`, `UNCONFIGURED`, `INCOMPATIBLE`) explicitly tracks configuration compatibility without fabricating calibration metadata for historical records.
+- **Full/Partial Ratio**: Sensor-classified repetitions (`SENSOR_TELEMETRY`, `SIMULATED_TELEMETRY`) are tracked separately from manually entered counts (`MANUAL_INPUT`).
+
+### 2. Historical Performance Trends & Period Filtering (`TrainingProgressViewModel.kt`, `TrainingProgressScreen.kt`)
+- **Selected-Week Filtering**: `TrainingProgressViewModel` filters trends using the active selected week (`selectedWeekOffset`, Monday 00:00 to next Monday 00:00 in `zoneProvider()`), updating accurately when the user switches weeks.
+- **Stable Selection & Chronological Points**: `PerformanceTrendsCard` selects exercises by stable `exerciseKey` (`rememberSaveable`), renders chronological session points (date, ROM, rep duration, peak acceleration), and displays an explicit unavailable state when no measured data exists in the selected period.
+- **Demo/Simulator Isolation**: Genuine analytics exclude `SIMULATED_TELEMETRY` (`isDemoEnvironment = false`). Demo mode explicitly labels simulated trends if enabled.
+
+### 3. Ordinary Manual Counter & Ledger Behavior (`SetExecutionViewModel.kt`)
+- **Ordinary Manual Sets**: Restored the **999-rep limit** without creating a synthetic per-repetition measurement ledger (`repRecords` remains empty), surviving `SetDraftSavedStateCodec` and `SetDraftStore` restoration.
+- **Device-Assisted & Manual Fallback Sets**: Preserve the bounded detailed `RepMeasurement` ledger (`MAX_SAVED_LEDGER_RECORDS = 100`) and `seenEventIds` without silent truncation.
+
+### 4. Effective Capability Policy (`ExerciseTrackingConfig.kt`, `DeviceEventNormalizer.kt`, `SetExecutionViewModel.kt`)
+- `ExerciseTrackingCatalog.resolveEffectiveCapabilities(...)` intersects provider `DeviceCapabilities` with per-exercise `ExerciseTrackingConfiguration`, `ExecutionEnvironmentKind`, and calibration readiness. Unsupported dimensions (e.g. angular ROM on a linear-only exercise) are gated out before normalization, and unconfigured physical tracking never enables automatic rep detection.
+
+### 5. Time & Latest Repetition Presentation (`SetExecutionScreen.kt`, `SetExecutionViewModel.kt`)
+- Clearly distinguishes **Workout elapsed time** (`Workout MM:SS` from `sessionStartedAtEpochMs`), **Set Duration** (starts only after `Start Set`, frozen on `finishSet()` across submission & retry via `frozenElapsedDurationMs`), and **Rep Duration** (from accepted measured repetitions only, never inferred from manual clicks).
+- `LivePerformanceCard` is mounted in both `Ready` and `InProgress` states (with `00:00` / `—` / `No measured reps` placeholders before tracking begins) so starting a set never shifts the static counter card, weight selector, or bottom action region.
+- Identifies the exact repetition (`Rep #N`, `Earlier Rep #K`, or `No measured reps`) and displays concentric/eccentric durations in `ExpandableRepetitionBreakdown` when genuinely available.
+
+### 6. Room Migration & Persistence Verification (`Migration3To4Test.kt`, `RoomWorkoutSessionRepository.kt`)
+- Fixed `RoomWorkoutSessionRepository.toRepRecordEntity` so `peakAccelerationMetersPerSecondSquared` is persisted across both initial recording and corrections.
+- Verified `v3 -> v4` migration (`MIGRATION_3_4`) preserves existing sessions/sets/reps with `NULL` acceleration, new measurements (acceleration, angular/linear ROM, total/concentric/eccentric durations, provenance) survive DB reopen, manual fallback preserves measurements, weight-only edits preserve measurements, aggregate rep edits invalidate detailed measurements, failed transactions leave no corrupt state, and genuine analytics exclude simulator data.
+
+### 7. Hero Images & Figma Reconciliation
+- Welcome & Onboarding hero containers match intrinsic aspect ratios (`378:436`, `1672:941`, `377:436`) using `ContentScale.Fit` inside aspect-ratio-constrained containers with zero vertical scroll across `360x640`, `390x844`, and `412x915` viewports.
+- Synchronized Figma (`UvskyKTyxlIOd68wQkp5cQ`) including normalizing all 3 `Set Execution — Unified States` (`894:958`) variants (`894:712`, `894:794`, `894:876`) to `390 x 884` with pinned Top App Bar & bottom action bar and scrollable measurement content.
+
+## Actual Remaining Limitations
+- Physical ESP32 BLE hardware communication and firmware GATT packet parsing are intentionally deferred to P12 per the P10/P11 firmware integration boundary (`RealBleDeviceDataSource` remains a fail-honest stub).
+
+## Final Regression Verification Results
+All checks executed after the final code/test edit on `Medium_Phone_API_36.0`:
+- `:core:model:build`: **PASS** (10 unit tests, 0 failures, 0 skipped)
+- `:core:data:testDebugUnitTest`: **PASS** (5 unit tests, 0 failures, 0 skipped)
+- `:core:designsystem:testDebugUnitTest`: **PASS** (4 unit tests, 0 failures, 0 skipped)
+- `:app:testDebugUnitTest`: **PASS** (71 unit tests, 0 failures, 0 skipped)
+- `:core:data:connectedDebugAndroidTest`: **PASS** (29 instrumentation tests, 0 failures, 0 skipped)
+- `:app:connectedDebugAndroidTest`: **PASS** (59 instrumentation tests, 0 failures, 0 skipped)
 - `:app:assembleDebug` & `:app:assembleRelease`: **PASS**

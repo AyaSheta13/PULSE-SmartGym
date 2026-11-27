@@ -277,7 +277,7 @@ fun OnboardingContent(
             ) {
                 // Standard viewports fit without vertical scroll so horizontal swipe stays crisp.
                 // Exceptionally short heights or large accessibility font scales fall back to scroll.
-                val useScrollFallback = maxHeight < 420.dp || fontScale > 1.35f
+                val useScrollFallback = maxHeight < 360.dp || fontScale > 1.35f
                 val pageColumnModifier = Modifier
                     .fillMaxSize()
                     .let { base ->

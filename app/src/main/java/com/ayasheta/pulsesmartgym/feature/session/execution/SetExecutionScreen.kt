@@ -294,16 +294,43 @@ fun SetExecutionScreenContent(
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f),
                             )
-                            val restSeconds = uiState.targetRestSeconds
-                            if (restSeconds != null && restSeconds > 0) {
-                                BasicText(
-                                    text = "Rest: ${restSeconds}s",
-                                    style = PulseTheme.typography.label.copy(
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = WorkoutPalette.TextMuted,
-                                    ),
-                                    modifier = Modifier.testTag("set_execution_rest_info"),
-                                )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (uiState.sessionStartedAtEpochMs > 0L) {
+                                    var workoutElapsedSec by remember(uiState.sessionId, uiState.sessionStartedAtEpochMs) {
+                                        mutableLongStateOf(
+                                            ((System.currentTimeMillis() - uiState.sessionStartedAtEpochMs).coerceAtLeast(0L)) / 1000L,
+                                        )
+                                    }
+                                    LaunchedEffect(uiState.sessionId, uiState.sessionStartedAtEpochMs) {
+                                        while (true) {
+                                            workoutElapsedSec =
+                                                ((System.currentTimeMillis() - uiState.sessionStartedAtEpochMs).coerceAtLeast(0L)) / 1000L
+                                            delay(1_000L)
+                                        }
+                                    }
+                                    BasicText(
+                                        text = "Workout ${SessionUiMapper.formatElapsedMmSs(workoutElapsedSec)}",
+                                        style = PulseTheme.typography.label.copy(
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = WorkoutPalette.TextMuted,
+                                        ),
+                                        modifier = Modifier.testTag("set_execution_workout_elapsed"),
+                                    )
+                                }
+                                val restSeconds = uiState.targetRestSeconds
+                                if (restSeconds != null && restSeconds > 0) {
+                                    BasicText(
+                                        text = "Rest: ${restSeconds}s",
+                                        style = PulseTheme.typography.label.copy(
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = WorkoutPalette.TextMuted,
+                                        ),
+                                        modifier = Modifier.testTag("set_execution_rest_info"),
+                                    )
+                                }
                             }
                         }
 
@@ -396,9 +423,12 @@ fun SetExecutionScreenContent(
                         var setElapsedSeconds by remember(uiState.sessionId, uiState.exerciseId, uiState.setIndex) {
                             mutableLongStateOf(0L)
                         }
-                        LaunchedEffect(uiState.phase, uiState.startedElapsedRealtimeMs) {
+                        LaunchedEffect(uiState.phase, uiState.startedElapsedRealtimeMs, uiState.frozenElapsedDurationMs) {
+                            val frozenMs = uiState.frozenElapsedDurationMs
                             val startMs = uiState.startedElapsedRealtimeMs
-                            if (startMs == null) {
+                            if (frozenMs != null) {
+                                setElapsedSeconds = frozenMs.coerceAtLeast(0L) / 1000L
+                            } else if (startMs == null) {
                                 setElapsedSeconds = 0L
                             } else {
                                 while (true) {
@@ -417,6 +447,7 @@ fun SetExecutionScreenContent(
                         LivePerformanceCard(
                             setElapsedSeconds = setElapsedSeconds,
                             repRecords = uiState.repRecords,
+                            totalDisplayedReps = uiState.totalDisplayedReps,
                             isFallbackManual = uiState.isFallbackManual,
                             modifier = Modifier.testTag("set_execution_live_performance"),
                         )
@@ -558,6 +589,7 @@ private fun SimActionChip(
 private fun LivePerformanceCard(
     setElapsedSeconds: Long,
     repRecords: List<RepMeasurement>,
+    totalDisplayedReps: Int,
     isFallbackManual: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -585,8 +617,9 @@ private fun LivePerformanceCard(
     } ?: "—"
 
     val repTag = when {
-        latestMeasuredRep == null -> "Awaiting rep"
-        isFallbackManual -> "Earlier Rep #${latestMeasuredRep.repIndex}"
+        latestMeasuredRep == null -> "No measured reps"
+        isFallbackManual || latestMeasuredRep.repIndex < totalDisplayedReps ->
+            "Earlier Rep #${latestMeasuredRep.repIndex}"
         else -> "Rep #${latestMeasuredRep.repIndex}"
     }
 
@@ -756,6 +789,10 @@ private fun ExpandableRepetitionBreakdown(
                     val durPart = rep.totalDurationMs?.let {
                         String.format(Locale.US, "%.2fs", it / 1000.0)
                     } ?: "—"
+                    val phasePart = listOfNotNull(
+                        rep.concentricDurationMs?.let { String.format(Locale.US, "Con %.2fs", it / 1000.0) },
+                        rep.eccentricDurationMs?.let { String.format(Locale.US, "Ecc %.2fs", it / 1000.0) },
+                    ).joinToString(" / ")
                     val originLabel = when (rep.origin) {
                         MeasurementOrigin.SIMULATED_TELEMETRY -> "Sim"
                         MeasurementOrigin.SENSOR_TELEMETRY -> "BLE"
@@ -780,8 +817,13 @@ private fun ExpandableRepetitionBreakdown(
                                 color = WorkoutPalette.TextPrimary,
                             ),
                         )
+                        val rightText = if (phasePart.isNotEmpty()) {
+                            "$romPart · $accelPart · $durPart ($phasePart)"
+                        } else {
+                            "$romPart · $accelPart · $durPart"
+                        }
                         BasicText(
-                            text = "$romPart · $accelPart · $durPart",
+                            text = rightText,
                             style = PulseTheme.typography.label.copy(
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium,

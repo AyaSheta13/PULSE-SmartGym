@@ -292,20 +292,7 @@ class RoomWorkoutSessionRepository(
                 origin = request.origin,
                 durationMs = request.durationMs,
             )
-            val repEntities = request.repRecords.map { rep ->
-                RepRecordEntity(
-                    id = UUID.randomUUID().toString(),
-                    performedSetId = performedSetId,
-                    repIndex = rep.repIndex,
-                    classification = rep.classification,
-                    totalDurationMs = rep.totalDurationMs,
-                    concentricDurationMs = rep.concentricDurationMs,
-                    eccentricDurationMs = rep.eccentricDurationMs,
-                    angularRomDegrees = rep.angularRomDegrees,
-                    linearRomCm = rep.linearRomCm,
-                    origin = rep.origin,
-                )
-            }
+            val repEntities = request.repRecords.map { rep -> toRepRecordEntity(performedSetId, rep) }
 
             val rowId = sessionDao.insertPerformedSetIgnore(setEntity)
             if (rowId == -1L) {
@@ -373,20 +360,7 @@ class RoomWorkoutSessionRepository(
             sessionDao.updatePerformedSet(updatedSet)
             val resultRepRecords = when (request.repCorrectionPolicy) {
                 RepCorrectionPolicy.REPLACE_WITH_LEDGER -> {
-                    val repEntities = request.repRecords.map { rep ->
-                        RepRecordEntity(
-                            id = UUID.randomUUID().toString(),
-                            performedSetId = existing.id,
-                            repIndex = rep.repIndex,
-                            classification = rep.classification,
-                            totalDurationMs = rep.totalDurationMs,
-                            concentricDurationMs = rep.concentricDurationMs,
-                            eccentricDurationMs = rep.eccentricDurationMs,
-                            angularRomDegrees = rep.angularRomDegrees,
-                            linearRomCm = rep.linearRomCm,
-                            origin = rep.origin,
-                        )
-                    }
+                    val repEntities = request.repRecords.map { rep -> toRepRecordEntity(existing.id, rep) }
                     sessionDao.deleteRepRecordsForSet(updatedSet.id)
                     sessionDao.insertRepRecords(repEntities)
                     request.repRecords
@@ -397,21 +371,7 @@ class RoomWorkoutSessionRepository(
                 }
                 RepCorrectionPolicy.PRESERVE_IF_COUNTS_MATCH -> {
                     if (request.repRecords.isNotEmpty()) {
-                        val repEntities = request.repRecords.map { rep ->
-                            RepRecordEntity(
-                                id = UUID.randomUUID().toString(),
-                                performedSetId = existing.id,
-                                repIndex = rep.repIndex,
-                                classification = rep.classification,
-                                totalDurationMs = rep.totalDurationMs,
-                                concentricDurationMs = rep.concentricDurationMs,
-                                eccentricDurationMs = rep.eccentricDurationMs,
-                                angularRomDegrees = rep.angularRomDegrees,
-                                linearRomCm = rep.linearRomCm,
-                                peakAccelerationMetersPerSecondSquared = rep.peakAccelerationMetersPerSecondSquared,
-                                origin = rep.origin,
-                            )
-                        }
+                        val repEntities = request.repRecords.map { rep -> toRepRecordEntity(existing.id, rep) }
                         sessionDao.deleteRepRecordsForSet(updatedSet.id)
                         sessionDao.insertRepRecords(repEntities)
                         request.repRecords
@@ -631,4 +591,21 @@ class RoomWorkoutSessionRepository(
             DomainResult.Success(Unit)
         }
     }
+
+    private fun toRepRecordEntity(
+        performedSetId: String,
+        rep: com.ayasheta.pulsesmartgym.core.model.device.RepMeasurement,
+    ): RepRecordEntity = RepRecordEntity(
+        id = UUID.randomUUID().toString(),
+        performedSetId = performedSetId,
+        repIndex = rep.repIndex,
+        classification = rep.classification,
+        totalDurationMs = rep.totalDurationMs,
+        concentricDurationMs = rep.concentricDurationMs,
+        eccentricDurationMs = rep.eccentricDurationMs,
+        angularRomDegrees = rep.angularRomDegrees,
+        linearRomCm = rep.linearRomCm,
+        peakAccelerationMetersPerSecondSquared = rep.peakAccelerationMetersPerSecondSquared,
+        origin = rep.origin,
+    )
 }

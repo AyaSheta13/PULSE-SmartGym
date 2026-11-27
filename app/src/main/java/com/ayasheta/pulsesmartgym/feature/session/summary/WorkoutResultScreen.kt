@@ -315,28 +315,36 @@ fun WorkoutResultScreenContent(
                                             color = WorkoutPalette.TextPrimary,
                                         ),
                                     )
-                                    val metricsLine = listOfNotNull(
-                                        perf.averageRepDurationMs?.let {
-                                            String.format(java.util.Locale.US, "Avg Rep: %.2fs", it / 1000.0)
-                                        },
-                                        perf.averageAngularRomDegrees?.let {
-                                            String.format(java.util.Locale.US, "Avg Angular ROM: %.1f°", it)
-                                        },
-                                        perf.averageLinearRomCm?.let {
-                                            String.format(java.util.Locale.US, "Avg Linear ROM: %.1f cm", it)
-                                        },
-                                        perf.maxPeakAccelerationMps2?.let {
-                                            String.format(java.util.Locale.US, "Peak Accel: %.2f m/s²", it)
-                                        },
-                                    ).joinToString("  •  ")
-                                    if (metricsLine.isNotEmpty()) {
-                                        BasicText(
-                                            text = metricsLine,
-                                            style = PulseTheme.typography.label.copy(
-                                                fontSize = 11.sp,
-                                                color = WorkoutPalette.TextMuted,
-                                            ),
-                                        )
+                                    val measuredExercises = perf.exerciseSummaries.filter { it.hasAnyMeasurements }
+                                    measuredExercises.forEach { exPerf ->
+                                        val exLine = listOfNotNull(
+                                            exPerf.averageRepDurationMs?.let {
+                                                String.format(java.util.Locale.US, "%.2fs rep", it / 1000.0)
+                                            },
+                                            exPerf.averageAngularRomDegrees?.let {
+                                                String.format(java.util.Locale.US, "%.1f° ROM", it)
+                                            },
+                                            exPerf.averageLinearRomCm?.let {
+                                                String.format(java.util.Locale.US, "%.1f cm ROM", it)
+                                            },
+                                            exPerf.maxPeakAccelerationMps2?.let {
+                                                String.format(java.util.Locale.US, "%.2f m/s²", it)
+                                            },
+                                        ).joinToString(" · ")
+                                        val sensorClassification = if (exPerf.sensorClassifiedFullRepCount + exPerf.sensorClassifiedPartialRepCount > 0) {
+                                            " • ${exPerf.sensorClassifiedFullRepCount}F/${exPerf.sensorClassifiedPartialRepCount}P sensor"
+                                        } else {
+                                            ""
+                                        }
+                                        if (exLine.isNotEmpty()) {
+                                            BasicText(
+                                                text = "${exPerf.exerciseName}: $exLine$sensorClassification",
+                                                style = PulseTheme.typography.label.copy(
+                                                    fontSize = 11.sp,
+                                                    color = WorkoutPalette.TextMuted,
+                                                ),
+                                            )
+                                        }
                                     }
                                 }
                             }

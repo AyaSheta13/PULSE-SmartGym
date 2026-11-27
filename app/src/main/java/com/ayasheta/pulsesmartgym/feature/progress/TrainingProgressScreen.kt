@@ -256,10 +256,13 @@ fun TrainingProgressScreenContent(
                     // Key Lift Personal Records
                     item(key = "progress_prs") {
                         PersonalRecordsCard(records = uiState.personalRecords)
+                    }
 
-                        if (uiState.performanceTrends.isNotEmpty()) {
-                            PerformanceTrendsCard(trends = uiState.performanceTrends)
-                        }
+                    item(key = "progress_performance_trends") {
+                        PerformanceTrendsCard(
+                            trends = uiState.performanceTrends,
+                            weekLabel = uiState.weekBadgeLabel,
+                        )
                     }
                 }
 
@@ -530,10 +533,12 @@ private fun WeeklyVolumeChartCard(
 @Composable
 private fun PerformanceTrendsCard(
     trends: List<com.ayasheta.pulsesmartgym.core.model.history.ExercisePerformanceTrendSummary>,
+    weekLabel: String,
 ) {
-    var selectedIndex by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableIntStateOf(0) }
-    val safeIndex = selectedIndex.coerceIn(0, (trends.size - 1).coerceAtLeast(0))
-    val active = trends[safeIndex]
+    var selectedExerciseKey by androidx.compose.runtime.saveable.rememberSaveable {
+        androidx.compose.runtime.mutableStateOf<String?>(null)
+    }
+    val active = trends.firstOrNull { it.exerciseKey == selectedExerciseKey } ?: trends.firstOrNull()
 
     Column(
         modifier = Modifier
@@ -545,64 +550,154 @@ private fun PerformanceTrendsCard(
             .testTag("progress_performance_trends_card"),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        BasicText(
-            text = "Performance Trends",
-            style = PulseTheme.typography.cardTitle.copy(
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = WorkoutPalette.TextPrimary,
-            ),
-        )
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            trends.forEachIndexed { idx, trend ->
-                val isSelected = idx == safeIndex
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(9999.dp))
-                        .background(if (isSelected) WorkoutPalette.PrimaryCoral else Color(0xFFF6F4F2))
-                        .clickable { selectedIndex = idx }
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                ) {
-                    BasicText(
-                        text = trend.exerciseName,
-                        style = PulseTheme.typography.label.copy(
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (isSelected) Color.White else WorkoutPalette.TextPrimary,
-                        ),
-                    )
+            BasicText(
+                text = "Performance Trends",
+                style = PulseTheme.typography.cardTitle.copy(
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = WorkoutPalette.TextPrimary,
+                ),
+            )
+            BasicText(
+                text = weekLabel,
+                style = PulseTheme.typography.label.copy(
+                    fontSize = 11.sp,
+                    color = WorkoutPalette.TextMuted,
+                ),
+            )
+        }
+
+        if (active == null) {
+            BasicText(
+                text = "No measured sensor performance data recorded in this period.",
+                style = PulseTheme.typography.contentPrimary.copy(
+                    fontSize = 13.sp,
+                    color = WorkoutPalette.TextMuted,
+                ),
+            )
+        } else {
+            if (active.isSimulatedIncluded) {
+                BasicText(
+                    text = "Simulated Demo Trends",
+                    style = PulseTheme.typography.label.copy(
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = WorkoutPalette.PrimaryCoral,
+                    ),
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                trends.forEach { trend ->
+                    val isSelected = trend.exerciseKey == active.exerciseKey
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(9999.dp))
+                            .background(if (isSelected) WorkoutPalette.PrimaryCoral else Color(0xFFF6F4F2))
+                            .clickable { selectedExerciseKey = trend.exerciseKey }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    ) {
+                        BasicText(
+                            text = trend.exerciseName,
+                            style = PulseTheme.typography.label.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isSelected) Color.White else WorkoutPalette.TextPrimary,
+                            ),
+                        )
+                    }
+                }
+            }
+            val romText = listOfNotNull(
+                active.averageAngularRomDegrees?.let { String.format(java.util.Locale.US, "%.1f° avg (%d)", it, active.angularRomSampleCount) },
+                active.averageLinearRomCm?.let { String.format(java.util.Locale.US, "%.1f cm avg (%d)", it, active.linearRomSampleCount) },
+            ).joinToString(" · ").ifEmpty { "Unavailable" }
+            val durText = active.averageRepDurationMs?.let {
+                String.format(java.util.Locale.US, "%.2f s avg (%d)", it / 1000.0, active.durationSampleCount)
+            } ?: "Unavailable"
+            val accelText = active.maxPeakAccelerationMps2?.let {
+                String.format(java.util.Locale.US, "%.2f m/s² peak", it)
+            } ?: "Unavailable"
+            val sensorRatio = if (active.totalSensorFullReps + active.totalSensorPartialReps > 0) {
+                "${active.totalSensorFullReps} full / ${active.totalSensorPartialReps} partial sensor"
+            } else {
+                "No sensor classification"
+            }
+            val manualSuffix = if (active.totalManualReps > 0) " • ${active.totalManualReps} manual" else ""
+
+            BasicText(
+                text = "ROM: $romText",
+                style = PulseTheme.typography.contentPrimary.copy(fontSize = 13.sp, color = WorkoutPalette.TextPrimary),
+            )
+            BasicText(
+                text = "Rep Duration: $durText  •  Peak Accel: $accelText",
+                style = PulseTheme.typography.contentPrimary.copy(fontSize = 13.sp, color = WorkoutPalette.TextPrimary),
+            )
+            BasicText(
+                text = "Classification: $sensorRatio$manualSuffix (${active.totalMeasuredReps} measured)",
+                style = PulseTheme.typography.label.copy(fontSize = 12.sp, color = WorkoutPalette.TextMuted),
+            )
+
+            // Chronological session trend points
+            val dateFmt = remember {
+                java.time.format.DateTimeFormatter.ofPattern("MMM d", java.util.Locale.US)
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFFFAF8F6))
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                active.points.forEach { pt ->
+                    val dateStr = java.time.Instant.ofEpochMilli(pt.timestampEpochMs)
+                        .atZone(java.time.ZoneId.systemDefault())
+                        .toLocalDate()
+                        .format(dateFmt)
+                    val ptRom = listOfNotNull(
+                        pt.averageAngularRomDegrees?.let { String.format(java.util.Locale.US, "%.0f°", it) },
+                        pt.averageLinearRomCm?.let { String.format(java.util.Locale.US, "%.0f cm", it) },
+                    ).joinToString("/")
+                    val ptDur = pt.averageRepDurationMs?.let { String.format(java.util.Locale.US, "%.2fs", it / 1000.0) }
+                    val ptAccel = pt.maxPeakAccelerationMps2?.let { String.format(java.util.Locale.US, "%.2fm/s²", it) }
+                    val summaryParts = listOfNotNull(
+                        ptRom.takeIf { it.isNotEmpty() },
+                        ptDur,
+                        ptAccel,
+                    ).joinToString(" · ").ifEmpty { "${pt.measuredRepCount} measured" }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        BasicText(
+                            text = dateStr,
+                            style = PulseTheme.typography.label.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = WorkoutPalette.TextPrimary,
+                            ),
+                        )
+                        BasicText(
+                            text = summaryParts,
+                            style = PulseTheme.typography.label.copy(
+                                fontSize = 11.sp,
+                                color = WorkoutPalette.TextMuted,
+                            ),
+                        )
+                    }
                 }
             }
         }
-        val romText = listOfNotNull(
-            active.averageAngularRomDegrees?.let { String.format(java.util.Locale.US, "%.1f° avg", it) },
-            active.averageLinearRomCm?.let { String.format(java.util.Locale.US, "%.1f cm avg", it) },
-        ).joinToString(" · ").ifEmpty { "Not measured" }
-        val durText = active.averageRepDurationMs?.let {
-            String.format(java.util.Locale.US, "%.2f s avg", it / 1000.0)
-        } ?: "Not measured"
-        val accelText = active.maxPeakAccelerationMps2?.let {
-            String.format(java.util.Locale.US, "%.2f m/s² peak", it)
-        } ?: "Not measured"
-        val ratioText = "${active.totalFullReps} full / ${active.totalPartialReps} partial (${active.totalMeasuredReps} measured)"
-
-        BasicText(
-            text = "ROM: $romText",
-            style = PulseTheme.typography.contentPrimary.copy(fontSize = 13.sp, color = WorkoutPalette.TextPrimary),
-        )
-        BasicText(
-            text = "Rep Duration: $durText  •  Acceleration: $accelText",
-            style = PulseTheme.typography.contentPrimary.copy(fontSize = 13.sp, color = WorkoutPalette.TextPrimary),
-        )
-        BasicText(
-            text = "Repetition Ratio: $ratioText",
-            style = PulseTheme.typography.label.copy(fontSize = 12.sp, color = WorkoutPalette.TextMuted),
-        )
     }
 }
 

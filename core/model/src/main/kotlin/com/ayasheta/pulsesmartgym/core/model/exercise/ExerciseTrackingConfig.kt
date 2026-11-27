@@ -1,5 +1,8 @@
 package com.ayasheta.pulsesmartgym.core.model.exercise
 
+import com.ayasheta.pulsesmartgym.core.model.device.DeviceCapabilities
+import com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind
+
 enum class TrackingMovementStrategy {
     LINEAR,
     ANGULAR,
@@ -58,6 +61,25 @@ object ExerciseTrackingCatalog {
             TrackingCategory.ANGULAR -> angular(exerciseId ?: "custom")
             TrackingCategory.COMPOUND -> compound(exerciseId ?: "custom")
         }
+    }
+
+    fun resolveEffectiveCapabilities(
+        deviceCapabilities: DeviceCapabilities,
+        exerciseConfig: ExerciseTrackingConfiguration,
+        environment: ExecutionEnvironmentKind,
+        hasCalibration: Boolean = false,
+    ): DeviceCapabilities {
+        val allowAutomatic = deviceCapabilities.automaticRepEvents &&
+            exerciseConfig.supportsAutomaticRepDetection &&
+            (environment == ExecutionEnvironmentKind.DEMO ||
+                (exerciseConfig.strategy != TrackingMovementStrategy.MANUAL_ONLY && hasCalibration))
+        return deviceCapabilities.copy(
+            automaticRepEvents = allowAutomatic,
+            fullPartialClassification = deviceCapabilities.fullPartialClassification && allowAutomatic,
+            angularRom = deviceCapabilities.angularRom && exerciseConfig.supportsAngularRom,
+            linearRom = deviceCapabilities.linearRom && exerciseConfig.supportsLinearRom,
+            peakAcceleration = deviceCapabilities.peakAcceleration && exerciseConfig.supportsPeakAcceleration,
+        )
     }
 
     private fun linear(id: String) = ExerciseTrackingConfiguration(

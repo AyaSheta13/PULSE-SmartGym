@@ -57,11 +57,12 @@ class P11VisualAndIntegrationUiTest {
     fun welcomeAndOnboardingHeroCards_matchIntrinsicAspectRatios_withZeroScroll() {
         var screenMode by mutableStateOf("welcome")
         var widthDp by mutableStateOf(390.dp)
+        var heightDp by mutableStateOf(844.dp)
         var page by mutableIntStateOf(0)
 
         composeRule.setContent {
             PulseTheme {
-                Box(modifier = Modifier.size(width = widthDp, height = 844.dp)) {
+                Box(modifier = Modifier.size(width = widthDp, height = heightDp)) {
                     if (screenMode == "welcome") {
                         AuthEntryContent(
                             isLoading = false,
@@ -84,30 +85,40 @@ class P11VisualAndIntegrationUiTest {
             }
         }
 
-        // Welcome across 360, 390, 412dp
-        listOf(360.dp, 390.dp, 412.dp).forEach { w ->
+        // Welcome across 360, 390, 412dp and short/standard/tall heights
+        listOf(360.dp to 640.dp, 390.dp to 844.dp, 412.dp to 915.dp).forEach { (w, h) ->
             widthDp = w
+            heightDp = h
             composeRule.waitForIdle()
             assertEquals(0, composeRule.onAllNodes(hasScrollAction()).fetchSemanticsNodes().size)
             val bounds = composeRule.onNodeWithTag("welcome_hero_card").getUnclippedBoundsInRoot()
             val cardRatio = (bounds.right - bounds.left).value / (bounds.bottom - bounds.top).value
-            assertTrue("Welcome ratio mismatch: $cardRatio", abs(cardRatio - (378f / 436f)) < 0.04f)
+            assertTrue("Welcome ratio mismatch at ${w}x$h: $cardRatio", abs(cardRatio - (378f / 436f)) < 0.04f)
             if (w == 390.dp) saveScreenshot("p11_welcome_390.png")
         }
 
-        // Onboarding 0, 1, 2 at 390dp
+        // Onboarding 0, 1, 2 across 360, 390, 412dp and short/tall heights
         screenMode = "onboarding"
-        widthDp = 390.dp
         val expectedRatios = listOf(378f / 436f, 1672f / 941f, 377f / 436f)
-        for (p in 0..2) {
-            page = p
-            composeRule.waitForIdle()
-            val cardBounds = composeRule.onNodeWithTag("onboarding_hero_card_$p").getUnclippedBoundsInRoot()
-            val badgeBounds = composeRule.onNodeWithTag("onboarding_hero_badge_$p").getUnclippedBoundsInRoot()
-            val ratio = (cardBounds.right - cardBounds.left).value / (cardBounds.bottom - cardBounds.top).value
-            assertTrue("Page $p ratio mismatch: $ratio vs ${expectedRatios[p]}", abs(ratio - expectedRatios[p]) < 0.05f)
-            assertTrue(badgeBounds.top >= cardBounds.top && badgeBounds.bottom <= cardBounds.bottom)
-            saveScreenshot("p11_onboarding_$p.png")
+        listOf(360.dp to 640.dp, 390.dp to 844.dp, 412.dp to 915.dp).forEach { (w, h) ->
+            widthDp = w
+            heightDp = h
+            for (p in 0..2) {
+                page = p
+                composeRule.waitForIdle()
+                val verticalScrollNodes = composeRule.onAllNodes(
+                    androidx.compose.ui.test.SemanticsMatcher.keyIsDefined(
+                        androidx.compose.ui.semantics.SemanticsProperties.VerticalScrollAxisRange,
+                    ),
+                ).fetchSemanticsNodes()
+                assertEquals(0, verticalScrollNodes.size)
+                val cardBounds = composeRule.onNodeWithTag("onboarding_hero_card_$p").getUnclippedBoundsInRoot()
+                val badgeBounds = composeRule.onNodeWithTag("onboarding_hero_badge_$p").getUnclippedBoundsInRoot()
+                val ratio = (cardBounds.right - cardBounds.left).value / (cardBounds.bottom - cardBounds.top).value
+                assertTrue("Page $p ratio mismatch at ${w}x$h: $ratio vs ${expectedRatios[p]}", abs(ratio - expectedRatios[p]) < 0.05f)
+                assertTrue(badgeBounds.top >= cardBounds.top && badgeBounds.bottom <= cardBounds.bottom)
+                if (w == 390.dp) saveScreenshot("p11_onboarding_$p.png")
+            }
         }
     }
 
