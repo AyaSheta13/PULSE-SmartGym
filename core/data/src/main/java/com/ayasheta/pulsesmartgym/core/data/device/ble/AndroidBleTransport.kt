@@ -225,9 +225,14 @@ class AndroidBleTransport(
     private val gattCallback = object : BluetoothGattCallback() {
         @SuppressLint("MissingPermission")
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+            if (gatt !== bluetoothGatt) return
             if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
                 _events.tryEmit(BleTransportEvent.GattConnected(gatt.device.address, gatt.device.name))
-                gatt.discoverServices()
+                val mtuRequested = runCatching { gatt.requestMtu(activeConfig.requestedMtu) }.getOrDefault(false)
+                if (!mtuRequested) {
+                    _events.tryEmit(BleTransportEvent.MtuNegotiated(mtu = DEFAULT_ATT_MTU, maxPayloadBytes = DEFAULT_ATT_MTU - 3))
+                    gatt.discoverServices()
+                }
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 val unexpected = !userInitiatedDisconnect
                 closeGattOnly()
@@ -236,7 +241,16 @@ class AndroidBleTransport(
         }
 
         @SuppressLint("MissingPermission")
+        override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+            if (gatt !== bluetoothGatt) return
+            val effectiveMtu = if (status == BluetoothGatt.GATT_SUCCESS && mtu >= DEFAULT_ATT_MTU) mtu else DEFAULT_ATT_MTU
+            _events.tryEmit(BleTransportEvent.MtuNegotiated(mtu = effectiveMtu, maxPayloadBytes = effectiveMtu - 3))
+            gatt.discoverServices()
+        }
+
+        @SuppressLint("MissingPermission")
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            if (gatt !== bluetoothGatt) return
             if (status != BluetoothGatt.GATT_SUCCESS) {
                 _events.tryEmit(
                     BleTransportEvent.Error(
@@ -271,18 +285,35 @@ class AndroidBleTransport(
                 )
                 return
             }
+            val supportsNotifyOrIndicate =
+                (characteristic.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) != 0 ||
+                    (characteristic.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE) != 0
             gatt.setCharacteristicNotification(characteristic, true)
             val cccd = characteristic.getDescriptor(CCCD_UUID)
             if (cccd != null) {
+                val enableValue = if ((characteristic.properties and BluetoothGattCharacteristic.PROPERTY_INDICATE) != 0 &&
+                    (characteristic.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY) == 0
+                ) {
+                    BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
+                } else {
+                    BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    gatt.writeDescriptor(cccd, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
+                    gatt.writeDescriptor(cccd, enableValue)
                 } else {
                     @Suppress("DEPRECATION")
                     run {
-                        cccd.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                        cccd.value = enableValue
                         gatt.writeDescriptor(cccd)
                     }
                 }
+            } else if (supportsNotifyOrIndicate) {
+                _events.tryEmit(
+                    BleTransportEvent.Error(
+                        DeviceOperationError.HANDSHAKE_FAILED,
+                        "Missing CCCD descriptor 0x2902 on telemetry characteristic $targetCharUuid.",
+                    ),
+                )
             } else {
                 _events.tryEmit(BleTransportEvent.NotificationsSubscribed(targetCharUuid))
             }
@@ -293,6 +324,7 @@ class AndroidBleTransport(
             descriptor: BluetoothGattDescriptor,
             status: Int,
         ) {
+            if (gatt !== bluetoothGatt) return
             if (descriptor.uuid == CCCD_UUID) {
                 if (status == BluetoothGatt.GATT_SUCCESS) {
                     _events.tryEmit(
@@ -314,6 +346,7 @@ class AndroidBleTransport(
             characteristic: BluetoothGattCharacteristic,
             value: ByteArray,
         ) {
+            if (gatt !== bluetoothGatt) return
             _events.tryEmit(
                 BleTransportEvent.NotificationReceived(
                     characteristicUuid = characteristic.uuid.toString(),
@@ -327,6 +360,7 @@ class AndroidBleTransport(
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic,
         ) {
+            if (gatt !== bluetoothGatt) return
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
                 @Suppress("DEPRECATION")
                 val bytes = characteristic.value?.copyOf() ?: return
@@ -341,6 +375,7 @@ class AndroidBleTransport(
     }
 
     companion object {
+        private const val DEFAULT_ATT_MTU: Int = 23
         private val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
     }
 }

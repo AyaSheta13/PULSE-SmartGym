@@ -16,9 +16,9 @@ Use this 14-stage checklist when connecting the physical ESP32 + IMU/distance se
 - **Logs / Tools**: `HardwareDiagnosticsScreen` (`Connection State = SCANNING`), Logcat `AndroidBleTransport`.
 - **Failure Attribution**: **BLE Transport / Permissions** if nRF Connect sees the device but PULSE does not.
 
-## Stage 3: GATT Connection
-- **Expected Result**: Selecting the device transitions `CONNECTING -> CONNECTED` within `connectTimeoutMs` (`10,000 ms`).
-- **How to Verify**: Observe `MyDeviceScreen` / `HardwareDiagnosticsScreen` (`Device Name`, `Device Address`).
+## Stage 3: GATT Connection & MTU Negotiation
+- **Expected Result**: Selecting the device transitions `CONNECTING -> CONNECTED` within `connectTimeoutMs` (`10,000 ms`), and `AndroidBleTransport` negotiates ATT MTU (`requestMtu(64)` or falls back cleanly to 23-byte ATT MTU / 20-byte payload).
+- **How to Verify**: Observe `MyDeviceScreen` / `HardwareDiagnosticsScreen` (`Device Name`, `Device Address`, `Service Discovery` MTU log).
 - **Logs / Tools**: `HardwareDiagnosticsScreen` (`Last Error`), Logcat `BluetoothGattCallback.onConnectionStateChange`.
 - **Failure Attribution**: **BLE Transport** (timeout/GATT status 133) or **Firmware** (device rejects connection).
 

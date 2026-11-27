@@ -466,21 +466,22 @@ internal fun LivePerformanceWaveformCard(
         }
     }
 
-    val seriesValues: List<Double> = remember(repRecords, signalKind) {
+    val seriesValues: List<Double?> = remember(repRecords, signalKind) {
         when (signalKind) {
-            PlottedSignalKind.LINEAR_ROM -> repRecords.mapNotNull { it.linearRomCm?.takeIf { v -> v.isFinite() && v >= 0.0 } }
-            PlottedSignalKind.ANGULAR_ROM -> repRecords.mapNotNull { it.angularRomDegrees?.takeIf { v -> v.isFinite() && v >= 0.0 } }
-            PlottedSignalKind.PEAK_ACCEL -> repRecords.mapNotNull {
+            PlottedSignalKind.LINEAR_ROM -> repRecords.map { it.linearRomCm?.takeIf { v -> v.isFinite() && v >= 0.0 } }
+            PlottedSignalKind.ANGULAR_ROM -> repRecords.map { it.angularRomDegrees?.takeIf { v -> v.isFinite() && v >= 0.0 } }
+            PlottedSignalKind.PEAK_ACCEL -> repRecords.map {
                 it.peakAccelerationMetersPerSecondSquared?.takeIf { v -> v.isFinite() && v >= 0.0 }
             }
-            PlottedSignalKind.REP_DURATION -> repRecords.mapNotNull {
+            PlottedSignalKind.REP_DURATION -> repRecords.map {
                 it.totalDurationMs?.takeIf { v -> v >= 0L }?.div(1000.0)
             }
             null -> emptyList()
         }
     }
 
-    val hasMeasuredData = seriesValues.isNotEmpty()
+    val validValues = remember(seriesValues) { seriesValues.filterNotNull() }
+    val hasMeasuredData = validValues.isNotEmpty()
     val statusBadgeText = when {
         hasMeasuredData && isSimulated -> "Rep #${repRecords.size} • Sim"
         hasMeasuredData -> "Rep #${repRecords.size}"
@@ -581,8 +582,8 @@ internal fun LivePerformanceWaveformCard(
                 )
             }
 
-            val maxVal = seriesValues.maxOrNull() ?: 1.0
-            val minVal = seriesValues.minOrNull() ?: 0.0
+            val maxVal = validValues.maxOrNull() ?: 1.0
+            val minVal = validValues.minOrNull() ?: 0.0
             val midVal = (maxVal + minVal) / 2.0
             val xCount = max(targetReps.coerceIn(4, 12), seriesValues.size)
 
@@ -658,32 +659,90 @@ internal fun LivePerformanceWaveformCard(
                         strokeWidth = 1.dp.toPx(),
                     )
 
-                    val points: List<Offset> = if (hasMeasuredData) {
+                    if (hasMeasuredData) {
                         val span = (maxVal - minVal).takeIf { it > 0.0001 } ?: 1.0
-                        if (seriesValues.size == 1) {
-                            val y = padTop + plotH * 0.35f
-                            listOf(Offset(0f, h - padBottom), Offset(w * 0.5f, y), Offset(w, y))
-                        } else {
-                            seriesValues.mapIndexed { idx, v ->
-                                val x = w * (idx.toFloat() / (seriesValues.size - 1).toFloat())
+                        val totalIndices = seriesValues.size.coerceAtLeast(1)
+                        val segments = mutableListOf<MutableList<Offset>>()
+                        var currentSegment: MutableList<Offset>? = null
+
+                        seriesValues.forEachIndexed { idx, v ->
+                            if (v == null) {
+                                currentSegment = null
+                            } else {
+                                val x = if (totalIndices == 1) {
+                                    w * 0.5f
+                                } else {
+                                    w * (idx.toFloat() / (totalIndices - 1).toFloat())
+                                }
                                 val norm = ((v - minVal) / span).toFloat().coerceIn(0f, 1f)
-                                val y = h - padBottom - norm * plotH
-                                Offset(x, y)
+                                val y = if (totalIndices == 1) {
+                                    padTop + plotH * 0.35f
+                                } else {
+                                    h - padBottom - norm * plotH
+                                }
+                                val seg = currentSegment ?: mutableListOf<Offset>().also {
+                                    segments.add(it)
+                                    currentSegment = it
+                                }
+                                seg.add(Offset(x, y))
+                            }
+                        }
+
+                        segments.forEach { seg ->
+                            if (seg.size == 1) {
+                                val pt = seg.first()
+                                if (totalIndices == 1) {
+                                    val expanded = listOf(Offset(0f, h - padBottom), pt, Offset(w, pt.y))
+                                    val strokePath = Path().apply {
+                                        moveTo(expanded.first().x, expanded.first().y)
+                                        for (i in 0 until expanded.lastIndex) {
+                                            val p0 = expanded[i]
+                                            val p1 = expanded[i + 1]
+                                            val midX = (p0.x + p1.x) / 2f
+                                            cubicTo(midX, p0.y, midX, p1.y, p1.x, p1.y)
+                                        }
+                                    }
+                                    val fillPath = Path().apply {
+                                        addPath(strokePath)
+                                        lineTo(expanded.last().x, h - padBottom)
+                                        lineTo(expanded.first().x, h - padBottom)
+                                        close()
+                                    }
+                                    drawPath(fillPath, brush = Brush.verticalGradient(listOf(fillColor, Color.Transparent)))
+                                    drawPath(strokePath, color = waveColor, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                                } else {
+                                    drawCircle(color = waveColor, radius = 3.5.dp.toPx(), center = pt)
+                                }
+                            } else if (seg.size >= 2) {
+                                val strokePath = Path().apply {
+                                    moveTo(seg.first().x, seg.first().y)
+                                    for (i in 0 until seg.lastIndex) {
+                                        val p0 = seg[i]
+                                        val p1 = seg[i + 1]
+                                        val midX = (p0.x + p1.x) / 2f
+                                        cubicTo(midX, p0.y, midX, p1.y, p1.x, p1.y)
+                                    }
+                                }
+                                val fillPath = Path().apply {
+                                    addPath(strokePath)
+                                    lineTo(seg.last().x, h - padBottom)
+                                    lineTo(seg.first().x, h - padBottom)
+                                    close()
+                                }
+                                drawPath(fillPath, brush = Brush.verticalGradient(listOf(fillColor, Color.Transparent)))
+                                drawPath(strokePath, color = waveColor, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
                             }
                         }
                     } else {
                         // Smooth continuous illustrative wave with rounded peaks & rounded valleys
                         val periods = 5
                         val halfPeriods = periods * 2
-                        (0..halfPeriods).map { idx ->
+                        val points = (0..halfPeriods).map { idx ->
                             val x = w * (idx.toFloat() / halfPeriods.toFloat())
                             val isPeak = idx % 2 == 1
                             val y = if (isPeak) padTop + plotH * 0.22f else h - padBottom - plotH * 0.16f
                             Offset(x, y)
                         }
-                    }
-
-                    if (points.size >= 2) {
                         val strokePath = Path().apply {
                             moveTo(points.first().x, points.first().y)
                             for (i in 0 until points.lastIndex) {
@@ -699,15 +758,8 @@ internal fun LivePerformanceWaveformCard(
                             lineTo(points.first().x, h - padBottom)
                             close()
                         }
-                        drawPath(
-                            path = fillPath,
-                            brush = Brush.verticalGradient(listOf(fillColor, Color.Transparent)),
-                        )
-                        drawPath(
-                            path = strokePath,
-                            color = waveColor,
-                            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-                        )
+                        drawPath(fillPath, brush = Brush.verticalGradient(listOf(fillColor, Color.Transparent)))
+                        drawPath(strokePath, color = waveColor, style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
                     }
                 }
             }

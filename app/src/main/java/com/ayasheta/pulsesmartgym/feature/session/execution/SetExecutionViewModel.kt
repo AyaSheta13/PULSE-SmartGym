@@ -830,6 +830,7 @@ class SetExecutionViewModel(
 
     override fun onCleared() {
         isDisposed = true
+        deviceRepository.setActiveTrackingWindow("")
         super.onCleared()
     }
 

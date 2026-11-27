@@ -75,7 +75,7 @@ class P11RawBlePipelineUiTest {
     @Test
     fun rawBleTransportPayloads_updateSetExecutionWaveform_andPersistToRoom() {
         val rawTransport = TestRawBleTransport()
-        val protocolConfig = BleProtocolConfig.proposedTestConfig()
+        val protocolConfig = BleProtocolConfig.proposedTestConfig(isSensorCalibrated = true)
         val container = object : PulseDataContainer(context, seedDefaultPlansOnFirstUse = true) {
             override val realBleDeviceDataSource: RealBleDeviceDataSource by lazy {
                 RealBleDeviceDataSource(
@@ -250,6 +250,7 @@ class P11RawBlePipelineUiTest {
         composeRule.onNodeWithTag("button_diag_replay_valid").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("RAW REPLAY (DEV)").assertIsDisplayed()
+        assertEquals(DeviceConnectionState.DISCONNECTED, deviceRepo.linkState.value.phase)
         composeRule.onNodeWithTag("button_diag_replay_malformed").performClick()
         composeRule.waitForIdle()
 

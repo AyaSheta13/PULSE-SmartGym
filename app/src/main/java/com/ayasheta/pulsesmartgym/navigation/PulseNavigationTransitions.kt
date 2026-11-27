@@ -1,6 +1,7 @@
 package com.ayasheta.pulsesmartgym.navigation
 
 import android.animation.ValueAnimator
+import android.os.Build
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.core.tween
@@ -17,7 +18,7 @@ import androidx.navigation3.scene.Scene
 object PulseNavigationTransitions {
 
     private fun duration(defaultMs: Int): Int =
-        if (ValueAnimator.areAnimatorsEnabled()) defaultMs else 0
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || ValueAnimator.areAnimatorsEnabled()) defaultMs else 0
 
     fun forwardTransition(): AnimatedContentTransitionScope<Scene<NavKey>>.() -> ContentTransform = {
         val enterMs = duration(220)

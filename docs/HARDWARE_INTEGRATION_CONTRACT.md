@@ -9,11 +9,11 @@
 | Item | Status | Current Value / Behavior |
 | --- | --- | --- |
 | Android Runtime Permissions | **Confirmed** | `BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT` (API 31+); `ACCESS_FINE_LOCATION` (API ≤ 30) |
-| BLE Transport Mode | **Confirmed** | GATT Client (`BluetoothDevice.TRANSPORT_LE`), CCCD `00002902-0000-1000-8000-00805f9b34fb` |
+| BLE Transport Mode | **Confirmed** | GATT Client (`BluetoothDevice.TRANSPORT_LE`), `requestMtu(64)` with graceful fallback to `DEFAULT_ATT_MTU = 23` (20-byte payload), CCCD `00002902-0000-1000-8000-00805f9b34fb` |
 | Domain Measurement Units | **Confirmed** | Angular ROM (`deg`), Linear ROM (`cm`), Peak Accel (`m/s²`), Durations (`ms`), Battery (`%`) |
 | Unavailable Metric Sentinel | **Confirmed** | `0xFFFF` (uint16) decoded as `null` — never substituted with `0` |
 | Service & Characteristic UUIDs | **Proposed v1** | Nordic-UART-style custom UUIDs (configurable in `BleProtocolConfig`) |
-| Binary Packet Framing & CRC-8 | **Proposed v1** | Little-endian, 1-byte version (`0x01`), 1-byte type, trailing CRC-8 (`poly = 0x07`) |
+| Binary Packet Framing & CRC-8 | **Proposed v1** | Little-endian, 1-byte version (`0x01`), 1-byte type, trailing CRC-8 (`poly = 0x07`). Supports **20-byte MTU-safe** `0x01` / **19-byte** `0x02` frames (default ATT MTU=23) and 22-byte extended frames (when MTU ≥ 25). |
 | Sampling Rate (Continuous IMU) | **Proposed v1** | 50 Hz (`20 ms` interval) for raw sample diagnostics; per-rep summaries on rep completion |
 | Calibration & Tracking Commands | **Proposed v1** | Optional write characteristic (`0x10` Start Window, `0x11` Stop Window, `0x12` Zero/Calibrate) |
 

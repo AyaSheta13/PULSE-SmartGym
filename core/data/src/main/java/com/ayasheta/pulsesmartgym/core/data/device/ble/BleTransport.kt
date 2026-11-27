@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.Flow
 sealed interface BleTransportEvent {
     data class DeviceDiscovered(val device: DeviceDescriptor) : BleTransportEvent
     data class GattConnected(val deviceId: String, val deviceName: String?) : BleTransportEvent
+    data class MtuNegotiated(val mtu: Int, val maxPayloadBytes: Int) : BleTransportEvent
     data class ServicesDiscovered(val serviceUuids: List<String>) : BleTransportEvent
     data class NotificationsSubscribed(val characteristicUuid: String) : BleTransportEvent
     data class NotificationReceived(

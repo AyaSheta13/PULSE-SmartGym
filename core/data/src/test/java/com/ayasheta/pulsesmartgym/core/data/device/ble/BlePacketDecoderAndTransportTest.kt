@@ -121,7 +121,7 @@ class BlePacketDecoderAndTransportTest {
         UnconfinedTestDispatcher(),
     ) {
         val transport = FakeRawBleTransport()
-        val config = BleProtocolConfig.proposedTestConfig()
+        val config = BleProtocolConfig.proposedTestConfig(isSensorCalibrated = true)
         val dataSource = RealBleDeviceDataSource(
             transport = transport,
             initialConfig = config,
@@ -203,7 +203,49 @@ class BlePacketDecoderAndTransportTest {
         assertEquals(DeviceConnectionState.CONNECTION_LOST, dataSource.connectionState.value.phase)
         assertEquals(2, emittedEvents.filterIsInstance<DeviceEvent.RepRecorded>().size)
 
+        // 7. Reconnect resets sequence tracker so seq 1 is accepted on new connection
+        transport.emit(BleTransportEvent.GattConnected(device.id, device.name))
+        transport.emit(BleTransportEvent.MtuNegotiated(mtu = 64, maxPayloadBytes = 61))
+        transport.emit(BleTransportEvent.NotificationsSubscribed(config.telemetryCharacteristicUuid!!))
+        assertEquals(64, dataSource.diagnostics.value.negotiatedMtu)
+        transport.emit(BleTransportEvent.NotificationReceived(config.telemetryCharacteristicUuid!!, rep1))
+        assertEquals(3, emittedEvents.filterIsInstance<DeviceEvent.RepRecorded>().size)
+
         collectJob.cancel()
+    }
+
+    @Test
+    fun calibrationIntegrity_andReplayIsolation_areStrictlyEnforced() = runTest(UnconfinedTestDispatcher()) {
+        val transport = FakeRawBleTransport()
+        // Protocol confirmed, but sensor NOT calibrated
+        val uncalibratedConfig = BleProtocolConfig.proposedTestConfig(isSensorCalibrated = false)
+        val dataSource = RealBleDeviceDataSource(
+            transport = transport,
+            initialConfig = uncalibratedConfig,
+            scope = backgroundScope,
+        )
+        val emitted = mutableListOf<DeviceEvent>()
+        val job = backgroundScope.launch { dataSource.events.collect { emitted.add(it) } }
+
+        dataSource.connect("AA:BB:CC:DD:EE:02")
+        transport.emit(BleTransportEvent.GattConnected("AA:BB:CC:DD:EE:02", "PULSE-POD"))
+        transport.emit(BleTransportEvent.NotificationsSubscribed(uncalibratedConfig.telemetryCharacteristicUuid!!))
+        assertEquals(DeviceConnectionState.CONNECTED, dataSource.connectionState.value.phase)
+        assertEquals(false, dataSource.connectionState.value.isCalibrated)
+
+        // Replay must NEVER emit SENSOR_TELEMETRY or fake CONNECTED state
+        dataSource.disconnect()
+        val raw = BlePacketDecoder.encodeRepTelemetryPacket(
+            sequenceNumber = 1L,
+            classification = RepClassification.FULL,
+            linearRomCm = 40.0,
+        )
+        dataSource.replayRawPayloadForDiagnostics(raw)
+        assertEquals(DeviceConnectionState.DISCONNECTED, dataSource.connectionState.value.phase)
+        assertEquals(0, emitted.size)
+        assertEquals(1L, dataSource.diagnostics.value.incomingPacketCount)
+
+        job.cancel()
     }
 }
 

@@ -53,7 +53,7 @@ class RealBleDeviceDataSource(
     private var protocolConfig: BleProtocolConfig = initialConfig
 
     @Volatile
-    private var activeTrackingWindowId: String = "default-ble-window"
+    private var activeTrackingWindowId: String = ""
 
     private val generationCounter = AtomicLong(0L)
     private var lastSequenceNumber: Long? = null
@@ -102,9 +102,7 @@ class RealBleDeviceDataSource(
     }
 
     fun setActiveTrackingWindow(trackingWindowId: String) {
-        if (trackingWindowId.isNotBlank()) {
-            activeTrackingWindowId = trackingWindowId
-        }
+        activeTrackingWindowId = trackingWindowId.trim()
     }
 
     fun resetDiagnosticsCounters() {
@@ -127,42 +125,15 @@ class RealBleDeviceDataSource(
     }
 
     /**
-     * Developer-only replay helper that feeds raw BLE bytes through the exact same
-     * [onNotificationPayloadReceived] -> [BlePacketDecoder] -> [events] pipeline.
+     * Developer-only replay helper that feeds raw BLE bytes through [BlePacketDecoder]
+     * for [HardwareDiagnosticsSnapshot] inspection ONLY.
+     *
+     * Never emits [MeasurementOrigin.SENSOR_TELEMETRY] onto [_events] and never sets
+     * [_connectionState] to [DeviceConnectionState.CONNECTED], guaranteeing raw replay
+     * cannot pollute genuine workout history, personal records, or performance trends.
      */
-    fun replayRawPayloadForDiagnostics(
-        payload: ByteArray,
-        trackingWindowId: String = activeTrackingWindowId,
-    ) {
-        activeTrackingWindowId = trackingWindowId
-        if (_connectionState.value.phase != DeviceConnectionState.CONNECTED) {
-            val gen = generationCounter.incrementAndGet()
-            val replayDevice = DeviceDescriptor(
-                id = "00:00:00:00:00:00",
-                name = "PULSE Pod (Raw Replay)",
-                profileLabel = "Raw Replay",
-                signalLabel = "Local Replay",
-                providerType = DeviceProviderType.REAL_BLE,
-                isSimulated = false,
-                capabilities = defaultBleCapabilities(),
-            )
-            _connectionState.value = DeviceLinkState(
-                phase = DeviceConnectionState.CONNECTED,
-                providerType = DeviceProviderType.REAL_BLE,
-                selectedDevice = replayDevice,
-                connectionGeneration = gen,
-                capabilities = defaultBleCapabilities(),
-                isTelemetrySimulated = false,
-            )
-            _diagnostics.value = _diagnostics.value.copy(
-                connectionState = DeviceConnectionState.CONNECTED,
-                deviceName = replayDevice.name,
-                deviceAddress = replayDevice.id,
-                serviceDiscoveryStatus = "Raw Replay Transport",
-                notificationSubscriptionStatus = "Subscribed (Replay)",
-            )
-        }
-        onNotificationPayloadReceived(payload, HardwareDataOrigin.RAW_REPLAY)
+    fun replayRawPayloadForDiagnostics(payload: ByteArray) {
+        onNotificationPayloadReceived(payload, HardwareDataOrigin.RAW_REPLAY, emitEvents = false)
     }
 
     private fun notConfiguredFailure(): DeviceOperationResult.Failure {
@@ -357,6 +328,8 @@ class RealBleDeviceDataSource(
         scanTimeoutJob?.cancel()
         connectTimeoutJob?.cancel()
         transport?.close()
+        lastSequenceNumber = null
+        seenSequenceNumbers.clear()
         _discoveredDevices.value = emptyList()
         _connectionState.value = DeviceLinkState(
             phase = DeviceConnectionState.DISCONNECTED,
@@ -382,7 +355,13 @@ class RealBleDeviceDataSource(
                 _diagnostics.value = _diagnostics.value.copy(
                     deviceName = event.deviceName ?: _diagnostics.value.deviceName,
                     deviceAddress = event.deviceId,
-                    serviceDiscoveryStatus = "Discovering services...",
+                    serviceDiscoveryStatus = "Negotiating MTU...",
+                )
+            }
+            is BleTransportEvent.MtuNegotiated -> {
+                _diagnostics.value = _diagnostics.value.copy(
+                    negotiatedMtu = event.mtu,
+                    serviceDiscoveryStatus = "MTU ${event.mtu} (${event.maxPayloadBytes}B payload) — Discovering services...",
                 )
             }
             is BleTransportEvent.ServicesDiscovered -> {
@@ -393,27 +372,36 @@ class RealBleDeviceDataSource(
             }
             is BleTransportEvent.NotificationsSubscribed -> {
                 connectTimeoutJob?.cancel()
+                lastSequenceNumber = null
+                seenSequenceNumbers.clear()
                 val gen = generationCounter.incrementAndGet()
                 val caps = defaultBleCapabilities()
+                val calibrated = protocolConfig.isProtocolConfirmed && protocolConfig.isSensorCalibrated
                 val currentDevice = _connectionState.value.selectedDevice?.copy(capabilities = caps)
                 _connectionState.value = _connectionState.value.copy(
                     phase = DeviceConnectionState.CONNECTED,
                     selectedDevice = currentDevice,
                     connectionGeneration = gen,
                     capabilities = caps,
-                    isCalibrated = protocolConfig.isProtocolConfirmed,
+                    isCalibrated = calibrated,
                     failureReason = null,
                     lastError = null,
                 )
                 _diagnostics.value = _diagnostics.value.copy(
                     dataOrigin = HardwareDataOrigin.REAL_BLE,
                     connectionState = DeviceConnectionState.CONNECTED,
+                    isCalibrated = calibrated,
+                    calibrationStatus = if (calibrated) {
+                        "Hardware calibration confirmed"
+                    } else {
+                        "Uncalibrated — automatic rep detection gated in GENUINE mode"
+                    },
                     notificationSubscriptionStatus = "Subscribed (${event.characteristicUuid})",
                     lastError = null,
                 )
             }
             is BleTransportEvent.NotificationReceived -> {
-                onNotificationPayloadReceived(event.payload, HardwareDataOrigin.REAL_BLE)
+                onNotificationPayloadReceived(event.payload, HardwareDataOrigin.REAL_BLE, emitEvents = true)
             }
             is BleTransportEvent.Disconnected -> {
                 connectTimeoutJob?.cancel()
@@ -450,6 +438,7 @@ class RealBleDeviceDataSource(
     private fun onNotificationPayloadReceived(
         payload: ByteArray,
         originKind: HardwareDataOrigin,
+        emitEvents: Boolean = true,
     ) {
         val nowMs = timeProviderMs()
         if (firstPacketTimestampMs == null) firstPacketTimestampMs = nowMs
@@ -462,12 +451,13 @@ class RealBleDeviceDataSource(
             is DecodedBlePacket.RepTelemetry -> {
                 val (dupDelta, dropDelta) = trackSequence(decoded.sequenceNumber)
                 val gen = _connectionState.value.connectionGeneration
-                val repEvent = decoded.toDeviceRepEvent(
-                    connectionGeneration = gen,
-                    trackingWindowId = activeTrackingWindowId,
-                    origin = MeasurementOrigin.SENSOR_TELEMETRY,
-                )
-                if (dupDelta == 0L) {
+                val windowId = activeTrackingWindowId
+                if (emitEvents && dupDelta == 0L && windowId.isNotBlank() && originKind == HardwareDataOrigin.REAL_BLE) {
+                    val repEvent = decoded.toDeviceRepEvent(
+                        connectionGeneration = gen,
+                        trackingWindowId = windowId,
+                        origin = MeasurementOrigin.SENSOR_TELEMETRY,
+                    )
                     _events.tryEmit(DeviceEvent.RepRecorded(repEvent))
                 }
                 _diagnostics.value = currentDiag.copy(

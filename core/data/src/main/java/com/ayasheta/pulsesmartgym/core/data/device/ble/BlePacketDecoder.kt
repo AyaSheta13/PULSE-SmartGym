@@ -101,9 +101,9 @@ class BlePacketDecoder(
     }
 
     private fun decodeRepTelemetry(payload: ByteArray, version: Int, hex: String): DecodedBlePacket {
-        if (payload.size != REP_PACKET_SIZE) {
+        if (payload.size != REP_PACKET_SIZE_COMPACT && payload.size != REP_PACKET_SIZE) {
             return DecodedBlePacket.Malformed(
-                "Invalid rep telemetry length ${payload.size} (expected $REP_PACKET_SIZE)",
+                "Invalid rep telemetry length ${payload.size} (expected $REP_PACKET_SIZE_COMPACT or $REP_PACKET_SIZE)",
                 hex,
             )
         }
@@ -134,9 +134,9 @@ class BlePacketDecoder(
     }
 
     private fun decodeSensorSample(payload: ByteArray, version: Int, hex: String): DecodedBlePacket {
-        if (payload.size != SAMPLE_PACKET_SIZE) {
+        if (payload.size != SAMPLE_PACKET_SIZE_COMPACT && payload.size != SAMPLE_PACKET_SIZE) {
             return DecodedBlePacket.Malformed(
-                "Invalid sensor sample length ${payload.size} (expected $SAMPLE_PACKET_SIZE)",
+                "Invalid sensor sample length ${payload.size} (expected $SAMPLE_PACKET_SIZE_COMPACT or $SAMPLE_PACKET_SIZE)",
                 hex,
             )
         }
@@ -190,7 +190,9 @@ class BlePacketDecoder(
         const val TYPE_SENSOR_SAMPLE: Int = 0x02
         const val TYPE_BATTERY_STATUS: Int = 0x03
 
+        const val REP_PACKET_SIZE_COMPACT: Int = 20
         const val REP_PACKET_SIZE: Int = 22
+        const val SAMPLE_PACKET_SIZE_COMPACT: Int = 19
         const val SAMPLE_PACKET_SIZE: Int = 22
         const val BATTERY_PACKET_SIZE: Int = 8
         const val UINT16_UNAVAILABLE: Int = 0xFFFF
@@ -221,8 +223,10 @@ class BlePacketDecoder(
             linearRomCm: Double? = null,
             peakAccelerationMetersPerSecondSquared: Double? = null,
             protocolVersion: Int = 1,
+            compactMtuSafe: Boolean = true,
         ): ByteArray {
-            val buf = ByteBuffer.allocate(REP_PACKET_SIZE).order(ByteOrder.LITTLE_ENDIAN)
+            val size = if (compactMtuSafe) REP_PACKET_SIZE_COMPACT else REP_PACKET_SIZE
+            val buf = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN)
             buf.put(protocolVersion.toByte())
             buf.put(TYPE_REP_TELEMETRY.toByte())
             buf.putInt(sequenceNumber.toInt())
@@ -233,9 +237,11 @@ class BlePacketDecoder(
             buf.putShort((angularRomDegrees?.let { (it * 10.0).toInt() } ?: UINT16_UNAVAILABLE).toShort())
             buf.putShort((linearRomCm?.let { (it * 10.0).toInt() } ?: UINT16_UNAVAILABLE).toShort())
             buf.putShort((peakAccelerationMetersPerSecondSquared?.let { (it * 100.0).toInt() } ?: UINT16_UNAVAILABLE).toShort())
-            buf.putShort(0.toShort())
+            if (!compactMtuSafe) {
+                buf.putShort(0.toShort())
+            }
             val bytes = buf.array()
-            bytes[REP_PACKET_SIZE - 1] = crc8(bytes, REP_PACKET_SIZE - 1).toByte()
+            bytes[size - 1] = crc8(bytes, size - 1).toByte()
             return bytes
         }
 

@@ -27,6 +27,8 @@ data class HardwareDiagnosticsSnapshot(
     val measurementUnits: String = "deg, cm, m/s^2, ms",
     val lastReceivedTimestampMs: Long? = null,
     val detectedRepCount: Int = 0,
+    val negotiatedMtu: Int? = null,
+    val isCalibrated: Boolean = false,
     val calibrationStatus: String = "Per-exercise config active (firmware calibration unconfirmed)",
     val lastError: String? = null,
 )
