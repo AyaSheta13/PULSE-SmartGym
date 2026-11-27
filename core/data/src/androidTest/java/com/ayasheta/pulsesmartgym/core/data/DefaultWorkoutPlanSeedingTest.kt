@@ -16,6 +16,7 @@ import com.ayasheta.pulsesmartgym.core.model.common.PulseValidators
 import com.ayasheta.pulsesmartgym.core.model.workout.PlanExerciseDraft
 import com.ayasheta.pulsesmartgym.core.model.workout.PlannedSetDraft
 import com.ayasheta.pulsesmartgym.core.model.workout.WorkoutPlanDraft
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,10 +30,12 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import java.io.IOException
 
 @RunWith(AndroidJUnit4::class)
 class DefaultWorkoutPlanSeedingTest {
@@ -83,14 +86,17 @@ class DefaultWorkoutPlanSeedingTest {
         prefsDataSource = null
     }
 
-    private fun newPlanRepo(): RoomWorkoutPlanRepository {
+    private fun newPlanRepo(
+        customPrefs: PulsePreferencesDataSource = requireNotNull(prefsDataSource),
+    ): RoomWorkoutPlanRepository {
         val currentDb = requireNotNull(db)
         return RoomWorkoutPlanRepository(
             workoutPlanDao = currentDb.workoutPlanDao(),
             exerciseDao = currentDb.exerciseDao(),
             transactionRunner = RoomTransactionRunner(currentDb),
-            preferencesDataSource = requireNotNull(prefsDataSource),
+            preferencesDataSource = customPrefs,
             seedDefaultPlansOnFirstUse = true,
+            ownerSeedStateDao = currentDb.ownerSeedStateDao(),
         )
     }
 
@@ -217,6 +223,7 @@ class DefaultWorkoutPlanSeedingTest {
                 transactionRunner = RoomTransactionRunner(currentDb),
                 preferencesDataSource = freshPrefs,
                 seedDefaultPlansOnFirstUse = true,
+                ownerSeedStateDao = currentDb.ownerSeedStateDao(),
             )
             val recoveredPlans = recoveredRepo.observePlans(existingOwner).first()
             assertEquals(1, recoveredPlans.size)
@@ -225,5 +232,106 @@ class DefaultWorkoutPlanSeedingTest {
             recScope.cancel()
             if (freshPrefsFile.exists()) freshPrefsFile.delete()
         }
+    }
+
+    @Test
+    fun dataStoreMarkerWriteFailure_deleteAllAndGenuineReopen_neverReseeds() = runTest {
+        val owner = "owner_write_fail"
+        val realDataStore = PreferenceDataStoreFactory.create(
+            scope = requireNotNull(dataStoreScope),
+            produceFile = { File(context.cacheDir, "write_fail_${System.nanoTime()}.preferences_pb") },
+        )
+        val failingWritePrefs = object : PulsePreferencesDataSource(realDataStore) {
+            override suspend fun markDefaultPlansSeeded(ownerId: String) {
+                throw IOException("Simulated DataStore write failure")
+            }
+        }
+        val repo1 = newPlanRepo(failingWritePrefs)
+        val initialPlans = repo1.observePlans(owner).first()
+        assertEquals(3, initialPlans.size)
+        assertEquals(null, failingWritePrefs.readDefaultPlansSeededState(owner).let { if (it == false) null else it })
+
+        // User deletes all 3 starter plans
+        for (plan in initialPlans) {
+            assertTrue(repo1.deletePlan(owner, plan.id) is DomainResult.Success)
+        }
+        assertEquals(0, repo1.observePlans(owner).first().size)
+
+        // Genuine close & reopen of Room + DataStore (marker was never written to DataStore)
+        closeResources()
+        openResources()
+        val repo2 = newPlanRepo()
+        assertEquals(0, repo2.observePlans(owner).first().size)
+    }
+
+    @Test
+    fun dataStoreMarkerReadFailure_preservesTrueEmptyState_withoutDuplicates() = runTest {
+        val owner = "owner_read_fail"
+        val realDataStore = PreferenceDataStoreFactory.create(
+            scope = requireNotNull(dataStoreScope),
+            produceFile = { File(context.cacheDir, "read_fail_${System.nanoTime()}.preferences_pb") },
+        )
+        val failingReadPrefs = object : PulsePreferencesDataSource(realDataStore) {
+            override suspend fun readDefaultPlansSeededState(ownerId: String): Boolean? = null
+        }
+        val repo1 = newPlanRepo(failingReadPrefs)
+        val initial = repo1.observePlans(owner).first()
+        assertEquals(3, initial.size)
+
+        for (plan in initial) {
+            assertTrue(repo1.deletePlan(owner, plan.id) is DomainResult.Success)
+        }
+
+        closeResources()
+        openResources()
+        val failingReadPrefsReopened = object : PulsePreferencesDataSource(
+            PreferenceDataStoreFactory.create(
+                scope = requireNotNull(dataStoreScope),
+                produceFile = { File(context.cacheDir, "read_fail2_${System.nanoTime()}.preferences_pb") },
+            ),
+        ) {
+            override suspend fun readDefaultPlansSeededState(ownerId: String): Boolean? = null
+        }
+        val repo2 = newPlanRepo(failingReadPrefsReopened)
+        assertEquals(0, repo2.observePlans(owner).first().size)
+    }
+
+    @Test
+    fun cancellationException_isPropagated_andRecoveryDoesNotDuplicate() = runTest {
+        val owner = "owner_cancel"
+        val realDataStore = PreferenceDataStoreFactory.create(
+            scope = requireNotNull(dataStoreScope),
+            produceFile = { File(context.cacheDir, "cancel_${System.nanoTime()}.preferences_pb") },
+        )
+        val cancelOnReadPrefs = object : PulsePreferencesDataSource(realDataStore) {
+            override suspend fun readDefaultPlansSeededState(ownerId: String): Boolean? {
+                throw CancellationException("Simulated read cancellation")
+            }
+        }
+        val repoReadCancel = newPlanRepo(cancelOnReadPrefs)
+        try {
+            repoReadCancel.observePlans(owner).first()
+            fail("Expected CancellationException to propagate from readDefaultPlansSeededState")
+        } catch (_: CancellationException) {
+            // Expected
+        }
+
+        val cancelOnWritePrefs = object : PulsePreferencesDataSource(realDataStore) {
+            override suspend fun markDefaultPlansSeeded(ownerId: String) {
+                throw CancellationException("Simulated write cancellation")
+            }
+        }
+        val repoWriteCancel = newPlanRepo(cancelOnWritePrefs)
+        try {
+            repoWriteCancel.observePlans(owner).first()
+            fail("Expected CancellationException to propagate from markDefaultPlansSeeded")
+        } catch (_: CancellationException) {
+            // Expected: Room already committed starter plans + owner_seed_state atomically
+        }
+
+        // Subsequent retry with healthy prefs recovers cleanly with exact 3 starter plans (no duplicates)
+        val healthyRepo = newPlanRepo()
+        val recovered = healthyRepo.observePlans(owner).first()
+        assertEquals(3, recovered.size)
     }
 }

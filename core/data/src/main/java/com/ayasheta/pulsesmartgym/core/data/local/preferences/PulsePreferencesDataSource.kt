@@ -12,6 +12,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
 import com.ayasheta.pulsesmartgym.core.model.profile.UserPreferences
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
@@ -35,7 +36,7 @@ data class PersistedSessionSnapshot(
     val rememberMe: Boolean = false,
 )
 
-class PulsePreferencesDataSource(
+open class PulsePreferencesDataSource(
     private val dataStore: DataStore<Preferences>,
 ) {
     val preferencesFlow: Flow<UserPreferences> = dataStore.data
@@ -143,14 +144,18 @@ class PulsePreferencesDataSource(
      * Returns `null` on preference read failure so callers never mistake an I/O error
      * for "not seeded" and re-inject deleted starter plans.
      */
-    suspend fun readDefaultPlansSeededState(ownerId: String): Boolean? {
-        return runCatching {
+    open suspend fun readDefaultPlansSeededState(ownerId: String): Boolean? {
+        return try {
             val prefs = dataStore.data.first()
             ownerId in (prefs[KEY_SEEDED_DEFAULT_PLAN_OWNERS] ?: emptySet())
-        }.getOrNull()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            null
+        }
     }
 
-    suspend fun markDefaultPlansSeeded(ownerId: String) {
+    open suspend fun markDefaultPlansSeeded(ownerId: String) {
         dataStore.edit { prefs ->
             val current = prefs[KEY_SEEDED_DEFAULT_PLAN_OWNERS] ?: emptySet()
             prefs[KEY_SEEDED_DEFAULT_PLAN_OWNERS] = current + ownerId

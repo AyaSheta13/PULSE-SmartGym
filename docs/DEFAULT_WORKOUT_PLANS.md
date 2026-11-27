@@ -20,7 +20,7 @@
 
 ## Starter Routine Configurations (Adapted to Existing Catalog)
 
-> **Adaptation Note:** None of the three routines are prescribed verbatim by a single publication; each routine is an adaptation of ACSM/Mayo Clinic/Novice-Consensus programming principles mapped onto PULSE's existing 17-exercise catalog (`ExerciseCatalogSeed.kt`). No mandatory starting weights are assigned (`targetLoad = null`) so each user selects a manageable load.
+> **Adaptation Note:** None of the three routines are prescribed verbatim by a single publication; each routine is an adaptation of ACSM/Mayo Clinic/Novice-Consensus programming principles mapped onto PULSE's existing **18-exercise catalog** (`ExerciseCatalogSeed.kt`). No mandatory starting weights are assigned (`targetLoad = null`) so each user selects a manageable load.
 
 ### 1. Beginner Full Body
 - **Intended Experience Level:** Beginner / First-Time User

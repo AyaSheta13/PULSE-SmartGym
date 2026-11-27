@@ -1,9 +1,14 @@
 # P11 Implementation Report — Final Acceptance & Integration
 
 ## Summary
-Completed P11 end-to-end across Android (`core:model`, `core:designsystem`, `core:data`, `app`), Room schema migration (`v3 -> v4`), visual/motion/accessibility QA, and Figma synchronization (`UvskyKTyxlIOd68wQkp5cQ`).
+Completed P11 end-to-end across Android (`core:model`, `core:designsystem`, `core:data`, `app`), Room schema migrations (`v3 -> v4` and `v4 -> v5`), visual/motion/accessibility QA, and Figma synchronization (`UvskyKTyxlIOd68wQkp5cQ`).
 
 ## Key Deliverables & Technical Details
+
+### 0. Transactional Default Plan Seeding (`PulseDatabase` v5, `RoomWorkoutPlanRepository.kt`)
+- Added `OwnerSeedStateEntity` (`owner_seed_state` table) and `OwnerSeedStateDao` with `MIGRATION_4_5` (`PulseDatabase` v5, exported schema `5.json`) so starter plan insertion and `starterPlansSeeded = true` commit atomically inside the same SQLite transaction (`ensureDefaultPlansSeeded` and `createPlan`).
+- Fixed `CancellationException` handling in `PulsePreferencesDataSource` and `RoomWorkoutPlanRepository` so coroutine cancellation is never swallowed.
+- Verified with failure-injection tests (`DefaultWorkoutPlanSeedingTest`: DataStore marker write/read failures, deletion + genuine DB/DataStore reopening, `CancellationException` propagation & recovery) and `MIGRATION_4_5` validation (`Migration3To4Test`).
 
 ### 1. Performance Analytics & Measurement Formulas (`WorkoutPerformanceAnalytics.kt`)
 - **Repetition-Weighted Averages**: Session & trend averages are computed directly from eligible measured repetitions (`sum(valid_metric) / count(valid_metric)`) rather than averaging per-session averages.
@@ -45,6 +50,6 @@ All checks executed after the final code/test edit on `Medium_Phone_API_36.0` (A
 - `:core:data:testDebugUnitTest`: **PASS** (5 unit tests, 0 failures, 0 skipped)
 - `:core:designsystem:testDebugUnitTest`: **PASS** (4 unit tests, 0 failures, 0 skipped)
 - `:app:testDebugUnitTest`: **PASS** (71 unit tests, 0 failures, 0 skipped)
-- `:core:data:connectedDebugAndroidTest`: **PASS** (32 instrumentation tests, 0 failures, 0 skipped)
-- `:app:connectedDebugAndroidTest`: **PASS** (62 instrumentation tests, 0 failures, 0 skipped)
+- `:core:data:connectedDebugAndroidTest`: **PASS** (36 instrumentation tests, 0 failures, 0 skipped)
+- `:app:connectedDebugAndroidTest`: **PASS** (64 instrumentation tests, 0 failures, 0 skipped)
 - `:app:assembleDebug` & `:app:assembleRelease`: **PASS**

@@ -50,6 +50,7 @@ open class PulseDataContainer(
             PulseDatabase.MIGRATION_1_2,
             PulseDatabase.MIGRATION_2_3,
             PulseDatabase.MIGRATION_3_4,
+            PulseDatabase.MIGRATION_4_5,
         ).build()
     }
 
@@ -72,6 +73,7 @@ open class PulseDataContainer(
             transactionRunner = transactionRunner,
             preferencesDataSource = preferencesDataSource,
             seedDefaultPlansOnFirstUse = seedDefaultPlansOnFirstUse,
+            ownerSeedStateDao = database.ownerSeedStateDao(),
         )
     }
 

@@ -18,6 +18,10 @@ Visual QA was conducted across Welcome, Onboarding (3 pages), Auth/Validation, H
    - `WorkoutResultScreen` and `SessionDetailsScreen` display exercise-specific ROM, rep duration, peak acceleration, and sensor-classified full/partial counts.
    - `TrainingProgressScreen` displays week-filtered, repetition-weighted `Performance Trends` with chronological points and stable exercise-key selection.
 
+6. **18-Exercise Equipment-Accurate Photography & Starter Plan Duration Alignment**:
+   - Added dedicated equipment-accurate thumbnails for `DB Flat Press` (`ex_thumb_db_flat_press.png`) and `Smith Squat` (`ex_thumb_smith_squat.png`), so all **18** catalog exercises map to 18 distinct drawables (`WorkoutVisualHelpers.kt`, `HistoryUiMapper.kt`, and Figma Photography Collection `670:367`).
+   - Verified `My Workouts` displays `Est. 17 min` / `Est. 21 min` / `Est. 19 min` matching `WorkoutDurationEstimator` and Figma (`57:19917`).
+
 ## Evidence Artifacts (`docs/visual-qa/p11/`)
 - **Android P11 & Pre-P11 Captures**: `p11_welcome_390.png`, `p11_onboarding_0.png`, `p11_onboarding_1.png`, `p11_onboarding_2.png`, `p11_my_workouts_seeded.png`, `p11_my_workouts_empty_after_delete.png`, `p11_create_plan_empty_plus.png`, `p11_exercise_picker_plus.png`, `p11_exercise_picker_after.png`, `p11_set_execution_live_metrics.png`, `p11_full_device_system_bars.png`, `08_home_nav_selected.png`, `09_home_nav_unselected.png`, `10_workout_details.png`, `11_rep_counter_halos_manual.png`, `12_rep_counter_halos_device.png`, `13_device_discovery_scanning.png`, `14_login_inline_validation.png`, `15_signup_inline_validation.png`, `16_bottom_sheet_open.png`, `17_bottom_sheet_mid_exit.png`
 - **Historical Phase Captures**: `docs/visual-qa/p4/` through `docs/visual-qa/p10/` and `docs/visual-qa/pre-p11-exercise-guide/`

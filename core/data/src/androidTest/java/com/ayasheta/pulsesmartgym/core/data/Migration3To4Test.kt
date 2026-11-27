@@ -319,4 +319,41 @@ class Migration3To4Test {
         db2.close()
         dbFile.delete()
     }
+
+    @Test
+    fun migrate4To5_createsOwnerSeedStateTable_andPreservesExistingPlans() {
+        val dbName = "pulse_migration_4_5_test.db"
+        helper.createDatabase(dbName, 4).apply {
+            execSQL(
+                """
+                INSERT INTO workout_plans (id, ownerProfileId, name, description, createdAtEpochMs, updatedAtEpochMs)
+                VALUES ('plan_v4', 'owner_v4', 'Custom V4 Plan', 'Existing user plan', 1000, 2000)
+                """.trimIndent(),
+            )
+            close()
+        }
+
+        val migratedDb = helper.runMigrationsAndValidate(
+            dbName,
+            5,
+            true,
+            PulseDatabase.MIGRATION_4_5,
+        )
+
+        migratedDb.query("SELECT name FROM workout_plans WHERE id = 'plan_v4'").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals("Custom V4 Plan", c.getString(0))
+        }
+        migratedDb.execSQL(
+            """
+            INSERT INTO owner_seed_state (ownerProfileId, starterPlansSeeded, seededAtEpochMs)
+            VALUES ('owner_v4', 1, 3000)
+            """.trimIndent(),
+        )
+        migratedDb.query("SELECT starterPlansSeeded FROM owner_seed_state WHERE ownerProfileId = 'owner_v4'").use { c ->
+            assertTrue(c.moveToFirst())
+            assertEquals(1, c.getInt(0))
+        }
+        migratedDb.close()
+    }
 }

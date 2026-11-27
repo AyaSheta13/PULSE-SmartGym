@@ -72,14 +72,16 @@ fun resolveExerciseThumbnailRes(
     imageKey: String?,
     muscleGroup: MuscleGroup? = null,
 ): Int = when (imageKey?.removePrefix("ex_")) {
-    "bench_press", "db_flat_press" -> R.drawable.ex_thumb_bench_press
+    "bench_press" -> R.drawable.ex_thumb_bench_press
+    "db_flat_press" -> R.drawable.ex_thumb_db_flat_press
     "cable_row" -> R.drawable.ex_thumb_cable_row
     "cable_fly" -> R.drawable.ex_thumb_cable_fly
     "bicep_curl" -> R.drawable.ex_thumb_bicep_curl
     "db_preacher_curl" -> R.drawable.ex_thumb_preacher_curl
     "lateral_raise" -> R.drawable.ex_thumb_lateral_raise
     "db_shoulder_press" -> R.drawable.ex_thumb_shoulder_press
-    "back_squat", "smith_squat" -> R.drawable.ex_thumb_back_squat
+    "back_squat" -> R.drawable.ex_thumb_back_squat
+    "smith_squat" -> R.drawable.ex_thumb_smith_squat
     "leg_press" -> R.drawable.ex_thumb_leg_press
     "leg_extension" -> R.drawable.ex_thumb_leg_extension
     "romanian_deadlift" -> R.drawable.ex_thumb_romanian_deadlift
