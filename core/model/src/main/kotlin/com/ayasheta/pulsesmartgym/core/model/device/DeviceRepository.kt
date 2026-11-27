@@ -9,6 +9,7 @@ interface DeviceRepository {
     val discoveredDevices: StateFlow<List<DeviceDescriptor>>
     val events: Flow<DeviceEvent>
     val isDemoSessionActive: StateFlow<Boolean>
+    val diagnostics: StateFlow<HardwareDiagnosticsSnapshot>
 
     fun selectProvider(providerType: DeviceProviderType)
     suspend fun startScan(): DeviceOperationResult
@@ -18,5 +19,6 @@ interface DeviceRepository {
     suspend fun disconnect(): DeviceOperationResult
     suspend fun reconnect(): DeviceOperationResult
     fun setDemoSessionActive(active: Boolean)
+    fun setActiveTrackingWindow(trackingWindowId: String)
     fun onOwnerChanged()
 }

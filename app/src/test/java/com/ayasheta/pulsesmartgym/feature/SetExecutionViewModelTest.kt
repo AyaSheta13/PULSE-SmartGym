@@ -59,10 +59,11 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class, ObsoleteCoroutinesApi::class)
 class SetExecutionViewModelTest {
 
-    private val mainThreadSurrogate = newSingleThreadContext("SetExecutionVmTest")
+    private lateinit var mainThreadSurrogate: kotlinx.coroutines.ExecutorCoroutineDispatcher
 
     @Before
     fun setUp() {
+        mainThreadSurrogate = newSingleThreadContext("SetExecutionVmTest")
         Dispatchers.setMain(mainThreadSurrogate)
     }
 
@@ -469,6 +470,11 @@ private class ExecTestDeviceRepo(initial: DeviceLinkState) : DeviceRepository {
     private val _events = MutableSharedFlow<DeviceEvent>(extraBufferCapacity = 16)
     override val events: Flow<DeviceEvent> = _events
     override val isDemoSessionActive = MutableStateFlow(true)
+    override val diagnostics = MutableStateFlow(
+        com.ayasheta.pulsesmartgym.core.model.device.HardwareDiagnosticsSnapshot(),
+    )
+
+    override fun setActiveTrackingWindow(trackingWindowId: String) = Unit
 
     fun setLinkState(state: DeviceLinkState) { (linkState as MutableStateFlow).value = state }
     suspend fun emitRep(eventId: String, repNumber: Int, classification: RepClassification) {

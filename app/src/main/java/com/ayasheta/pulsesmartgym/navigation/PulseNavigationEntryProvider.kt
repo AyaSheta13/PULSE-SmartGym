@@ -53,6 +53,7 @@ import com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind
 import com.ayasheta.pulsesmartgym.core.model.profile.AuthState
 import com.ayasheta.pulsesmartgym.feature.device.DeviceViewModel
 import com.ayasheta.pulsesmartgym.feature.device.center.MyDeviceScreen
+import com.ayasheta.pulsesmartgym.feature.device.diagnostics.HardwareDiagnosticsScreen
 import com.ayasheta.pulsesmartgym.feature.device.discovery.DeviceDiscoveryScreen
 import com.ayasheta.pulsesmartgym.feature.device.env.DemoEnvironmentController
 import com.ayasheta.pulsesmartgym.feature.device.env.ExecutionEnvironmentState
@@ -118,6 +119,7 @@ import com.ayasheta.pulsesmartgym.navigation.route.EditWorkoutPlan
 import com.ayasheta.pulsesmartgym.navigation.route.ExerciseDetails
 import com.ayasheta.pulsesmartgym.navigation.route.ExercisePicker
 import com.ayasheta.pulsesmartgym.navigation.route.ForgotPassword
+import com.ayasheta.pulsesmartgym.navigation.route.HardwareDiagnostics
 import com.ayasheta.pulsesmartgym.navigation.route.HistoryTab
 import com.ayasheta.pulsesmartgym.navigation.route.HomeTab
 import com.ayasheta.pulsesmartgym.navigation.route.Login
@@ -965,6 +967,16 @@ fun rememberPulseEntryProvider(
                     navigator.selectTab(PulseTab.WORKOUTS)
                 }
             },
+            showDeveloperDiagnostics = dataContainer.isDeveloperModeAvailable,
+            onOpenDeveloperDiagnostics = { navigator.navigate(HardwareDiagnostics) },
+        )
+    }
+
+    entry<HardwareDiagnostics> {
+        HardwareDiagnosticsScreen(
+            deviceRepository = dataContainer.deviceRepository,
+            realBleDeviceDataSource = dataContainer.realBleDeviceDataSource,
+            onBackClick = { navigator.navigateBack() },
         )
     }
 

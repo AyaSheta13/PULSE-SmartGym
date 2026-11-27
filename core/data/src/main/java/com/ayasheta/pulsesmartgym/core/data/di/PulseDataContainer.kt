@@ -6,6 +6,8 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
 import com.ayasheta.pulsesmartgym.core.data.device.DefaultDeviceRepository
 import com.ayasheta.pulsesmartgym.core.data.device.FakeDeviceDataSource
+import com.ayasheta.pulsesmartgym.core.data.device.RealBleDeviceDataSource
+import com.ayasheta.pulsesmartgym.core.data.device.ble.AndroidBleTransport
 import com.ayasheta.pulsesmartgym.core.data.local.database.PulseDatabase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -101,12 +103,24 @@ open class PulseDataContainer(
         )
     }
 
+    val isDeveloperModeAvailable: Boolean
+        get() = isDebuggable
+
     open val fakeDeviceDataSource: FakeDeviceDataSource by lazy {
         FakeDeviceDataSource()
     }
 
+    open val realBleDeviceDataSource: RealBleDeviceDataSource by lazy {
+        RealBleDeviceDataSource(
+            transport = AndroidBleTransport(appContext),
+        )
+    }
+
     open val deviceRepository: DeviceRepository by lazy {
-        DefaultDeviceRepository(fakeDataSource = fakeDeviceDataSource)
+        DefaultDeviceRepository(
+            fakeDataSource = fakeDeviceDataSource,
+            realBleDataSource = realBleDeviceDataSource,
+        )
     }
 
     open val authRepository: AuthRepository by lazy {

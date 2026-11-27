@@ -53,10 +53,11 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class, DelicateCoroutinesApi::class)
 class P6WorkoutPlanningUnitTest {
 
-    private val mainThreadSurrogate = newSingleThreadContext("P6TestMain")
+    private lateinit var mainThreadSurrogate: kotlinx.coroutines.ExecutorCoroutineDispatcher
 
     @Before
     fun setUp() {
+        mainThreadSurrogate = newSingleThreadContext("P6TestMain")
         Dispatchers.setMain(mainThreadSurrogate)
     }
 

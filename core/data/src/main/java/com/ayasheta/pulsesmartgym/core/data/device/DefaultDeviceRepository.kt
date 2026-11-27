@@ -7,6 +7,8 @@ import com.ayasheta.pulsesmartgym.core.model.device.DeviceLinkState
 import com.ayasheta.pulsesmartgym.core.model.device.DeviceOperationResult
 import com.ayasheta.pulsesmartgym.core.model.device.DeviceProviderType
 import com.ayasheta.pulsesmartgym.core.model.device.DeviceRepository
+import com.ayasheta.pulsesmartgym.core.model.device.HardwareDataOrigin
+import com.ayasheta.pulsesmartgym.core.model.device.HardwareDiagnosticsSnapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -16,9 +18,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DefaultDeviceRepository(
@@ -50,6 +52,27 @@ class DefaultDeviceRepository(
     override val events: Flow<DeviceEvent> = _activeProviderType
         .flatMapLatest { currentSource(it).events }
 
+    override val diagnostics: StateFlow<HardwareDiagnosticsSnapshot> = combine(
+        _activeProviderType,
+        realBleDataSource.diagnostics,
+        fakeDataSource.connectionState,
+    ) { provider, realDiag, fakeLink ->
+        when (provider) {
+            DeviceProviderType.REAL_BLE -> realDiag
+            DeviceProviderType.SIMULATED -> HardwareDiagnosticsSnapshot(
+                dataOrigin = HardwareDataOrigin.SIMULATED,
+                providerType = DeviceProviderType.SIMULATED,
+                connectionState = fakeLink.phase,
+                deviceName = fakeLink.selectedDevice?.name,
+                deviceAddress = fakeLink.selectedDevice?.id,
+                protocolConfirmed = false,
+                serviceDiscoveryStatus = "Simulated Provider (not physical BLE)",
+                notificationSubscriptionStatus = if (fakeLink.isConnected) "Simulated Stream Active" else "Inactive",
+                lastError = fakeLink.failureReason,
+            )
+        }
+    }.stateIn(scope, SharingStarted.Eagerly, realBleDataSource.diagnostics.value)
+
     override fun selectProvider(providerType: DeviceProviderType) {
         if (_activeProviderType.value == providerType) return
         currentSource(_activeProviderType.value).resetToDisconnected()
@@ -73,6 +96,10 @@ class DefaultDeviceRepository(
 
     override fun setDemoSessionActive(active: Boolean) {
         _isDemoSessionActive.value = active
+    }
+
+    override fun setActiveTrackingWindow(trackingWindowId: String) {
+        realBleDataSource.setActiveTrackingWindow(trackingWindowId)
     }
 
     override fun onOwnerChanged() {

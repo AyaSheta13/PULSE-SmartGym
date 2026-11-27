@@ -48,14 +48,14 @@ Completed P11 end-to-end across Android (`core:model`, `core:designsystem`, `cor
 - **Integrated Live Performance Waveform**: `LivePerformanceWaveformCard` renders a continuous smooth Bézier curve with translucent gradient fill, left vertical axis, horizontal baseline, and rep ticks directly inside the main card (no nested rounded container), displaying truthful measured telemetry (`Linear ROM cm`, `Angular ROM °`, `Peak Accel m/s²`, `Rep Duration s`) or explicit placeholder state when unmeasured.
 
 ## Actual Remaining Limitations
-- Physical BLE hardware integration depends on an agreed firmware protocol, validated calibration, actual hardware availability, and separate physical integration and measurement verification (`RealBleDeviceDataSource` remains a fail-honest stub). P12 remains the Final QA & Release phase.
+- Android-side BLE transport (`AndroidBleTransport`), binary packet decoding/validation (`BlePacketDecoder`), `RealBleDeviceDataSource`, developer `HardwareDiagnosticsScreen`, and raw-BLE integration tests (`BlePacketDecoderAndTransportTest`, `P11RawBlePipelineUiTest`) are complete and verified. Physical hardware validation remains pending until ESP32 firmware UUIDs, calibration offsets, and physical sensors are available (`docs/HARDWARE_INTEGRATION_CONTRACT.md`, `docs/PHYSICAL_HARDWARE_TESTING_GUIDE.md`). P12 remains the Final QA & Release phase.
 
 ## Final Regression Verification Results
 All checks executed after the final code/test edit on `Medium_Phone_API_36.0` (API 36):
 - `:core:model:build`: **PASS** (14 unit tests, 0 failures, 0 skipped)
-- `:core:data:testDebugUnitTest`: **PASS** (5 unit tests, 0 failures, 0 skipped)
+- `:core:data:testDebugUnitTest`: **PASS** (9 unit tests, 0 failures, 0 skipped)
 - `:core:designsystem:testDebugUnitTest`: **PASS** (4 unit tests, 0 failures, 0 skipped)
 - `:app:testDebugUnitTest`: **PASS** (73 unit tests, 0 failures, 0 skipped)
 - `:core:data:connectedDebugAndroidTest`: **PASS** (36 instrumentation tests, 0 failures, 0 skipped)
-- `:app:connectedDebugAndroidTest`: **PASS** (65 instrumentation tests, 0 failures, 0 skipped)
-- `:app:assembleDebug` & `:app:assembleRelease`: **PASS** (197 total tests, 0 failures, 0 errors, 0 skipped)
+- `:app:connectedDebugAndroidTest`: **PASS** (67 instrumentation tests, 0 failures, 0 skipped)
+- `:app:assembleDebug` & `:app:assembleRelease`: **PASS** (203 total tests, 0 failures, 0 errors, 0 skipped)

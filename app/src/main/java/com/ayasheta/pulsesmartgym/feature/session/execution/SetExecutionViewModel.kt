@@ -13,6 +13,7 @@ import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
 import com.ayasheta.pulsesmartgym.core.model.device.DeviceConnectionState
 import com.ayasheta.pulsesmartgym.core.model.device.DeviceEvent
 import com.ayasheta.pulsesmartgym.core.model.device.DeviceOperationResult
+import com.ayasheta.pulsesmartgym.core.model.device.DeviceProviderType
 import com.ayasheta.pulsesmartgym.core.model.device.DeviceRepository
 import com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind
 import com.ayasheta.pulsesmartgym.core.model.device.MeasurementOrigin
@@ -239,10 +240,14 @@ class SetExecutionViewModel(
                                     deviceCapabilities = link.capabilities,
                                     exerciseConfig = exerciseConfig,
                                     environment = executionEnvironment,
+                                    hasCalibration = link.isCalibrated,
                                 )
                                 val isDeviceConnected = link.phase == DeviceConnectionState.CONNECTED
                                 val canStartDevice = !forceManualMode &&
-                                    executionEnvironment == ExecutionEnvironmentKind.DEMO &&
+                                    (
+                                        executionEnvironment == ExecutionEnvironmentKind.DEMO ||
+                                            (link.providerType == DeviceProviderType.REAL_BLE && link.isCalibrated)
+                                        ) &&
                                     isDeviceConnected &&
                                     effectiveCaps.automaticRepEvents
 
@@ -370,6 +375,7 @@ class SetExecutionViewModel(
                     deviceCapabilities = link.capabilities,
                     exerciseConfig = exerciseConfig,
                     environment = executionEnvironment,
+                    hasCalibration = link.isCalibrated,
                 )
 
                 val normalized = DeviceEventNormalizer.normalizeAndValidate(
@@ -508,6 +514,7 @@ class SetExecutionViewModel(
         val deviceAssisted = current.canStartDeviceAssisted && !forceManualMode
         isDeviceAssistedFlow.value = deviceAssisted
         savedStateHandle[deviceAssistedKey] = deviceAssisted
+        deviceRepository.setActiveTrackingWindow(trackingWindowId)
 
         phaseFlow.value = SetExecutionPhase.InProgress
         savedStateHandle[phaseKey] = SetExecutionPhase.InProgress.name
