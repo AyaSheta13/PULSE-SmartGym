@@ -80,7 +80,7 @@ class TrainingProgressViewModel(
                                 userPreferencesRepository.observePreferences(),
                                 selectedWeekOffsetFlow,
                             ) { sessions, profile, prefs, weekOffset ->
-                                ProgressUiMapper.mapToUiState(
+                                val mapped = ProgressUiMapper.mapToUiState(
                                     sessions = sessions,
                                     weeklyTarget = profile?.weeklyWorkouts,
                                     unit = prefs.preferredWeightUnit,
@@ -88,6 +88,20 @@ class TrainingProgressViewModel(
                                     today = todayProvider(),
                                     zoneId = zoneProvider(),
                                 )
+                                if (mapped is TrainingProgressUiState.Populated) {
+                                    val exerciseKeys = sessions
+                                        .flatMap { it.exercises }
+                                        .map { it.sourceExerciseId ?: it.exerciseNameSnapshot.lowercase() }
+                                        .distinct()
+                                    val trends = exerciseKeys.mapNotNull { exKey ->
+                                        com.ayasheta.pulsesmartgym.core.model.history.WorkoutPerformanceAnalytics
+                                            .calculateExerciseTrends(sessions, exKey)
+                                            ?.takeIf { it.totalMeasuredReps > 0 }
+                                    }
+                                    mapped.copy(performanceTrends = trends)
+                                } else {
+                                    mapped
+                                }
                             }.onStart {
                                 emit(TrainingProgressUiState.Loading)
                             }.catch { throwable ->

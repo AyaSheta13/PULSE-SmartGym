@@ -602,6 +602,7 @@ fun rememberPulseEntryProvider(
                     authRepository = scopedContainer.authRepository,
                     workoutSessionRepository = scopedContainer.workoutSessionRepository,
                     userPreferencesRepository = scopedContainer.userPreferencesRepository,
+                    deviceRepository = dataContainer.deviceRepository,
                 )
             }
             WorkoutSessionScreen(

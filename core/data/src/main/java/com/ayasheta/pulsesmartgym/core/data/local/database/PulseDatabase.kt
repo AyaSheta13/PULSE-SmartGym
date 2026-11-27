@@ -39,7 +39,7 @@ import com.ayasheta.pulsesmartgym.core.data.local.database.entity.WorkoutSession
         LocalAccountEntity::class,
         UserProfileEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(PulseTypeConverters::class)
@@ -108,6 +108,14 @@ abstract class PulseDatabase : RoomDatabase() {
                         FOREIGN KEY(`sessionId`) REFERENCES `workout_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
                     )
                     """.trimIndent(),
+                )
+            }
+        }
+
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `rep_records` ADD COLUMN `peakAccelerationMetersPerSecondSquared` REAL DEFAULT NULL",
                 )
             }
         }

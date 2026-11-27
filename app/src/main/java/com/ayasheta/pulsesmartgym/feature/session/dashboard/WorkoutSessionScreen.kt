@@ -46,6 +46,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ayasheta.pulsesmartgym.core.designsystem.component.chips.PulseBluetoothChip
+import com.ayasheta.pulsesmartgym.core.designsystem.component.chips.PulseBluetoothChipStatus
 import com.ayasheta.pulsesmartgym.core.designsystem.component.progress.PulseLoadingIndicator
 import com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseAnimatedBottomSheetHost
 import com.ayasheta.pulsesmartgym.core.designsystem.component.sheet.PulseAnimatedBottomSheetOverlay
@@ -210,7 +212,9 @@ fun WorkoutSessionScreenContent(
     onDismissActionError: () -> Unit = {},
 ) {
     val renderInWindow = LocalRenderModalsInWindow.current
-    val connectionLabel = (uiState as? WorkoutSessionUiState.Active)?.connectionLabel ?: "Not Connected"
+    val activeUi = uiState as? WorkoutSessionUiState.Active
+    val chipStatus = activeUi?.bluetoothChipStatus ?: PulseBluetoothChipStatus.DISCONNECTED
+    val isSimulated = activeUi?.isTelemetrySimulated ?: false
 
     Box(
         modifier = modifier
@@ -219,7 +223,8 @@ fun WorkoutSessionScreenContent(
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             SessionTopBar(
-                connectionLabel = connectionLabel,
+                bluetoothStatus = chipStatus,
+                isSimulated = isSimulated,
                 onBackClick = onBackClick,
             )
 
@@ -417,7 +422,8 @@ fun WorkoutSessionScreenContent(
 
 @Composable
 private fun SessionTopBar(
-    connectionLabel: String,
+    bluetoothStatus: PulseBluetoothChipStatus,
+    isSimulated: Boolean,
     onBackClick: () -> Unit,
 ) {
     Row(
@@ -455,31 +461,11 @@ private fun SessionTopBar(
             ),
             modifier = Modifier.weight(1f),
         )
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(20.dp))
-                .background(Color(0xFFF6F3F2))
-                .border(BorderStroke(1.dp, Color(0xFFE5E0DC)), RoundedCornerShape(20.dp))
-                .padding(horizontal = 10.dp, vertical = 5.dp)
-                .testTag("session_connection_status"),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(7.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF9C9691)),
-            )
-            BasicText(
-                text = connectionLabel,
-                style = PulseTheme.typography.contentPrimary.copy(
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF5A5754),
-                ),
-            )
-        }
+        PulseBluetoothChip(
+            status = bluetoothStatus,
+            isSimulated = isSimulated,
+            modifier = Modifier.testTag("session_connection_status"),
+        )
     }
 }
 

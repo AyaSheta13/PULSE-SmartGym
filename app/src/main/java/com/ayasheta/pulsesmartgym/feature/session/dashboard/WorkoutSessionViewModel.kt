@@ -2,11 +2,15 @@ package com.ayasheta.pulsesmartgym.feature.session.dashboard
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ayasheta.pulsesmartgym.core.designsystem.component.chips.PulseBluetoothChipStatus
 import com.ayasheta.pulsesmartgym.core.model.common.DomainResult
 import com.ayasheta.pulsesmartgym.core.model.common.PulseValidators
 import com.ayasheta.pulsesmartgym.core.model.common.RecordSetResult
 import com.ayasheta.pulsesmartgym.core.model.common.WeightLoad
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
+import com.ayasheta.pulsesmartgym.core.model.device.DeviceConnectionState
+import com.ayasheta.pulsesmartgym.core.model.device.DeviceLinkState
+import com.ayasheta.pulsesmartgym.core.model.device.DeviceRepository
 import com.ayasheta.pulsesmartgym.core.model.device.MeasurementOrigin
 import com.ayasheta.pulsesmartgym.core.model.device.TrackingMode
 import com.ayasheta.pulsesmartgym.core.model.profile.AuthState
@@ -54,6 +58,7 @@ class WorkoutSessionViewModel(
     private val workoutSessionRepository: WorkoutSessionRepository,
     private val userPreferencesRepository: UserPreferencesRepository,
     private val clockMs: () -> Long = { System.currentTimeMillis() },
+    private val deviceRepository: DeviceRepository? = null,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<WorkoutSessionUiState>(WorkoutSessionUiState.Loading)
@@ -103,6 +108,7 @@ class WorkoutSessionViewModel(
                         } else {
                             val sessionFlow = workoutSessionRepository.observeSession(ownerId, sessionId)
                             val restFlow = workoutSessionRepository.observeRestState(ownerId, sessionId)
+                            val linkFlow = deviceRepository?.linkState ?: MutableStateFlow(DeviceLinkState())
                             val tickerFlow: Flow<Long> = flow {
                                 while (true) {
                                     emit(clockMs())
@@ -114,7 +120,8 @@ class WorkoutSessionViewModel(
                                 restFlow,
                                 userPreferencesRepository.observePreferences(),
                                 tickerFlow,
-                            ) { session, restState, prefs, nowMs ->
+                                linkFlow,
+                            ) { session, restState, prefs, nowMs, link ->
                                 if (session == null) {
                                     WorkoutSessionUiState.Missing("Workout session not found or no longer active.")
                                 } else if (session.status != SessionStatus.ACTIVE) {
@@ -149,7 +156,28 @@ class WorkoutSessionViewModel(
                                             nextSetIndex = rest.nextSetIndex,
                                         )
                                     }
-                                    activeUi.copy(restTimer = restUi)
+                                    val chipStatus = when (link.phase) {
+                                        DeviceConnectionState.CONNECTED -> PulseBluetoothChipStatus.CONNECTED
+                                        DeviceConnectionState.SCANNING,
+                                        DeviceConnectionState.CONNECTING -> PulseBluetoothChipStatus.CONNECTING
+                                        DeviceConnectionState.CONNECTION_LOST -> PulseBluetoothChipStatus.CONNECTION_LOST
+                                        DeviceConnectionState.FAILED -> PulseBluetoothChipStatus.FAILED
+                                        DeviceConnectionState.DISCONNECTED -> PulseBluetoothChipStatus.DISCONNECTED
+                                    }
+                                    val connLabel = when (chipStatus) {
+                                        PulseBluetoothChipStatus.CONNECTED ->
+                                            if (link.isTelemetrySimulated) "Connected (Sim)" else "Connected"
+                                        PulseBluetoothChipStatus.CONNECTING -> "Connecting..."
+                                        PulseBluetoothChipStatus.CONNECTION_LOST -> "Connection Lost"
+                                        PulseBluetoothChipStatus.FAILED -> "Failed"
+                                        PulseBluetoothChipStatus.DISCONNECTED -> "Disconnected"
+                                    }
+                                    activeUi.copy(
+                                        restTimer = restUi,
+                                        connectionLabel = connLabel,
+                                        bluetoothChipStatus = chipStatus,
+                                        isTelemetrySimulated = link.isTelemetrySimulated,
+                                    )
                                 }
                             }
                         }

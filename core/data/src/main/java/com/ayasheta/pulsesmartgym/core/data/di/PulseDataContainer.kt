@@ -48,6 +48,7 @@ open class PulseDataContainer(
         ).addMigrations(
             PulseDatabase.MIGRATION_1_2,
             PulseDatabase.MIGRATION_2_3,
+            PulseDatabase.MIGRATION_3_4,
         ).build()
     }
 

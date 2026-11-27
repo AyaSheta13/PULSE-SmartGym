@@ -408,6 +408,7 @@ class RoomWorkoutSessionRepository(
                                 eccentricDurationMs = rep.eccentricDurationMs,
                                 angularRomDegrees = rep.angularRomDegrees,
                                 linearRomCm = rep.linearRomCm,
+                                peakAccelerationMetersPerSecondSquared = rep.peakAccelerationMetersPerSecondSquared,
                                 origin = rep.origin,
                             )
                         }

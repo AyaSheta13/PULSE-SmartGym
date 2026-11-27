@@ -17,6 +17,7 @@ data class DeviceCapabilities(
     val eccentricDuration: Boolean = false,
     val batteryTelemetry: Boolean = false,
     val velocity: Boolean = false,
+    val peakAcceleration: Boolean = false,
     val supportedTrackingCategories: Set<TrackingCategory> = emptySet(),
 ) {
     fun supportsTrackingCategory(category: TrackingCategory): Boolean =

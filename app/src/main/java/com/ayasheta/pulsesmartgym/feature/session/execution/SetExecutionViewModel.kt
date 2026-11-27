@@ -19,6 +19,7 @@ import com.ayasheta.pulsesmartgym.core.model.device.MeasurementOrigin
 import com.ayasheta.pulsesmartgym.core.model.device.RepClassification
 import com.ayasheta.pulsesmartgym.core.model.device.RepMeasurement
 import com.ayasheta.pulsesmartgym.core.model.device.TrackingMode
+import com.ayasheta.pulsesmartgym.core.model.exercise.ExerciseTrackingCatalog
 import com.ayasheta.pulsesmartgym.core.model.profile.AuthState
 import com.ayasheta.pulsesmartgym.core.model.repository.AuthRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.UserPreferencesRepository
@@ -180,14 +181,17 @@ class SetExecutionViewModel(
                             ) { reconnecting, reconnectErr, errMsg, showEndEarly, endingEarly ->
                                 StatusSnapshot(reconnecting, reconnectErr, errMsg, showEndEarly, endingEarly)
                             }
+                            val ledgerCombine = combine(ledgerFlow, statusCombine) { ledger, statuses ->
+                                ledger to statuses
+                            }
 
                             combine(
                                 sessionFlow,
                                 prefsFlow,
                                 linkFlow,
                                 controlsCombine,
-                                statusCombine,
-                            ) { session, prefs, link, controls, statuses ->
+                                ledgerCombine,
+                            ) { session, prefs, link, controls, (ledger, statuses) ->
                                 latestSession = session
 
                                 val completed = completionStateFlow.value
@@ -254,13 +258,13 @@ class SetExecutionViewModel(
                                     reconnectErrorFlow.value = null
                                 }
 
-                                val chipStatus = when {
-                                    controls.isFallbackManual -> PulseBluetoothChipStatus.DISCONNECTED
-                                    isDeviceConnected -> PulseBluetoothChipStatus.CONNECTED
-                                    link.phase == DeviceConnectionState.CONNECTING ||
-                                        link.phase == DeviceConnectionState.SCANNING ->
-                                        PulseBluetoothChipStatus.CONNECTING
-                                    else -> PulseBluetoothChipStatus.DISCONNECTED
+                                val chipStatus = when (link.phase) {
+                                    DeviceConnectionState.CONNECTED -> PulseBluetoothChipStatus.CONNECTED
+                                    DeviceConnectionState.SCANNING,
+                                    DeviceConnectionState.CONNECTING -> PulseBluetoothChipStatus.CONNECTING
+                                    DeviceConnectionState.CONNECTION_LOST -> PulseBluetoothChipStatus.CONNECTION_LOST
+                                    DeviceConnectionState.FAILED -> PulseBluetoothChipStatus.FAILED
+                                    DeviceConnectionState.DISCONNECTED -> PulseBluetoothChipStatus.DISCONNECTED
                                 }
 
                                 val modeLabel = when {
@@ -297,8 +301,16 @@ class SetExecutionViewModel(
                                     isFallbackManual = controls.isFallbackManual,
                                     modeLabel = modeLabel,
                                     bluetoothChipStatus = chipStatus,
+                                    isTelemetrySimulated = link.isTelemetrySimulated,
                                     trackingCompatibilityNotice = compatibilityNotice,
                                     startedElapsedRealtimeMs = savedStateHandle.get<Long>(startElapsedKey),
+                                    currentElapsedRealtimeMs = elapsedRealtimeMs(),
+                                    sessionStartedAtEpochMs = session.startedAtEpochMs,
+                                    repRecords = ledger,
+                                    trackingConfig = ExerciseTrackingCatalog.forExercise(
+                                        exerciseId = exercise.sourceExerciseId,
+                                        trackingCategory = exercise.trackingCategorySnapshot,
+                                    ),
                                     errorMessage = statuses.errorMessage,
                                     isReconnecting = statuses.isReconnecting,
                                     reconnectError = statuses.reconnectError,

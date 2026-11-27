@@ -187,7 +187,7 @@ class PreP11VisualQaCaptureTest {
             }
         }
 
-        val outDir = File("/sdcard/Download/pre_p11").apply { mkdirs() }
+        val outDir = File(ApplicationProvider.getApplicationContext<Context>().filesDir, "pre_p11").apply { mkdirs() }
 
         screens.forEachIndexed { index, (filename, _) ->
             composeRule.runOnIdle { step = index }

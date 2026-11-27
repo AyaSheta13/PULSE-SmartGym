@@ -96,33 +96,33 @@ class P10DeviceAndSimulatorUiTest {
         }
         activityRule.onAllNodesWithText("Start").onFirst().performScrollTo().performClick()
         activityRule.waitUntil(5_000) {
-            runCatching { activityRule.onNodeWithTag("button_ready_start_set").assertExists(); true }.getOrDefault(false)
+            runCatching { activityRule.onNodeWithTag("button_set_execution_primary").assertExists(); true }.getOrDefault(false)
         }
-        activityRule.onNodeWithTag("button_ready_start_set").performScrollTo().performClick()
+        activityRule.onNodeWithTag("button_set_execution_primary").performScrollTo().performClick()
         activityRule.waitUntil(5_000) {
-            runCatching { activityRule.onNodeWithTag("device_rep_counter_gauge").assertExists(); true }.getOrDefault(false)
+            runCatching { activityRule.onNodeWithText("Finish Set").assertExists(); true }.getOrDefault(false)
         }
 
         // 4. Emit 8 simulated reps -> simulate connection loss -> recovery sheet -> Continue Manually -> add 2 -> Finish Set
         repeat(8) {
-            activityRule.onNodeWithTag("button_sim_auto_rep").performScrollTo().performClick()
+            activityRule.onNodeWithTag("button_sim_full_rep").performScrollTo().performClick()
         }
         activityRule.onNodeWithText("8").assertIsDisplayed()
 
-        activityRule.onNodeWithTag("button_sim_drop_link").performScrollTo().performClick()
+        activityRule.onNodeWithTag("button_sim_drop_ble").performScrollTo().performClick()
         activityRule.waitUntil(5_000) {
             runCatching { activityRule.onNodeWithTag("connection_lost_recovery_sheet").assertExists(); true }.getOrDefault(false)
         }
         activityRule.onNodeWithTag("button_recovery_continue_manually").performClick()
 
         activityRule.waitUntil(5_000) {
-            runCatching { activityRule.onNodeWithTag("button_finish_set").assertExists(); true }.getOrDefault(false)
+            runCatching { activityRule.onNodeWithText("Finish Set").assertExists(); true }.getOrDefault(false)
         }
         activityRule.onNodeWithText("8").assertIsDisplayed()
         activityRule.onNodeWithContentDescription("Add one rep").performClick()
         activityRule.onNodeWithContentDescription("Add one rep").performClick()
         activityRule.onAllNodesWithText("10").onFirst().assertIsDisplayed()
-        activityRule.onNodeWithTag("button_finish_set").performScrollTo().performClick()
+        activityRule.onNodeWithTag("button_set_execution_primary").performScrollTo().performClick()
 
         // 5. Rest timer -> Skip Rest -> End Workout Early -> Summary -> Back to Home (exits simulation)
         activityRule.waitUntil(5_000) {
@@ -253,40 +253,40 @@ class P10DeviceAndSimulatorUiTest {
         }
         activityRule.onAllNodesWithText("Start").onFirst().performScrollTo().performClick()
         activityRule.waitUntil(5_000) {
-            runCatching { activityRule.onNodeWithTag("button_ready_start_set").assertExists(); true }.getOrDefault(false)
+            runCatching { activityRule.onNodeWithTag("button_set_execution_primary").assertExists(); true }.getOrDefault(false)
         }
-        activityRule.onNodeWithTag("button_ready_start_set").performScrollTo().performClick()
+        activityRule.onNodeWithTag("button_set_execution_primary").performScrollTo().performClick()
         activityRule.waitUntil(5_000) {
-            runCatching { activityRule.onNodeWithTag("device_rep_counter_gauge").assertExists(); true }.getOrDefault(false)
+            runCatching { activityRule.onNodeWithText("Finish Set").assertExists(); true }.getOrDefault(false)
         }
         repeat(4) {
-            activityRule.onNodeWithTag("button_sim_auto_rep").performScrollTo().performClick()
+            activityRule.onNodeWithTag("button_sim_full_rep").performScrollTo().performClick()
         }
         // Recreate Activity during unfinished demo set
         activityRule.activityRule.scenario.recreate()
         activityRule.waitForIdle()
         activityRule.waitUntil(5_000) {
-            runCatching { activityRule.onNodeWithTag("device_rep_counter_gauge").assertExists(); true }.getOrDefault(false)
+            runCatching { activityRule.onNodeWithTag("set_execution_counter_card").assertExists(); true }.getOrDefault(false)
         }
         activityRule.onNodeWithText("4").performScrollTo().assertIsDisplayed()
 
         // Drop link -> Continue Manually -> recreate during manual fallback -> finish -> back to home
-        activityRule.onNodeWithTag("button_sim_drop_link").performScrollTo().performClick()
+        activityRule.onNodeWithTag("button_sim_drop_ble").performScrollTo().performClick()
         activityRule.waitUntil(5_000) {
             runCatching { activityRule.onNodeWithTag("button_recovery_continue_manually").assertExists(); true }.getOrDefault(false)
         }
         activityRule.onNodeWithTag("button_recovery_continue_manually").performClick()
         activityRule.waitUntil(5_000) {
-            runCatching { activityRule.onNodeWithTag("button_finish_set").assertExists(); true }.getOrDefault(false)
+            runCatching { activityRule.onNodeWithText("Finish Set").assertExists(); true }.getOrDefault(false)
         }
         activityRule.onNodeWithText("4").assertIsDisplayed()
         activityRule.activityRule.scenario.recreate()
         activityRule.waitForIdle()
         activityRule.waitUntil(5_000) {
-            runCatching { activityRule.onNodeWithTag("button_finish_set").assertExists(); true }.getOrDefault(false)
+            runCatching { activityRule.onNodeWithText("Finish Set").assertExists(); true }.getOrDefault(false)
         }
         activityRule.onNodeWithText("4").performScrollTo().assertIsDisplayed()
-        activityRule.onNodeWithTag("button_finish_set").performScrollTo().performClick()
+        activityRule.onNodeWithTag("button_set_execution_primary").performScrollTo().performClick()
         activityRule.waitUntil(5_000) {
             runCatching { activityRule.onNodeWithText("Skip Rest").assertExists(); true }.getOrDefault(false)
         }

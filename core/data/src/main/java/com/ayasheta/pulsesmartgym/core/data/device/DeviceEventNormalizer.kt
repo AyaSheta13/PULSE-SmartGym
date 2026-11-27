@@ -97,6 +97,10 @@ object DeviceEventNormalizer {
         if (linearRomCm != null && (!linearRomCm.isFinite() || linearRomCm < 0.0)) {
             return NormalizedRepResult.Rejected("Invalid linearRomCm")
         }
+        val peakAccel = event.peakAccelerationMetersPerSecondSquared
+        if (peakAccel != null && (!peakAccel.isFinite() || peakAccel < 0.0)) {
+            return NormalizedRepResult.Rejected("Invalid peakAccelerationMetersPerSecondSquared")
+        }
 
         val measurement = RepMeasurement(
             repIndex = nextRepIndex,
@@ -106,6 +110,7 @@ object DeviceEventNormalizer {
             eccentricDurationMs = if (capabilities.eccentricDuration) eccentricDurationMs else null,
             angularRomDegrees = if (capabilities.angularRom) angularRomDegrees else null,
             linearRomCm = if (capabilities.linearRom) linearRomCm else null,
+            peakAccelerationMetersPerSecondSquared = if (capabilities.peakAcceleration) peakAccel else null,
             origin = event.origin,
         )
         return NormalizedRepResult.Accepted(measurement)

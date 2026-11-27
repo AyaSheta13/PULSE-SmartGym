@@ -22,8 +22,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -43,8 +46,13 @@ import com.ayasheta.pulsesmartgym.core.designsystem.component.workout.PulseWeigh
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
 import com.ayasheta.pulsesmartgym.core.designsystem.vectors.CheckMark
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
+import com.ayasheta.pulsesmartgym.core.model.device.MeasurementOrigin
+import com.ayasheta.pulsesmartgym.core.model.device.RepClassification
+import com.ayasheta.pulsesmartgym.core.model.device.RepMeasurement
 import com.ayasheta.pulsesmartgym.core.model.session.SessionSetTarget
 import com.ayasheta.pulsesmartgym.core.model.session.SessionStatus
+import kotlinx.coroutines.delay
+import java.util.Locale
 import com.ayasheta.pulsesmartgym.feature.session.dashboard.EndWorkoutEarlyModal
 import com.ayasheta.pulsesmartgym.feature.session.dashboard.SessionUiMapper
 import com.ayasheta.pulsesmartgym.feature.session.ready.SetExecutionTopBar
@@ -239,9 +247,11 @@ fun SetExecutionScreenContent(
 
                     SetExecutionTopBar(
                         title = uiState.exerciseName,
-                        subtitle = phaseSubtitle,
+                        subtitle = "$phaseSubtitle • ${uiState.modeLabel}",
                         modeLabel = uiState.modeLabel,
                         onBackClick = onBackClick,
+                        bluetoothStatus = uiState.bluetoothChipStatus,
+                        isSimulated = uiState.isTelemetrySimulated,
                     )
 
                     val unitLabel = if (uiState.preferredWeightUnit == WeightUnit.KG) "kg" else "lbs"
@@ -383,6 +393,39 @@ fun SetExecutionScreenContent(
                             modifier = Modifier.testTag("set_execution_weight_card"),
                         )
 
+                        var setElapsedSeconds by remember(uiState.sessionId, uiState.exerciseId, uiState.setIndex) {
+                            mutableLongStateOf(0L)
+                        }
+                        LaunchedEffect(uiState.phase, uiState.startedElapsedRealtimeMs) {
+                            val startMs = uiState.startedElapsedRealtimeMs
+                            if (startMs == null) {
+                                setElapsedSeconds = 0L
+                            } else {
+                                while (true) {
+                                    val elapsed = ((android.os.SystemClock.elapsedRealtime() - startMs).coerceAtLeast(0L)) / 1000L
+                                    setElapsedSeconds = elapsed
+                                    if (uiState.phase != SetExecutionPhase.InProgress &&
+                                        uiState.phase != SetExecutionPhase.ConnectionLost
+                                    ) {
+                                        break
+                                    }
+                                    delay(500L)
+                                }
+                            }
+                        }
+
+                        LivePerformanceCard(
+                            setElapsedSeconds = setElapsedSeconds,
+                            repRecords = uiState.repRecords,
+                            isFallbackManual = uiState.isFallbackManual,
+                            modifier = Modifier.testTag("set_execution_live_performance"),
+                        )
+
+                        ExpandableRepetitionBreakdown(
+                            repRecords = uiState.repRecords,
+                            modifier = Modifier.testTag("set_execution_rep_breakdown"),
+                        )
+
                         if (uiState.showSimulateButtons) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -508,5 +551,246 @@ private fun SimActionChip(
                 color = WorkoutPalette.TextPrimary,
             ),
         )
+    }
+}
+
+@Composable
+private fun LivePerformanceCard(
+    setElapsedSeconds: Long,
+    repRecords: List<RepMeasurement>,
+    isFallbackManual: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val latestMeasuredRep = repRecords.lastOrNull {
+        it.angularRomDegrees != null ||
+            it.linearRomCm != null ||
+            it.peakAccelerationMetersPerSecondSquared != null ||
+            it.totalDurationMs != null
+    }
+    val romValueText = when {
+        latestMeasuredRep == null -> "—"
+        latestMeasuredRep.angularRomDegrees != null && latestMeasuredRep.linearRomCm != null ->
+            String.format(Locale.US, "%.0f° / %.0f cm", latestMeasuredRep.angularRomDegrees, latestMeasuredRep.linearRomCm)
+        latestMeasuredRep.angularRomDegrees != null ->
+            String.format(Locale.US, "%.1f°", latestMeasuredRep.angularRomDegrees)
+        latestMeasuredRep.linearRomCm != null ->
+            String.format(Locale.US, "%.1f cm", latestMeasuredRep.linearRomCm)
+        else -> "—"
+    }
+    val accelValueText = latestMeasuredRep?.peakAccelerationMetersPerSecondSquared?.let {
+        String.format(Locale.US, "%.2f m/s²", it)
+    } ?: "—"
+    val repDurValueText = latestMeasuredRep?.totalDurationMs?.let {
+        String.format(Locale.US, "%.2f s", it / 1000.0)
+    } ?: "—"
+
+    val repTag = when {
+        latestMeasuredRep == null -> "Awaiting rep"
+        isFallbackManual -> "Earlier Rep #${latestMeasuredRep.repIndex}"
+        else -> "Rep #${latestMeasuredRep.repIndex}"
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White)
+            .border(BorderStroke(1.dp, Color(0xFFECE8E3)), RoundedCornerShape(16.dp))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BasicText(
+                text = "Live Performance",
+                style = PulseTheme.typography.cardTitle.copy(
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = WorkoutPalette.TextPrimary,
+                ),
+            )
+            BasicText(
+                text = repTag,
+                style = PulseTheme.typography.label.copy(
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = WorkoutPalette.TextMuted,
+                ),
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            MetricTile(
+                label = "SET DURATION",
+                value = SessionUiMapper.formatElapsedMmSs(setElapsedSeconds),
+                modifier = Modifier.weight(1f),
+            )
+            MetricTile(
+                label = "RANGE OF MOTION",
+                value = romValueText,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            MetricTile(
+                label = "PEAK ACCEL",
+                value = accelValueText,
+                modifier = Modifier.weight(1f),
+            )
+            MetricTile(
+                label = "REP DURATION",
+                value = repDurValueText,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun MetricTile(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFFFAF8F6))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        BasicText(
+            text = label,
+            style = PulseTheme.typography.label.copy(
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.4.sp,
+                color = WorkoutPalette.TextMuted,
+            ),
+            maxLines = 1,
+        )
+        BasicText(
+            text = value,
+            style = PulseTheme.typography.cardTitle.copy(
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                color = WorkoutPalette.TextPrimary,
+            ),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun ExpandableRepetitionBreakdown(
+    repRecords: List<RepMeasurement>,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White)
+            .border(BorderStroke(1.dp, Color(0xFFECE8E3)), RoundedCornerShape(16.dp))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .clickable { expanded = !expanded }
+                .padding(vertical = 2.dp)
+                .testTag("button_toggle_rep_breakdown"),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BasicText(
+                text = "Repetition Breakdown (${repRecords.size})",
+                style = PulseTheme.typography.cardTitle.copy(
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = WorkoutPalette.TextPrimary,
+                ),
+            )
+            BasicText(
+                text = if (expanded) "Hide ▲" else "Show ▼",
+                style = PulseTheme.typography.label.copy(
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = WorkoutPalette.PrimaryCoral,
+                ),
+            )
+        }
+
+        if (expanded) {
+            if (repRecords.isEmpty()) {
+                BasicText(
+                    text = "No accepted repetitions yet.",
+                    style = PulseTheme.typography.contentPrimary.copy(
+                        fontSize = 13.sp,
+                        color = WorkoutPalette.TextMuted,
+                    ),
+                )
+            } else {
+                repRecords.forEach { rep ->
+                    val clsLabel = if (rep.classification == RepClassification.FULL) "Full" else "Partial"
+                    val romPart = listOfNotNull(
+                        rep.angularRomDegrees?.let { String.format(Locale.US, "%.0f°", it) },
+                        rep.linearRomCm?.let { String.format(Locale.US, "%.1f cm", it) },
+                    ).joinToString(" / ").ifEmpty { "—" }
+                    val accelPart = rep.peakAccelerationMetersPerSecondSquared?.let {
+                        String.format(Locale.US, "%.2f m/s²", it)
+                    } ?: "—"
+                    val durPart = rep.totalDurationMs?.let {
+                        String.format(Locale.US, "%.2fs", it / 1000.0)
+                    } ?: "—"
+                    val originLabel = when (rep.origin) {
+                        MeasurementOrigin.SIMULATED_TELEMETRY -> "Sim"
+                        MeasurementOrigin.SENSOR_TELEMETRY -> "BLE"
+                        MeasurementOrigin.MANUAL_CORRECTION -> "Corrected"
+                        MeasurementOrigin.MANUAL_INPUT -> "Manual"
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFFAF8F6))
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        BasicText(
+                            text = "#${rep.repIndex} • $clsLabel ($originLabel)",
+                            style = PulseTheme.typography.label.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = WorkoutPalette.TextPrimary,
+                            ),
+                        )
+                        BasicText(
+                            text = "$romPart · $accelPart · $durPart",
+                            style = PulseTheme.typography.label.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = WorkoutPalette.TextMuted,
+                            ),
+                        )
+                    }
+                }
+            }
+        }
     }
 }

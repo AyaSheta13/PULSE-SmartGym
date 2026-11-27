@@ -6,6 +6,7 @@ import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
 import com.ayasheta.pulsesmartgym.core.model.device.TrackingMode
 import com.ayasheta.pulsesmartgym.core.model.history.VolumeCoverage
 import com.ayasheta.pulsesmartgym.core.model.history.WorkoutAnalytics
+import com.ayasheta.pulsesmartgym.core.model.history.WorkoutPerformanceAnalytics
 import com.ayasheta.pulsesmartgym.core.model.profile.AuthState
 import com.ayasheta.pulsesmartgym.core.model.repository.AuthRepository
 import com.ayasheta.pulsesmartgym.core.model.repository.UserPreferencesRepository
@@ -130,6 +131,8 @@ class WorkoutResultViewModel(
                 )
             }
 
+            val perfSummary = WorkoutPerformanceAnalytics.summarizeSession(session)
+                .takeIf { it.hasAnyMeasurements }
             return WorkoutResultUiState.Loaded(
                 sessionId = session.id,
                 planName = session.planNameSnapshot,
@@ -144,6 +147,7 @@ class WorkoutResultViewModel(
                 breakdownHeaderRight = breakdownRight,
                 preferredWeightUnit = unit,
                 exercises = breakdownItems,
+                performanceSummary = perfSummary,
             )
         }
     }

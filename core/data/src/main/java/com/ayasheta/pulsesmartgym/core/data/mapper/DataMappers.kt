@@ -77,6 +77,7 @@ internal fun RepRecordEntity.toDomain(): RepMeasurement = RepMeasurement(
     eccentricDurationMs = eccentricDurationMs,
     angularRomDegrees = angularRomDegrees,
     linearRomCm = linearRomCm,
+    peakAccelerationMetersPerSecondSquared = peakAccelerationMetersPerSecondSquared,
     origin = origin,
 )
 

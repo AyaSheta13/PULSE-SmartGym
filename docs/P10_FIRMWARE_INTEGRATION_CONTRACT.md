@@ -7,10 +7,10 @@ This document defines the exact replacement boundary between the PULSE Smart Gym
 
 | Layer | File | Responsibility |
 | --- | --- | --- |
-| Domain Contracts | `core/model/src/main/kotlin/.../device/DeviceContracts.kt` | `DeviceConnectionState`, `ExecutionEnvironmentKind`, `TrackingMode`, `MeasurementOrigin`, `RepMeasurement` |
-| Domain Contracts | `core/model/src/main/kotlin/.../device/DeviceCapabilities.kt` | Capability flags (`automaticRepEvents`, `fullPartialClassification`, `angularRom`, `linearRom`, `repDuration`) |
+| Domain Contracts | `core/model/src/main/kotlin/.../device/DeviceContracts.kt` | `DeviceConnectionState`, `ExecutionEnvironmentKind`, `TrackingMode`, `MeasurementOrigin`, `RepMeasurement` (including `peakAccelerationMetersPerSecondSquared`) |
+| Domain Contracts | `core/model/src/main/kotlin/.../device/DeviceCapabilities.kt` | Capability flags (`automaticRepEvents`, `fullPartialClassification`, `angularRom`, `linearRom`, `repDuration`, `peakAcceleration`) |
 | Domain Contracts | `core/model/src/main/kotlin/.../device/DeviceDescriptor.kt` | Discovered/connected device metadata (`id`, `name`, `providerType`, `rssiDbm`, `capabilities`) |
-| Domain Contracts | `core/model/src/main/kotlin/.../device/DeviceEvent.kt` | Inbound telemetry events (`DeviceRepEvent`, `DeviceBatteryUpdated`, `DeviceLinkLost`, `DeviceDiagnosticEvent`) |
+| Domain Contracts | `core/model/src/main/kotlin/.../device/DeviceEvent.kt` | Inbound telemetry events (`DeviceRepEvent` with `peakAccelerationMetersPerSecondSquared`, `DeviceBatteryUpdated`, `DeviceLinkLost`, `DeviceDiagnosticEvent`) |
 | Domain Contracts | `core/model/src/main/kotlin/.../device/DeviceDataSource.kt` | Hardware-agnostic source interface (`startScan`, `stopScan`, `connect`, `cancelConnection`, `disconnect`, `reconnect`) |
 | Domain Contracts | `core/model/src/main/kotlin/.../device/DeviceRepository.kt` | App-facing reactive repository (`linkState`, `discoveredDevices`, `events`, `activeProviderType`, `isDemoSessionActive`) |
 | Simulator | `core/data/src/main/java/.../device/FakeDeviceDataSource.kt` | Deterministic `DeviceDataSource` for Demo Mode; emits `MeasurementOrigin.SIMULATED_TELEMETRY` |

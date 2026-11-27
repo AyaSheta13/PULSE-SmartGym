@@ -6,6 +6,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -255,6 +256,10 @@ fun TrainingProgressScreenContent(
                     // Key Lift Personal Records
                     item(key = "progress_prs") {
                         PersonalRecordsCard(records = uiState.personalRecords)
+
+                        if (uiState.performanceTrends.isNotEmpty()) {
+                            PerformanceTrendsCard(trends = uiState.performanceTrends)
+                        }
                     }
                 }
 
@@ -519,6 +524,85 @@ private fun WeeklyVolumeChartCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PerformanceTrendsCard(
+    trends: List<com.ayasheta.pulsesmartgym.core.model.history.ExercisePerformanceTrendSummary>,
+) {
+    var selectedIndex by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableIntStateOf(0) }
+    val safeIndex = selectedIndex.coerceIn(0, (trends.size - 1).coerceAtLeast(0))
+    val active = trends[safeIndex]
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White)
+            .border(BorderStroke(1.dp, WorkoutPalette.CardBorder), RoundedCornerShape(16.dp))
+            .padding(16.dp)
+            .testTag("progress_performance_trends_card"),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        BasicText(
+            text = "Performance Trends",
+            style = PulseTheme.typography.cardTitle.copy(
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = WorkoutPalette.TextPrimary,
+            ),
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            trends.forEachIndexed { idx, trend ->
+                val isSelected = idx == safeIndex
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(9999.dp))
+                        .background(if (isSelected) WorkoutPalette.PrimaryCoral else Color(0xFFF6F4F2))
+                        .clickable { selectedIndex = idx }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    BasicText(
+                        text = trend.exerciseName,
+                        style = PulseTheme.typography.label.copy(
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isSelected) Color.White else WorkoutPalette.TextPrimary,
+                        ),
+                    )
+                }
+            }
+        }
+        val romText = listOfNotNull(
+            active.averageAngularRomDegrees?.let { String.format(java.util.Locale.US, "%.1f° avg", it) },
+            active.averageLinearRomCm?.let { String.format(java.util.Locale.US, "%.1f cm avg", it) },
+        ).joinToString(" · ").ifEmpty { "Not measured" }
+        val durText = active.averageRepDurationMs?.let {
+            String.format(java.util.Locale.US, "%.2f s avg", it / 1000.0)
+        } ?: "Not measured"
+        val accelText = active.maxPeakAccelerationMps2?.let {
+            String.format(java.util.Locale.US, "%.2f m/s² peak", it)
+        } ?: "Not measured"
+        val ratioText = "${active.totalFullReps} full / ${active.totalPartialReps} partial (${active.totalMeasuredReps} measured)"
+
+        BasicText(
+            text = "ROM: $romText",
+            style = PulseTheme.typography.contentPrimary.copy(fontSize = 13.sp, color = WorkoutPalette.TextPrimary),
+        )
+        BasicText(
+            text = "Rep Duration: $durText  •  Acceleration: $accelText",
+            style = PulseTheme.typography.contentPrimary.copy(fontSize = 13.sp, color = WorkoutPalette.TextPrimary),
+        )
+        BasicText(
+            text = "Repetition Ratio: $ratioText",
+            style = PulseTheme.typography.label.copy(fontSize = 12.sp, color = WorkoutPalette.TextMuted),
+        )
     }
 }
 

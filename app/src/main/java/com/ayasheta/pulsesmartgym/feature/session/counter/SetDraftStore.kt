@@ -104,6 +104,7 @@ object SetDraftSavedStateCodec {
                 r.angularRomDegrees?.toString().orEmpty(),
                 r.linearRomCm?.toString().orEmpty(),
                 r.origin.name,
+                r.peakAccelerationMetersPerSecondSquared?.toString().orEmpty(),
             ).joinToString(",")
         }
         val eventsEncoded = draft.acceptedEventIds.joinToString(";") { enc(it) }
@@ -177,7 +178,7 @@ object SetDraftSavedStateCodec {
             if (repTokens.size > MAX_SAVED_LEDGER_RECORDS) return null
             for (token in repTokens) {
                 val f = token.split(",")
-                if (f.size != 8) return null
+                if (f.size != 8 && f.size != 9) return null
                 val cls = runCatching { RepClassification.valueOf(f[1]) }.getOrNull() ?: return null
                 val dur = if (f[2].isEmpty()) null else f[2].toLongOrNull() ?: return null
                 val con = if (f[3].isEmpty()) null else f[3].toLongOrNull() ?: return null
@@ -185,11 +186,13 @@ object SetDraftSavedStateCodec {
                 val ang = if (f[5].isEmpty()) null else f[5].toDoubleOrNull() ?: return null
                 val lin = if (f[6].isEmpty()) null else f[6].toDoubleOrNull() ?: return null
                 val org = runCatching { MeasurementOrigin.valueOf(f[7]) }.getOrNull() ?: return null
+                val accel = if (f.size >= 9 && f[8].isNotEmpty()) f[8].toDoubleOrNull() ?: return null else null
                 if (dur != null && dur < 0L) return null
                 if (con != null && con < 0L) return null
                 if (ecc != null && ecc < 0L) return null
                 if (ang != null && (!ang.isFinite() || ang < 0.0)) return null
                 if (lin != null && (!lin.isFinite() || lin < 0.0)) return null
+                if (accel != null && (!accel.isFinite() || accel < 0.0)) return null
                 parsedReps.add(
                     RepMeasurement(
                         repIndex = parsedReps.size + 1,
@@ -199,6 +202,7 @@ object SetDraftSavedStateCodec {
                         eccentricDurationMs = ecc,
                         angularRomDegrees = ang,
                         linearRomCm = lin,
+                        peakAccelerationMetersPerSecondSquared = accel,
                         origin = org,
                     ),
                 )

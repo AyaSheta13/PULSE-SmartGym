@@ -36,6 +36,7 @@ fun PulseBluetoothChip(
     status: PulseBluetoothChipStatus,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
+    isSimulated: Boolean = false,
 ) {
     val palette = when (status) {
         PulseBluetoothChipStatus.CONNECTED -> BluetoothChipPalette(
@@ -43,7 +44,7 @@ fun PulseBluetoothChip(
             border = PulseTheme.color.successBorder,
             content = PulseTheme.color.successContent,
             dot = PulseTheme.color.success,
-            label = "Connected",
+            label = if (isSimulated) "Connected (Sim)" else "Connected",
         )
         PulseBluetoothChipStatus.CONNECTING -> BluetoothChipPalette(
             background = PulseTheme.color.primaryContainer,

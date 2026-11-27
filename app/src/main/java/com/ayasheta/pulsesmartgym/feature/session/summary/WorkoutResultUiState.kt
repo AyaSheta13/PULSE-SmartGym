@@ -1,6 +1,7 @@
 package com.ayasheta.pulsesmartgym.feature.session.summary
 
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
+import com.ayasheta.pulsesmartgym.core.model.history.SessionPerformanceSummary
 import com.ayasheta.pulsesmartgym.core.model.session.SessionStatus
 
 data class ResultExerciseBreakdownUiModel(
@@ -34,5 +35,6 @@ sealed interface WorkoutResultUiState {
         val breakdownHeaderRight: String,
         val preferredWeightUnit: WeightUnit,
         val exercises: List<ResultExerciseBreakdownUiModel>,
+        val performanceSummary: SessionPerformanceSummary? = null,
     ) : WorkoutResultUiState
 }

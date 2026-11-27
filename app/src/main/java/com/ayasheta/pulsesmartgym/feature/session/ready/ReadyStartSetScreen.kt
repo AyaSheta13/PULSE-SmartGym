@@ -40,6 +40,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ayasheta.pulsesmartgym.core.designsystem.component.button.Button as PulsePrimaryButton
+import com.ayasheta.pulsesmartgym.core.designsystem.component.chips.PulseBluetoothChip
+import com.ayasheta.pulsesmartgym.core.designsystem.component.chips.PulseBluetoothChipStatus
 import com.ayasheta.pulsesmartgym.core.designsystem.component.progress.PulseLoadingIndicator
 import com.ayasheta.pulsesmartgym.core.designsystem.component.workout.PulseRepCounterGauge
 import com.ayasheta.pulsesmartgym.core.designsystem.component.workout.PulseWeightSelectorCard
@@ -355,6 +357,8 @@ internal fun SetExecutionTopBar(
     subtitle: String,
     modeLabel: String,
     onBackClick: () -> Unit,
+    bluetoothStatus: PulseBluetoothChipStatus? = null,
+    isSimulated: Boolean = false,
 ) {
     Column(
         modifier = Modifier
@@ -407,21 +411,29 @@ internal fun SetExecutionTopBar(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Box(
-                modifier = Modifier
-                    .clip(PulseTheme.corners.fullRounded)
-                    .background(Color(0xFFF6F4F2))
-                    .border(BorderStroke(1.dp, Color(0xFFE4E0DC)), PulseTheme.corners.fullRounded)
-                    .padding(horizontal = 12.dp, vertical = 5.dp),
-            ) {
-                BasicText(
-                    text = modeLabel,
-                    style = PulseTheme.typography.label.copy(
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = WorkoutPalette.TextMuted,
-                    ),
+            if (bluetoothStatus != null) {
+                PulseBluetoothChip(
+                    status = bluetoothStatus,
+                    isSimulated = isSimulated,
+                    modifier = Modifier.testTag("set_execution_connection_chip"),
                 )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .clip(PulseTheme.corners.fullRounded)
+                        .background(Color(0xFFF6F4F2))
+                        .border(BorderStroke(1.dp, Color(0xFFE4E0DC)), PulseTheme.corners.fullRounded)
+                        .padding(horizontal = 12.dp, vertical = 5.dp),
+                ) {
+                    BasicText(
+                        text = modeLabel,
+                        style = PulseTheme.typography.label.copy(
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = WorkoutPalette.TextMuted,
+                        ),
+                    )
+                }
             }
         }
         Box(

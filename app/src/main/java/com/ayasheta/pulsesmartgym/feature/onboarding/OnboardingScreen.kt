@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -63,6 +64,7 @@ import com.ayasheta.pulsesmartgym.feature.auth.components.PulsePrimaryCta
 
 private data class OnboardingPageSpec(
     @param:DrawableRes val heroResId: Int,
+    val aspectRatio: Float,
     val badgeLabel: String,
     val title: String,
     val description: String,
@@ -76,6 +78,7 @@ private data class OnboardingPageSpec(
 private val onboardingPages = listOf(
     OnboardingPageSpec(
         heroResId = R.drawable.onboarding_hero_1,
+        aspectRatio = 378f / 436f,
         badgeLabel = "STRENGTH",
         title = "Welcome to PULSE",
         description = "Smart workout tracking built for focused strength training. Log every rep and build consistent gym momentum.",
@@ -87,6 +90,7 @@ private val onboardingPages = listOf(
     ),
     OnboardingPageSpec(
         heroResId = R.drawable.onboarding_hero_2,
+        aspectRatio = 1672f / 941f,
         badgeLabel = "SMART LOGGING",
         title = "Track Every Workout",
         description = "Log sets, weights, and reps with clean, fluid controls. Track your training volume and personal bests with zero friction.",
@@ -98,6 +102,7 @@ private val onboardingPages = listOf(
     ),
     OnboardingPageSpec(
         heroResId = R.drawable.onboarding_hero_3,
+        aspectRatio = 377f / 436f,
         badgeLabel = "DATA & ANALYTICS",
         title = "Analyze Your Progress",
         description = "Visualize workout volume, personal records, and strength progress. All data stays fast, private, and always available.",
@@ -285,8 +290,8 @@ fun OnboardingContent(
                 ) {
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Hero Visual Module (Figma 139:8, 139:27, 139:45 — ContentScale.Fit on harmonious background)
-                    val heroModifier = if (useScrollFallback) {
+                    // Hero Visual Module — container matches intrinsic image ratio with zero blank strips
+                    val heroWrapperModifier = if (useScrollFallback) {
                         Modifier
                             .fillMaxWidth()
                             .height(220.dp)
@@ -294,52 +299,61 @@ fun OnboardingContent(
                         Modifier
                             .fillMaxWidth()
                             .weight(1f, fill = true)
-                            .heightIn(min = 180.dp, max = 340.dp)
+                            .heightIn(min = 160.dp)
                     }
                     Box(
-                        modifier = heroModifier
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(Color(0xFFFEF6F3))
-                            .border(
-                                width = 1.dp,
-                                color = Color(0xFFEFE2DE),
-                                shape = RoundedCornerShape(24.dp),
-                            )
-                            .testTag("onboarding_hero_card_$pageIndex"),
+                        modifier = heroWrapperModifier,
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Image(
-                            painter = painterResource(id = pageSpec.heroResId),
-                            contentDescription = pageSpec.badgeLabel,
-                            contentScale = ContentScale.Fit,
+                        Box(
                             modifier = Modifier
-                                .fillMaxSize()
-                                .testTag("onboarding_hero_image_$pageIndex"),
-                        )
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier
-                                .padding(start = 15.dp, top = 15.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xBF191919))
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                                .aspectRatio(
+                                    ratio = pageSpec.aspectRatio,
+                                    matchHeightConstraintsFirst = pageSpec.aspectRatio < 1f,
+                                )
+                                .clip(RoundedCornerShape(24.dp))
+                                .border(
+                                    width = 1.dp,
+                                    color = Color(0xFFEFE2DE),
+                                    shape = RoundedCornerShape(24.dp),
+                                )
+                                .testTag("onboarding_hero_card_$pageIndex"),
                         ) {
-                            Box(
+                            Image(
+                                painter = painterResource(id = pageSpec.heroResId),
+                                contentDescription = pageSpec.badgeLabel,
+                                contentScale = ContentScale.Fit,
                                 modifier = Modifier
-                                    .size(6.dp)
-                                    .clip(CircleShape)
-                                    .background(PulseTheme.color.primary),
+                                    .fillMaxSize()
+                                    .testTag("onboarding_hero_image_$pageIndex"),
                             )
-                            BasicText(
-                                text = pageSpec.badgeLabel,
-                                style = TextStyle(
-                                    fontFamily = PulseTheme.typography.label.fontFamily,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 0.5.sp,
-                                    color = Color.White,
-                                ),
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier
+                                    .padding(start = 14.dp, top = 14.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color(0xBF191919))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    .testTag("onboarding_hero_badge_$pageIndex"),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(PulseTheme.color.primary),
+                                )
+                                BasicText(
+                                    text = pageSpec.badgeLabel,
+                                    style = TextStyle(
+                                        fontFamily = PulseTheme.typography.label.fontFamily,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 0.5.sp,
+                                        color = Color.White,
+                                    ),
+                                )
+                            }
                         }
                     }
 

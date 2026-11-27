@@ -515,6 +515,45 @@ private fun SessionDetailExerciseRow(
                             color = WorkoutPalette.TextPrimary,
                         ),
                     )
+                    if (set.repMeasurements.isNotEmpty()) {
+                        val measured = set.repMeasurements.filter {
+                            it.totalDurationMs != null ||
+                                it.angularRomDegrees != null ||
+                                it.linearRomCm != null ||
+                                it.peakAccelerationMetersPerSecondSquared != null
+                        }
+                        if (measured.isNotEmpty()) {
+                            Column(
+                                modifier = Modifier.padding(start = 10.dp, top = 2.dp, bottom = 4.dp),
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                measured.forEach { rep ->
+                                    val rom = listOfNotNull(
+                                        rep.angularRomDegrees?.let { String.format(java.util.Locale.US, "%.0f°", it) },
+                                        rep.linearRomCm?.let { String.format(java.util.Locale.US, "%.1f cm", it) },
+                                    ).joinToString(" / ")
+                                    val accel = rep.peakAccelerationMetersPerSecondSquared?.let {
+                                        String.format(java.util.Locale.US, "%.2f m/s²", it)
+                                    }
+                                    val dur = rep.totalDurationMs?.let {
+                                        String.format(java.util.Locale.US, "%.2fs", it / 1000.0)
+                                    }
+                                    val parts = listOfNotNull(
+                                        rom.takeIf { it.isNotEmpty() },
+                                        accel,
+                                        dur,
+                                    ).joinToString(" · ")
+                                    BasicText(
+                                        text = "Rep #${rep.repIndex}: $parts",
+                                        style = PulseTheme.typography.label.copy(
+                                            fontSize = 11.sp,
+                                            color = WorkoutPalette.TextMuted,
+                                        ),
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

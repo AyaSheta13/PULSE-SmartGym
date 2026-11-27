@@ -1,5 +1,7 @@
 package com.ayasheta.pulsesmartgym.feature.progress
 
+import com.ayasheta.pulsesmartgym.core.model.history.ExercisePerformanceTrendSummary
+
 data class ProgressMetricCardUiModel(
     val title: String,
     val primaryValue: String,
@@ -55,5 +57,6 @@ sealed interface TrainingProgressUiState {
         val chartHeaderVolumeText: String,
         val bars: List<WeeklyVolumeBarUiModel>,
         val personalRecords: List<PersonalRecordRowUiModel>,
+        val performanceTrends: List<ExercisePerformanceTrendSummary> = emptyList(),
     ) : TrainingProgressUiState
 }

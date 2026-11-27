@@ -65,16 +65,16 @@ class P8ManualRepCounterUiTest {
         // 1. Start Set 1 -> ReadyStartSet
         activityRule.onNodeWithTag("session_set_start_${ex1Id}_1").performClick()
         activityRule.waitUntil(5_000) {
-            runCatching { activityRule.onNodeWithTag("ready_start_set_screen").assertExists(); true }.getOrDefault(false)
+            runCatching { activityRule.onNodeWithTag("set_execution_screen").assertExists(); true }.getOrDefault(false)
         }
         activityRule.onNodeWithText("Barbell Bench Press").assertIsDisplayed()
-        activityRule.onNodeWithText("Set 1 of 2 • Ready").assertIsDisplayed()
-        activityRule.onNodeWithTag("ready_rest_info").assertIsDisplayed()
+        activityRule.onNodeWithText("Set 1 of 2 • Ready", substring = true).assertIsDisplayed()
+        activityRule.onNodeWithTag("set_execution_rest_info").assertIsDisplayed()
 
         // 2. Start Set -> ManualRepCounter (starts at 0)
-        activityRule.onNodeWithTag("button_ready_start_set").performClick()
+        activityRule.onNodeWithTag("button_set_execution_primary").performClick()
         activityRule.waitUntil(5_000) {
-            runCatching { activityRule.onNodeWithTag("manual_rep_counter_screen").assertExists(); true }.getOrDefault(false)
+            runCatching { activityRule.onNodeWithText("Finish Set").assertExists(); true }.getOrDefault(false)
         }
         activityRule.onNodeWithText("0").assertIsDisplayed()
 
@@ -87,13 +87,13 @@ class P8ManualRepCounterUiTest {
         activityRule.activityRule.scenario.recreate()
         activityRule.waitForIdle()
         activityRule.waitUntil(5_000) {
-            runCatching { activityRule.onNodeWithTag("manual_rep_counter_screen").assertExists(); true }.getOrDefault(false)
+            runCatching { activityRule.onNodeWithTag("set_execution_counter_card").assertExists(); true }.getOrDefault(false)
         }
         activityRule.onNodeWithText("8").assertIsDisplayed()
         activityRule.onNodeWithText("82.5").assertIsDisplayed()
 
         // 3. Finish Set -> returns to WorkoutSession with Rest Timer visible
-        activityRule.onNodeWithTag("button_finish_set").performClick()
+        activityRule.onNodeWithTag("button_set_execution_primary").performClick()
         activityRule.waitUntil(5_000) {
             runCatching { activityRule.onNodeWithTag("session_rest_timer_card").assertExists(); true }.getOrDefault(false)
         }
@@ -126,17 +126,17 @@ class P8ManualRepCounterUiTest {
         }
         activityRule.onNodeWithTag("session_set_start_${ex1Id}_2").performClick()
         activityRule.waitUntil(5_000) {
-            runCatching { activityRule.onNodeWithTag("ready_start_set_screen").assertExists(); true }.getOrDefault(false)
+            runCatching { activityRule.onNodeWithTag("set_execution_screen").assertExists(); true }.getOrDefault(false)
         }
-        activityRule.onNodeWithText("Set 2 of 2 • Ready").assertIsDisplayed()
+        activityRule.onNodeWithText("Set 2 of 2 • Ready", substring = true).assertIsDisplayed()
 
         // Complete Set 2
-        activityRule.onNodeWithTag("button_ready_start_set").performClick()
+        activityRule.onNodeWithTag("button_set_execution_primary").performClick()
         activityRule.waitUntil(5_000) {
-            runCatching { activityRule.onNodeWithTag("button_finish_set").assertExists(); true }.getOrDefault(false)
+            runCatching { activityRule.onNodeWithText("Finish Set").assertExists(); true }.getOrDefault(false)
         }
         repeat(10) { activityRule.onNodeWithContentDescription("Add one rep").performClick() }
-        activityRule.onNodeWithTag("button_finish_set").performClick()
+        activityRule.onNodeWithTag("button_set_execution_primary").performClick()
 
         // All sets complete -> back on WorkoutSession -> Finish Workout -> WorkoutComplete
         activityRule.waitUntil(5_000) {

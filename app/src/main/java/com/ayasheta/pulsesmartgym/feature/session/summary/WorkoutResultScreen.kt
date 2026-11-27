@@ -295,6 +295,51 @@ fun WorkoutResultScreenContent(
                                 .padding(16.dp)
                                 .testTag("summary_breakdown_card"),
                         ) {
+                            uiState.performanceSummary?.let { perf ->
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 12.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFFFAF8F6))
+                                        .border(BorderStroke(1.dp, Color(0xFFECE8E3)), RoundedCornerShape(12.dp))
+                                        .padding(12.dp)
+                                        .testTag("result_performance_summary"),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                ) {
+                                    BasicText(
+                                        text = "Performance Summary (${perf.measuredRepCount}/${perf.totalRecordedReps} measured reps)",
+                                        style = PulseTheme.typography.label.copy(
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = WorkoutPalette.TextPrimary,
+                                        ),
+                                    )
+                                    val metricsLine = listOfNotNull(
+                                        perf.averageRepDurationMs?.let {
+                                            String.format(java.util.Locale.US, "Avg Rep: %.2fs", it / 1000.0)
+                                        },
+                                        perf.averageAngularRomDegrees?.let {
+                                            String.format(java.util.Locale.US, "Avg Angular ROM: %.1f°", it)
+                                        },
+                                        perf.averageLinearRomCm?.let {
+                                            String.format(java.util.Locale.US, "Avg Linear ROM: %.1f cm", it)
+                                        },
+                                        perf.maxPeakAccelerationMps2?.let {
+                                            String.format(java.util.Locale.US, "Peak Accel: %.2f m/s²", it)
+                                        },
+                                    ).joinToString("  •  ")
+                                    if (metricsLine.isNotEmpty()) {
+                                        BasicText(
+                                            text = metricsLine,
+                                            style = PulseTheme.typography.label.copy(
+                                                fontSize = 11.sp,
+                                                color = WorkoutPalette.TextMuted,
+                                            ),
+                                        )
+                                    }
+                                }
+                            }
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
