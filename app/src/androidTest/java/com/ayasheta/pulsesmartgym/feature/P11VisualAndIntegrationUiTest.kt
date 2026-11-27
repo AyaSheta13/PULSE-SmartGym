@@ -99,7 +99,7 @@ class P11VisualAndIntegrationUiTest {
 
         // Onboarding 0, 1, 2 across 360, 390, 412dp and short/tall heights
         screenMode = "onboarding"
-        val expectedRatios = listOf(378f / 436f, 1672f / 941f, 377f / 436f)
+        val expectedRatios = listOf(378f / 436f, 935f / 1024f, 377f / 436f)
         listOf(360.dp to 640.dp, 390.dp to 844.dp, 412.dp to 915.dp).forEach { (w, h) ->
             widthDp = w
             heightDp = h

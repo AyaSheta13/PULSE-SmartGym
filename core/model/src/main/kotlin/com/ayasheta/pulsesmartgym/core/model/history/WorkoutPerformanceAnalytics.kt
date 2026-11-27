@@ -92,6 +92,7 @@ data class ExercisePerformanceTrendSummary(
     val exerciseName: String,
     val configurationCompatibility: MeasurementCompatibilityStatus = MeasurementCompatibilityStatus.COMPATIBLE,
     val calibrationVersion: String? = null,
+    val isComparableTrendAvailable: Boolean = true,
     val isSimulatedIncluded: Boolean = false,
     val points: List<ExercisePerformanceTrendPoint>,
     val averageAngularRomDegrees: Double?,
@@ -112,94 +113,165 @@ data class ExercisePerformanceTrendSummary(
 
 object WorkoutPerformanceAnalytics {
 
+    const val SIMULATION_COMPATIBILITY_VERSION = "sim-v1"
+
+    /**
+     * Conservative identity: only exercises with a stable catalog ID merge across sessions.
+     * Unmapped historical exercises are never merged solely because their display names match.
+     */
     fun stableExerciseKey(exercise: SessionExercise): String =
-        exercise.sourceExerciseId ?: "unmapped:${exercise.exerciseNameSnapshot.trim().lowercase()}"
+        exercise.sourceExerciseId ?: "unmapped:${exercise.sessionId}:${exercise.id}"
 
     private fun isSensorOrigin(origin: MeasurementOrigin): Boolean =
         origin == MeasurementOrigin.SENSOR_TELEMETRY || origin == MeasurementOrigin.SIMULATED_TELEMETRY
 
+    private fun isManualOrigin(origin: MeasurementOrigin): Boolean =
+        origin == MeasurementOrigin.MANUAL_INPUT || origin == MeasurementOrigin.MANUAL_CORRECTION
+
+    // Valid zero measurements (>= 0) are preserved; negative, non-finite, and null are excluded.
     private fun RepMeasurement.validDurationMs(): Long? =
-        totalDurationMs?.takeIf { it > 0L }
+        totalDurationMs?.takeIf { it >= 0L }
 
     private fun RepMeasurement.validAngularRom(): Double? =
-        angularRomDegrees?.takeIf { it.isFinite() && it > 0.0 }
+        angularRomDegrees?.takeIf { it.isFinite() && it >= 0.0 }
 
     private fun RepMeasurement.validLinearRom(): Double? =
-        linearRomCm?.takeIf { it.isFinite() && it > 0.0 }
+        linearRomCm?.takeIf { it.isFinite() && it >= 0.0 }
 
     private fun RepMeasurement.validPeakAccel(): Double? =
         peakAccelerationMetersPerSecondSquared?.takeIf { it.isFinite() && it >= 0.0 }
 
-    private fun RepMeasurement.hasAnyValidMeasurement(): Boolean =
+    private fun RepMeasurement.hasAnyValidMeasurement(
+        supportsAngular: Boolean,
+        supportsLinear: Boolean,
+        supportsAccel: Boolean,
+    ): Boolean =
         validDurationMs() != null ||
-            validAngularRom() != null ||
-            validLinearRom() != null ||
-            validPeakAccel() != null
+            (supportsAngular && validAngularRom() != null) ||
+            (supportsLinear && validLinearRom() != null) ||
+            (supportsAccel && validPeakAccel() != null)
 
     private fun assessCompatibility(
         sourceExerciseId: String?,
         trackingCategory: TrackingCategory,
         reps: List<RepMeasurement>,
-    ): MeasurementCompatibilityStatus {
-        if (sourceExerciseId == null) return MeasurementCompatibilityStatus.UNCONFIGURED
+        calibrationVersion: String? = null,
+    ): Pair<MeasurementCompatibilityStatus, String?> {
+        if (sourceExerciseId == null) {
+            return MeasurementCompatibilityStatus.UNCONFIGURED to null
+        }
         val config = ExerciseTrackingCatalog.forExercise(sourceExerciseId, trackingCategory)
         val hasUnsupportedAngular = !config.supportsAngularRom && reps.any { it.validAngularRom() != null }
         val hasUnsupportedLinear = !config.supportsLinearRom && reps.any { it.validLinearRom() != null }
         val hasUnsupportedAccel = !config.supportsPeakAcceleration && reps.any { it.validPeakAccel() != null }
-        return if (hasUnsupportedAngular || hasUnsupportedLinear || hasUnsupportedAccel) {
-            MeasurementCompatibilityStatus.INCOMPATIBLE
-        } else {
-            MeasurementCompatibilityStatus.COMPATIBLE
+        if (hasUnsupportedAngular || hasUnsupportedLinear || hasUnsupportedAccel) {
+            return MeasurementCompatibilityStatus.INCOMPATIBLE to calibrationVersion
+        }
+        val hasPhysicalSensor = reps.any { it.origin == MeasurementOrigin.SENSOR_TELEMETRY }
+        val hasOnlySimulated = reps.isNotEmpty() && reps.all { it.origin == MeasurementOrigin.SIMULATED_TELEMETRY || isManualOrigin(it.origin) }
+        return when {
+            hasPhysicalSensor && calibrationVersion == null ->
+                MeasurementCompatibilityStatus.UNCONFIGURED to null
+            hasOnlySimulated && reps.any { it.origin == MeasurementOrigin.SIMULATED_TELEMETRY } ->
+                MeasurementCompatibilityStatus.COMPATIBLE to SIMULATION_COMPATIBILITY_VERSION
+            calibrationVersion != null ->
+                MeasurementCompatibilityStatus.COMPATIBLE to calibrationVersion
+            else ->
+                MeasurementCompatibilityStatus.UNCONFIGURED to null
         }
     }
 
-    fun summarizeSession(session: WorkoutSession): SessionPerformanceSummary {
+    private data class ProvenanceCounts(
+        val totalRecordedReps: Int,
+        val sensorFull: Int,
+        val sensorPartial: Int,
+        val manualReps: Int,
+    )
+
+    private fun countProvenanceForSets(
+        sets: List<PerformedSet>,
+        includeSimulated: Boolean,
+    ): ProvenanceCounts {
+        var totalRecorded = 0
+        var sensorFull = 0
+        var sensorPartial = 0
+        var manualReps = 0
+        for (set in sets) {
+            if (set.origin == MeasurementOrigin.SIMULATED_TELEMETRY && !includeSimulated) {
+                continue
+            }
+            if (set.repRecords.isNotEmpty()) {
+                val eligibleReps = set.repRecords.filter { rep ->
+                    includeSimulated || rep.origin != MeasurementOrigin.SIMULATED_TELEMETRY
+                }
+                totalRecorded += eligibleReps.size
+                for (rep in eligibleReps) {
+                    if (isSensorOrigin(rep.origin)) {
+                        if (rep.classification == RepClassification.FULL) sensorFull += 1
+                        else sensorPartial += 1
+                    } else if (isManualOrigin(rep.origin)) {
+                        manualReps += 1
+                    }
+                }
+            } else {
+                val count = set.fullReps + set.partialReps
+                totalRecorded += count
+                if (isManualOrigin(set.origin)) {
+                    manualReps += count
+                }
+                // Aggregate-only sensor sets without detailed repRecords are NOT counted as
+                // individually sensor-classified repetitions.
+            }
+        }
+        return ProvenanceCounts(totalRecorded, sensorFull, sensorPartial, manualReps)
+    }
+
+    fun summarizeSession(
+        session: WorkoutSession,
+        includeSimulated: Boolean = true,
+    ): SessionPerformanceSummary {
         val orderedExercises = session.exercises.sortedBy { it.orderIndex }
         val groupedByKey = orderedExercises.groupBy { stableExerciseKey(it) }
 
         val exerciseSummaries = groupedByKey.map { (key, exercises) ->
             val first = exercises.first()
-            val sets = exercises.flatMap { it.performedSets }
-            val totalRecordedReps = sets.sumOf { it.fullReps + it.partialReps }
-            val allReps = sets.flatMap { it.repRecords }
-            val measuredReps = allReps.filter { it.hasAnyValidMeasurement() }
+            val config = ExerciseTrackingCatalog.forExercise(first.sourceExerciseId, first.trackingCategorySnapshot)
+            val sets = exercises.flatMap { it.performedSets }.filter {
+                includeSimulated || it.origin != MeasurementOrigin.SIMULATED_TELEMETRY
+            }
+            val provenance = countProvenanceForSets(sets, includeSimulated = includeSimulated)
+            val allReps = sets.flatMap { it.repRecords }.filter {
+                includeSimulated || it.origin != MeasurementOrigin.SIMULATED_TELEMETRY
+            }
+            val measuredReps = allReps.filter {
+                it.hasAnyValidMeasurement(
+                    supportsAngular = config.supportsAngularRom,
+                    supportsLinear = config.supportsLinearRom,
+                    supportsAccel = config.supportsPeakAcceleration,
+                )
+            }
 
             val durations = allReps.mapNotNull { it.validDurationMs() }
-            val accels = allReps.mapNotNull { it.validPeakAccel() }
-            val angularRoms = allReps.mapNotNull { it.validAngularRom() }
-            val linearRoms = allReps.mapNotNull { it.validLinearRom() }
-
-            var sensorFull = 0
-            var sensorPartial = 0
-            var manualReps = 0
-            for (set in sets) {
-                val sensorRepsInSet = set.repRecords.filter { isSensorOrigin(it.origin) }
-                if (sensorRepsInSet.isNotEmpty()) {
-                    sensorFull += sensorRepsInSet.count { it.classification == RepClassification.FULL }
-                    sensorPartial += sensorRepsInSet.count { it.classification == RepClassification.PARTIAL }
-                } else if (isSensorOrigin(set.origin)) {
-                    sensorFull += set.fullReps
-                    sensorPartial += set.partialReps
-                } else {
-                    manualReps += set.fullReps + set.partialReps
-                }
-            }
+            val accels = if (config.supportsPeakAcceleration) allReps.mapNotNull { it.validPeakAccel() } else emptyList()
+            val angularRoms = if (config.supportsAngularRom) allReps.mapNotNull { it.validAngularRom() } else emptyList()
+            val linearRoms = if (config.supportsLinearRom) allReps.mapNotNull { it.validLinearRom() } else emptyList()
+            val (compat, calVersion) = assessCompatibility(
+                sourceExerciseId = first.sourceExerciseId,
+                trackingCategory = first.trackingCategorySnapshot,
+                reps = allReps,
+            )
 
             ExercisePerformanceSummary(
                 exerciseKey = key,
                 exerciseName = first.exerciseNameSnapshot,
                 trackingCategory = first.trackingCategorySnapshot,
-                configurationCompatibility = assessCompatibility(
-                    sourceExerciseId = first.sourceExerciseId,
-                    trackingCategory = first.trackingCategorySnapshot,
-                    reps = allReps,
-                ),
-                calibrationVersion = null,
-                totalRecordedReps = totalRecordedReps,
+                configurationCompatibility = compat,
+                calibrationVersion = calVersion,
+                totalRecordedReps = provenance.totalRecordedReps,
                 measuredRepCount = measuredReps.size,
-                sensorClassifiedFullRepCount = sensorFull,
-                sensorClassifiedPartialRepCount = sensorPartial,
-                manualRepCount = manualReps,
+                sensorClassifiedFullRepCount = provenance.sensorFull,
+                sensorClassifiedPartialRepCount = provenance.sensorPartial,
+                manualRepCount = provenance.manualReps,
                 averageRepDurationMs = if (durations.isEmpty()) null else durations.sum() / durations.size,
                 durationSampleCount = durations.size,
                 maxPeakAccelerationMps2 = accels.maxOrNull(),
@@ -211,18 +283,20 @@ object WorkoutPerformanceAnalytics {
             )
         }
 
-        val sets = orderedExercises.flatMap { it.performedSets }
-        val allReps = sets.flatMap { it.repRecords }
+        val sets = orderedExercises.flatMap { it.performedSets }.filter {
+            includeSimulated || it.origin != MeasurementOrigin.SIMULATED_TELEMETRY
+        }
+        val allReps = sets.flatMap { it.repRecords }.filter {
+            includeSimulated || it.origin != MeasurementOrigin.SIMULATED_TELEMETRY
+        }
         val durations = allReps.mapNotNull { it.validDurationMs() }
         val accels = allReps.mapNotNull { it.validPeakAccel() }
 
-        // Only surface a single session-level ROM average if at most one exercise has ROM data,
-        // preventing misleading cross-exercise ROM aggregation.
         val exercisesWithAngular = exerciseSummaries.filter { it.angularRomSampleCount > 0 }
         val exercisesWithLinear = exerciseSummaries.filter { it.linearRomSampleCount > 0 }
 
         return SessionPerformanceSummary(
-            totalRecordedReps = sets.sumOf { it.fullReps + it.partialReps },
+            totalRecordedReps = exerciseSummaries.sumOf { it.totalRecordedReps },
             measuredRepCount = exerciseSummaries.sumOf { it.measuredRepCount },
             fullRepCount = sets.sumOf { it.fullReps },
             partialRepCount = sets.sumOf { it.partialReps },
@@ -239,8 +313,7 @@ object WorkoutPerformanceAnalytics {
 
     /**
      * Computes historical performance trends for a specific exercise using repetition-weighted
-     * aggregation directly from eligible measured repetitions.
-     * Excludes ACTIVE, ABANDONED, and (unless [includeSimulated] is true) SIMULATED_TELEMETRY records.
+     * aggregation and session-start period attribution (consistent with P9 weekly analytics).
      */
     fun calculateExerciseTrends(
         sessions: List<WorkoutSession>,
@@ -248,15 +321,16 @@ object WorkoutPerformanceAnalytics {
         includeSimulated: Boolean = false,
         windowStartEpochMs: Long? = null,
         windowEndExclusiveEpochMs: Long? = null,
+        calibrationVersion: String? = null,
     ): ExercisePerformanceTrendSummary? {
         val eligibleSessions = sessions
             .filter { it.status == SessionStatus.COMPLETED || it.status == SessionStatus.PARTIALLY_COMPLETED }
             .filter { session ->
-                val ts = session.endedAtEpochMs ?: session.startedAtEpochMs
+                val ts = session.startedAtEpochMs
                 (windowStartEpochMs == null || ts >= windowStartEpochMs) &&
                     (windowEndExclusiveEpochMs == null || ts < windowEndExclusiveEpochMs)
             }
-            .sortedBy { it.endedAtEpochMs ?: it.startedAtEpochMs }
+            .sortedBy { it.startedAtEpochMs }
 
         val points = mutableListOf<ExercisePerformanceTrendPoint>()
         var resolvedName: String? = null
@@ -282,6 +356,7 @@ object WorkoutPerformanceAnalytics {
                 resolvedSourceId = matchingExercises.first().sourceExerciseId
                 resolvedTrackingCategory = matchingExercises.first().trackingCategorySnapshot
             }
+            val config = ExerciseTrackingCatalog.forExercise(resolvedSourceId, resolvedTrackingCategory ?: TrackingCategory.COMPOUND)
 
             val eligibleSets: List<PerformedSet> = matchingExercises.flatMap { it.performedSets }.filter { set ->
                 includeSimulated || set.origin != MeasurementOrigin.SIMULATED_TELEMETRY
@@ -299,10 +374,16 @@ object WorkoutPerformanceAnalytics {
             allTrendReps.addAll(validReps)
 
             val durations = validReps.mapNotNull { it.validDurationMs() }
-            val accels = validReps.mapNotNull { it.validPeakAccel() }
-            val angular = validReps.mapNotNull { it.validAngularRom() }
-            val linear = validReps.mapNotNull { it.validLinearRom() }
-            val measuredCount = validReps.count { it.hasAnyValidMeasurement() }
+            val accels = if (config.supportsPeakAcceleration) validReps.mapNotNull { it.validPeakAccel() } else emptyList()
+            val angular = if (config.supportsAngularRom) validReps.mapNotNull { it.validAngularRom() } else emptyList()
+            val linear = if (config.supportsLinearRom) validReps.mapNotNull { it.validLinearRom() } else emptyList()
+            val measuredCount = validReps.count {
+                it.hasAnyValidMeasurement(
+                    supportsAngular = config.supportsAngularRom,
+                    supportsLinear = config.supportsLinearRom,
+                    supportsAccel = config.supportsPeakAcceleration,
+                )
+            }
 
             totalDurationSumMs += durations.sum()
             totalDurationCount += durations.size
@@ -316,26 +397,12 @@ object WorkoutPerformanceAnalytics {
                 maxPeakAccel = maxOf(maxPeakAccel ?: pointMaxAccel, pointMaxAccel)
             }
 
-            var sensorFull = 0
-            var sensorPartial = 0
-            var manualReps = 0
-            for (set in eligibleSets) {
-                val sensorReps = set.repRecords.filter { isSensorOrigin(it.origin) }
-                if (sensorReps.isNotEmpty()) {
-                    sensorFull += sensorReps.count { it.classification == RepClassification.FULL }
-                    sensorPartial += sensorReps.count { it.classification == RepClassification.PARTIAL }
-                } else if (isSensorOrigin(set.origin)) {
-                    sensorFull += set.fullReps
-                    sensorPartial += set.partialReps
-                } else {
-                    manualReps += set.fullReps + set.partialReps
-                }
-            }
+            val provenance = countProvenanceForSets(eligibleSets, includeSimulated = includeSimulated)
 
             points.add(
                 ExercisePerformanceTrendPoint(
                     sessionId = session.id,
-                    timestampEpochMs = session.endedAtEpochMs ?: session.startedAtEpochMs,
+                    timestampEpochMs = session.startedAtEpochMs,
                     averageAngularRomDegrees = if (angular.isEmpty()) null else angular.average(),
                     angularRomSampleCount = angular.size,
                     averageLinearRomCm = if (linear.isEmpty()) null else linear.average(),
@@ -344,11 +411,11 @@ object WorkoutPerformanceAnalytics {
                     durationSampleCount = durations.size,
                     maxPeakAccelerationMps2 = pointMaxAccel,
                     accelerationSampleCount = accels.size,
-                    fullRepCount = eligibleSets.sumOf { it.fullReps },
-                    partialRepCount = eligibleSets.sumOf { it.partialReps },
-                    sensorClassifiedFullRepCount = sensorFull,
-                    sensorClassifiedPartialRepCount = sensorPartial,
-                    manualRepCount = manualReps,
+                    fullRepCount = provenance.sensorFull + if (validReps.isEmpty()) eligibleSets.sumOf { it.fullReps } else validReps.count { it.classification == RepClassification.FULL },
+                    partialRepCount = provenance.sensorPartial + if (validReps.isEmpty()) eligibleSets.sumOf { it.partialReps } else validReps.count { it.classification == RepClassification.PARTIAL },
+                    sensorClassifiedFullRepCount = provenance.sensorFull,
+                    sensorClassifiedPartialRepCount = provenance.sensorPartial,
+                    manualRepCount = provenance.manualReps,
                     measuredRepCount = measuredCount,
                 ),
             )
@@ -356,27 +423,30 @@ object WorkoutPerformanceAnalytics {
 
         if (points.isEmpty()) return null
 
-        val compatibility = assessCompatibility(
+        val (compatibility, resolvedCal) = assessCompatibility(
             sourceExerciseId = resolvedSourceId,
             trackingCategory = resolvedTrackingCategory ?: TrackingCategory.COMPOUND,
             reps = allTrendReps,
+            calibrationVersion = calibrationVersion,
         )
+        val comparable = compatibility == MeasurementCompatibilityStatus.COMPATIBLE
 
         return ExercisePerformanceTrendSummary(
             exerciseKey = exerciseKey,
             exerciseName = resolvedName ?: exerciseKey,
             configurationCompatibility = compatibility,
-            calibrationVersion = null,
+            calibrationVersion = resolvedCal,
+            isComparableTrendAvailable = comparable,
             isSimulatedIncluded = anySimulatedIncluded,
             points = points,
-            averageAngularRomDegrees = if (totalAngularCount == 0) null else totalAngularSum / totalAngularCount,
-            angularRomSampleCount = totalAngularCount,
-            averageLinearRomCm = if (totalLinearCount == 0) null else totalLinearSum / totalLinearCount,
-            linearRomSampleCount = totalLinearCount,
-            averageRepDurationMs = if (totalDurationCount == 0) null else totalDurationSumMs / totalDurationCount,
-            durationSampleCount = totalDurationCount,
-            maxPeakAccelerationMps2 = maxPeakAccel,
-            accelerationSampleCount = totalAccelCount,
+            averageAngularRomDegrees = if (!comparable || totalAngularCount == 0) null else totalAngularSum / totalAngularCount,
+            angularRomSampleCount = if (comparable) totalAngularCount else 0,
+            averageLinearRomCm = if (!comparable || totalLinearCount == 0) null else totalLinearSum / totalLinearCount,
+            linearRomSampleCount = if (comparable) totalLinearCount else 0,
+            averageRepDurationMs = if (!comparable || totalDurationCount == 0) null else totalDurationSumMs / totalDurationCount,
+            durationSampleCount = if (comparable) totalDurationCount else 0,
+            maxPeakAccelerationMps2 = if (comparable) maxPeakAccel else null,
+            accelerationSampleCount = if (comparable) totalAccelCount else 0,
             totalFullReps = points.sumOf { it.fullRepCount },
             totalPartialReps = points.sumOf { it.partialRepCount },
             totalSensorFullReps = points.sumOf { it.sensorClassifiedFullRepCount },

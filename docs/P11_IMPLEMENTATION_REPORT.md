@@ -37,7 +37,7 @@ Completed P11 end-to-end across Android (`core:model`, `core:designsystem`, `cor
 - Synchronized Figma (`UvskyKTyxlIOd68wQkp5cQ`) including normalizing all 3 `Set Execution — Unified States` (`894:958`) variants (`894:712`, `894:794`, `894:876`) to `390 x 884` with pinned Top App Bar & bottom action bar and scrollable measurement content.
 
 ## Actual Remaining Limitations
-- Physical ESP32 BLE hardware communication and firmware GATT packet parsing are intentionally deferred to P12 per the P10/P11 firmware integration boundary (`RealBleDeviceDataSource` remains a fail-honest stub).
+- Physical BLE hardware integration depends on an agreed firmware protocol, validated calibration, actual hardware availability, and separate physical integration and measurement verification (`RealBleDeviceDataSource` remains a fail-honest stub). P12 remains the Final QA & Release phase.
 
 ## Final Regression Verification Results
 All checks executed after the final code/test edit on `Medium_Phone_API_36.0`:

@@ -90,7 +90,7 @@ private val onboardingPages = listOf(
     ),
     OnboardingPageSpec(
         heroResId = R.drawable.onboarding_hero_2,
-        aspectRatio = 1672f / 941f,
+        aspectRatio = 935f / 1024f,
         badgeLabel = "SMART LOGGING",
         title = "Track Every Workout",
         description = "Log sets, weights, and reps with clean, fluid controls. Track your training volume and personal bests with zero friction.",

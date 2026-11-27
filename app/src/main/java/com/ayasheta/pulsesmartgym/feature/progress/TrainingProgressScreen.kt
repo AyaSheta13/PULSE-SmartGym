@@ -617,16 +617,28 @@ private fun PerformanceTrendsCard(
                     }
                 }
             }
-            val romText = listOfNotNull(
-                active.averageAngularRomDegrees?.let { String.format(java.util.Locale.US, "%.1f° avg (%d)", it, active.angularRomSampleCount) },
-                active.averageLinearRomCm?.let { String.format(java.util.Locale.US, "%.1f cm avg (%d)", it, active.linearRomSampleCount) },
-            ).joinToString(" · ").ifEmpty { "Unavailable" }
-            val durText = active.averageRepDurationMs?.let {
-                String.format(java.util.Locale.US, "%.2f s avg (%d)", it / 1000.0, active.durationSampleCount)
-            } ?: "Unavailable"
-            val accelText = active.maxPeakAccelerationMps2?.let {
-                String.format(java.util.Locale.US, "%.2f m/s² peak", it)
-            } ?: "Unavailable"
+            val romText = if (!active.isComparableTrendAvailable) {
+                "Unverified comparison (${active.configurationCompatibility.name.lowercase()})"
+            } else {
+                listOfNotNull(
+                    active.averageAngularRomDegrees?.let { String.format(java.util.Locale.US, "%.1f° avg (%d)", it, active.angularRomSampleCount) },
+                    active.averageLinearRomCm?.let { String.format(java.util.Locale.US, "%.1f cm avg (%d)", it, active.linearRomSampleCount) },
+                ).joinToString(" · ").ifEmpty { "Unavailable" }
+            }
+            val durText = if (!active.isComparableTrendAvailable) {
+                "Unavailable"
+            } else {
+                active.averageRepDurationMs?.let {
+                    String.format(java.util.Locale.US, "%.2f s avg (%d)", it / 1000.0, active.durationSampleCount)
+                } ?: "Unavailable"
+            }
+            val accelText = if (!active.isComparableTrendAvailable) {
+                "Unavailable"
+            } else {
+                active.maxPeakAccelerationMps2?.let {
+                    String.format(java.util.Locale.US, "%.2f m/s² peak", it)
+                } ?: "Unavailable"
+            }
             val sensorRatio = if (active.totalSensorFullReps + active.totalSensorPartialReps > 0) {
                 "${active.totalSensorFullReps} full / ${active.totalSensorPartialReps} partial sensor"
             } else {
