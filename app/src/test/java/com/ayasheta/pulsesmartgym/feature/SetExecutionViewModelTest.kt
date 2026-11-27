@@ -47,6 +47,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.newSingleThreadContext
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
@@ -300,6 +301,116 @@ class SetExecutionViewModelTest {
         )
         while (recreated.uiState.value !is SetExecutionUiState.Active) kotlinx.coroutines.yield()
         assertEquals(125, (recreated.uiState.value as SetExecutionUiState.Active).fullReps)
+    }
+
+    @Test
+    fun directWeightInput_supportsDecimalsZeroValidationPlusMinusRestoration_andPersistence() = runBlocking {
+        withTimeout(3_000) {
+        val sessionRepo = ExecTestSessionRepo().apply { putSession(sampleSession()) }
+        val deviceRepo = ExecTestDeviceRepo(disconnectedLink())
+        val draftStore = SetDraftStore()
+        val savedState = SavedStateHandle()
+        val vm = SetExecutionViewModel(
+            sessionId = "sess_1",
+            exerciseId = "se_1",
+            setIndex = 1,
+            authRepository = ExecTestAuthRepo(),
+            workoutSessionRepository = sessionRepo,
+            userPreferencesRepository = ExecTestPrefsRepo(),
+            deviceRepository = deviceRepo,
+            setDraftStore = draftStore,
+            savedStateHandle = savedState,
+            elapsedRealtimeMs = { 1_000L },
+            executionEnvironment = ExecutionEnvironmentKind.GENUINE,
+            forceManualMode = true,
+        )
+        while (vm.uiState.value !is SetExecutionUiState.Active) kotlinx.coroutines.yield()
+
+        // Invalid inputs rejected without mutating existing load
+        assertEquals("Enter a weight value.", vm.setDirectWeight("   "))
+        assertEquals("Enter a valid numeric weight.", vm.setDirectWeight("abc"))
+        assertEquals("Weight cannot be negative.", vm.setDirectWeight("-2.5"))
+        assertEquals("Enter a weight up to 500 kg.", vm.setDirectWeight("501"))
+        assertEquals(80_000L, (vm.uiState.value as SetExecutionUiState.Active).actualLoad?.grams)
+
+        // Zero weight allowed
+        assertNull(vm.setDirectWeight("0"))
+        vm.uiState.first { (it as? SetExecutionUiState.Active)?.actualLoad?.grams == 0L }
+
+        // Supported decimals (1.25, 7.5, 12.5, 42.75 kg)
+        assertNull(vm.setDirectWeight("1.25"))
+        vm.uiState.first { (it as? SetExecutionUiState.Active)?.actualLoad?.grams == 1_250L }
+        assertNull(vm.setDirectWeight("7.5"))
+        vm.uiState.first { (it as? SetExecutionUiState.Active)?.actualLoad?.grams == 7_500L }
+        assertNull(vm.setDirectWeight("12.5"))
+        vm.uiState.first { (it as? SetExecutionUiState.Active)?.actualLoad?.grams == 12_500L }
+        assertNull(vm.setDirectWeight("42.75"))
+        vm.uiState.first { (it as? SetExecutionUiState.Active)?.actualLoad?.grams == 42_750L }
+
+        // +/- continues from newly entered decimal value
+        vm.incrementWeight()
+        vm.uiState.first { (it as? SetExecutionUiState.Active)?.actualLoad?.grams == 45_250L }
+        vm.decrementWeight()
+        vm.uiState.first { (it as? SetExecutionUiState.Active)?.actualLoad?.grams == 42_750L }
+
+        // Recreated VM restores 42.75 kg
+        val recreated = SetExecutionViewModel(
+            sessionId = "sess_1",
+            exerciseId = "se_1",
+            setIndex = 1,
+            authRepository = ExecTestAuthRepo(),
+            workoutSessionRepository = sessionRepo,
+            userPreferencesRepository = ExecTestPrefsRepo(),
+            deviceRepository = deviceRepo,
+            setDraftStore = draftStore,
+            savedStateHandle = savedState,
+            elapsedRealtimeMs = { 1_000L },
+            executionEnvironment = ExecutionEnvironmentKind.GENUINE,
+            forceManualMode = true,
+        )
+        val restoredActive = recreated.uiState.first { it is SetExecutionUiState.Active } as SetExecutionUiState.Active
+        assertEquals(42_750L, restoredActive.actualLoad?.grams)
+
+        // Finish set persists exact 42.75 kg load
+        recreated.startSet()
+        recreated.uiState.first { (it as? SetExecutionUiState.Active)?.phase == SetExecutionPhase.InProgress }
+        repeat(4) { recreated.incrementRep() }
+        recreated.uiState.first { (it as? SetExecutionUiState.Active)?.fullReps == 4 }
+        recreated.finishSet()
+        while (sessionRepo.recordCalls == 0) kotlinx.coroutines.delay(5)
+        assertEquals(42_750L, sessionRepo.lastRecordedRequest?.actualLoad?.grams)
+        }
+    }
+
+    @Test
+    fun directWeightInput_respectsLbsPreferenceConversion() = runBlocking {
+        withTimeout(3_000) {
+        val sessionRepo = ExecTestSessionRepo().apply { putSession(sampleSession()) }
+        val deviceRepo = ExecTestDeviceRepo(disconnectedLink())
+        val prefsRepo = object : UserPreferencesRepository by ExecTestPrefsRepo() {
+            override fun observePreferences(): Flow<UserPreferences> =
+                MutableStateFlow(UserPreferences(preferredWeightUnit = WeightUnit.LBS))
+        }
+        val vm = SetExecutionViewModel(
+            sessionId = "sess_1",
+            exerciseId = "se_1",
+            setIndex = 1,
+            authRepository = ExecTestAuthRepo(),
+            workoutSessionRepository = sessionRepo,
+            userPreferencesRepository = prefsRepo,
+            deviceRepository = deviceRepo,
+            setDraftStore = SetDraftStore(),
+            savedStateHandle = SavedStateHandle(),
+            elapsedRealtimeMs = { 1_000L },
+            executionEnvironment = ExecutionEnvironmentKind.GENUINE,
+            forceManualMode = true,
+        )
+        vm.uiState.first { it is SetExecutionUiState.Active }
+        assertNull(vm.setDirectWeight("45.5"))
+        val expected = WeightLoad.fromPounds(45.5).grams
+        val updated = vm.uiState.first { (it as? SetExecutionUiState.Active)?.actualLoad?.grams == expected } as SetExecutionUiState.Active
+        assertEquals(expected, updated.actualLoad?.grams)
+        }
     }
 
     private fun sampleSession(): WorkoutSession = WorkoutSession(

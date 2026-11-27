@@ -496,10 +496,11 @@ internal fun formatLoadNumber(load: WeightLoad?, unit: WeightUnit): String {
         WeightUnit.KG -> load.toKilograms()
         WeightUnit.LBS -> load.toPounds()
     }
-    val rounded = (value * 10.0).roundToInt() / 10.0
+    val rounded = (value * 100.0).roundToInt() / 100.0
+    if (rounded <= 0.0) return "0"
     return if (rounded % 1.0 == 0.0) {
         rounded.toInt().toString()
     } else {
-        rounded.toString()
+        java.math.BigDecimal.valueOf(rounded).stripTrailingZeros().toPlainString()
     }
 }

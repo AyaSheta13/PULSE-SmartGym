@@ -596,6 +596,43 @@ class SetExecutionViewModel(
         persistDraft()
     }
 
+    /**
+     * Validates and applies a directly entered weight string in the user's current [WeightUnit].
+     * Returns `null` on success, or a user-facing validation error message on invalid input.
+     */
+    fun setDirectWeight(rawInput: String): String? {
+        val current = _uiState.value as? SetExecutionUiState.Active ?: return "Set is not active."
+        if (!current.canAdjustWeight) return "Weight cannot be edited right now."
+
+        val trimmed = rawInput.trim().replace(',', '.')
+        if (trimmed.isEmpty()) {
+            return "Enter a weight value."
+        }
+        val parsed = trimmed.toDoubleOrNull()
+        if (parsed == null || parsed.isNaN() || parsed.isInfinite()) {
+            return "Enter a valid numeric weight."
+        }
+        if (parsed < 0.0) {
+            return "Weight cannot be negative."
+        }
+        val maxSupported = if (current.preferredWeightUnit == WeightUnit.KG) 500.0 else 1100.0
+        val unitLabel = if (current.preferredWeightUnit == WeightUnit.KG) "kg" else "lbs"
+        if (parsed > maxSupported) {
+            return "Enter a weight up to ${maxSupported.toInt()} $unitLabel."
+        }
+
+        val updated = when (current.preferredWeightUnit) {
+            WeightUnit.KG -> WeightLoad.fromKilograms(parsed)
+            WeightUnit.LBS -> WeightLoad.fromPounds(parsed)
+        }
+        actualLoadFlow.value = updated
+        savedStateHandle[loadGramsKey] = updated.grams
+        hasInitializedLoad = true
+        savedStateHandle[loadInitKey] = true
+        persistDraft()
+        return null
+    }
+
     fun simulateFullRep() {
         val current = _uiState.value as? SetExecutionUiState.Active ?: return
         if (!current.showSimulateButtons) return

@@ -51,6 +51,8 @@ class DefaultWorkoutPlanSeedingTest {
     fun setup() {
         context = ApplicationProvider.getApplicationContext()
         val id = System.nanoTime()
+        context.filesDir.mkdirs()
+        context.cacheDir.mkdirs()
         dbFile = File(context.filesDir, "seed_test_$id.db")
         prefsFile = File(context.cacheDir, "seed_prefs_$id.preferences_pb")
         openResources()

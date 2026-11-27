@@ -26,6 +26,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -241,11 +242,125 @@ class P11VisualAndIntegrationUiTest {
 
         // Reactive connection chip stays "Connected (Sim)" even when manual fallback is active
         composeRule.onNodeWithText("Connected (Sim)").assertIsDisplayed()
+        composeRule.onNodeWithTag("set_execution_info_card").assertIsDisplayed()
+        composeRule.onNodeWithTag("set_execution_counter_card").assertIsDisplayed()
+        composeRule.onNodeWithTag("set_execution_weight_card").assertIsDisplayed()
         composeRule.onNodeWithTag("set_execution_live_performance").assertIsDisplayed()
-        composeRule.onNodeWithText("2.80 m/s²").assertIsDisplayed()
-        composeRule.onNodeWithTag("button_toggle_rep_breakdown").performClick()
+        composeRule.onNodeWithTag("motion_trend_measured_canvas").assertIsDisplayed()
+        composeRule.onNodeWithTag("button_set_execution_primary").assertIsDisplayed()
+        composeRule.onNodeWithTag("button_set_execution_end_workout").assertIsDisplayed()
+        composeRule.onNodeWithTag("button_motion_trend_info").performClick()
         composeRule.waitForIdle()
         saveScreenshot("p11_set_execution_live_metrics.png")
+    }
+
+    @Test
+    fun setExecution_directWeightInput_andResponsiveViewports_workAndFitWithoutClipping() {
+        var currentLoadGrams = 0L
+        composeRule.setContent {
+            androidx.compose.runtime.CompositionLocalProvider(
+                com.ayasheta.pulsesmartgym.feature.workout.editor.LocalRenderModalsInWindow provides false,
+            ) {
+                PulseTheme {
+                    var loadGrams by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+                    Box(modifier = Modifier.size(width = 360.dp, height = 640.dp)) {
+                    SetExecutionScreenContent(
+                        uiState = SetExecutionUiState.Active(
+                            phase = SetExecutionPhase.Ready,
+                            sessionId = "s_dw",
+                            ownerId = "o1",
+                            planName = "Beginner Full Body",
+                            exerciseId = "se1",
+                            exerciseName = "Barbell Back Squat",
+                            setIndex = 1,
+                            totalSetsForExercise = 2,
+                            targetReps = 10,
+                            targetLoad = null,
+                            targetRestSeconds = 90,
+                            preferredWeightUnit = WeightUnit.KG,
+                            recordedSetsCount = 0,
+                            actualLoad = com.ayasheta.pulsesmartgym.core.model.common.WeightLoad(loadGrams),
+                            fullReps = 0,
+                            partialReps = 0,
+                            isDeviceAssisted = false,
+                            canStartDeviceAssisted = true,
+                            isFallbackManual = false,
+                            modeLabel = "Manual",
+                            bluetoothChipStatus = PulseBluetoothChipStatus.CONNECTED,
+                            isTelemetrySimulated = true,
+                            trackingCompatibilityNotice = null,
+                            startedElapsedRealtimeMs = null,
+                            repRecords = emptyList(),
+                            errorMessage = null,
+                            isReconnecting = false,
+                            reconnectError = null,
+                            showEndEarlyConfirmation = false,
+                            isEndingEarly = false,
+                            showSimulateButtons = false,
+                        ),
+                        onBackClick = {},
+                        onStartSetClick = {},
+                        onFinishSetClick = {},
+                        onIncrementRep = {},
+                        onDecrementRep = {},
+                        onIncrementWeight = {
+                            loadGrams += 2_500L
+                            currentLoadGrams = loadGrams
+                        },
+                        onDecrementWeight = {
+                            loadGrams = (loadGrams - 2_500L).coerceAtLeast(0L)
+                            currentLoadGrams = loadGrams
+                        },
+                        onApplyDirectWeight = { raw ->
+                            val parsed = raw.trim().toDoubleOrNull()
+                            if (parsed == null || parsed < 0.0 || parsed > 500.0) {
+                                "Enter a valid non-negative weight."
+                            } else {
+                                loadGrams = com.ayasheta.pulsesmartgym.core.model.common.WeightLoad.fromKilograms(parsed).grams
+                                currentLoadGrams = loadGrams
+                                null
+                            }
+                        },
+                    )
+                    }
+                }
+            }
+        }
+
+        // Primary actions are pinned & visible even on compact 360x640 viewport
+        composeRule.onNodeWithTag("button_set_execution_primary").assertIsDisplayed()
+        composeRule.onNodeWithTag("button_set_execution_end_workout").assertIsDisplayed()
+        saveScreenshot("p11_set_execution_ready_360x640.png")
+
+        // Tap weight -> open Set Load sheet -> enter invalid negative -> shows error
+        composeRule.onNodeWithTag("button_edit_weight_direct").performClick()
+        composeRule.waitUntil(3_000) {
+            runCatching { composeRule.onNodeWithTag("sheet_direct_weight_input").assertExists(); true }.getOrDefault(false)
+        }
+        composeRule.onNodeWithTag("input_direct_weight").performTextReplacement("-5")
+        composeRule.onNodeWithTag("button_apply_direct_weight").performClick()
+        composeRule.onNodeWithTag("error_direct_weight").assertIsDisplayed()
+
+        // Cancel leaves previous 0 kg unchanged
+        composeRule.onNodeWithTag("button_cancel_direct_weight").performClick()
+        composeRule.onNodeWithText("0 kg").assertIsDisplayed()
+
+        // Enter decimal 42.75 kg -> Apply -> displays 42.75 kg, and +2.5 kg continues to 45.25 kg
+        composeRule.onNodeWithTag("button_edit_weight_direct").performClick()
+        composeRule.onNodeWithTag("input_direct_weight").performTextReplacement("42.75")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        composeRule.waitForIdle()
+        saveScreenshot("p11_set_load_sheet.png")
+        composeRule.onNodeWithTag("button_apply_direct_weight").performClick()
+        composeRule.onNodeWithText("42.75 kg").assertIsDisplayed()
+        assertEquals(42_750L, currentLoadGrams)
+
+        composeRule.onNodeWithContentDescription("Increase weight").performClick()
+        composeRule.onNodeWithText("45.25 kg").assertIsDisplayed()
+        assertEquals(45_250L, currentLoadGrams)
+
+        // Chart placeholder is reachable via scroll on 360x640
+        composeRule.onNodeWithTag("motion_trend_placeholder_canvas").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -453,14 +568,14 @@ class P11VisualAndIntegrationUiTest {
             composeRule.waitUntil(5_000) {
                 runCatching { composeRule.onNodeWithTag("button_set_execution_primary").assertExists(); true }.getOrDefault(false)
             }
-            composeRule.onNodeWithTag("button_set_execution_primary").performScrollTo().performClick()
+            composeRule.onNodeWithTag("button_set_execution_primary").performClick()
             composeRule.waitUntil(5_000) {
                 runCatching { composeRule.onNodeWithText("Finish Set").assertExists(); true }.getOrDefault(false)
             }
             repeat(5) {
                 composeRule.onNodeWithContentDescription("Add one rep").performClick()
             }
-            composeRule.onNodeWithTag("button_set_execution_primary").performScrollTo().performClick()
+            composeRule.onNodeWithTag("button_set_execution_primary").performClick()
             composeRule.waitUntil(5_000) {
                 runCatching { composeRule.onNodeWithText("Skip Rest").assertExists(); true }.getOrDefault(false)
             }
@@ -670,14 +785,14 @@ class P11VisualAndIntegrationUiTest {
                 composeRule.waitUntil(5_000) {
                     runCatching { composeRule.onNodeWithTag("button_set_execution_primary").assertExists(); true }.getOrDefault(false)
                 }
-                composeRule.onNodeWithTag("button_set_execution_primary").performScrollTo().performClick()
+                composeRule.onNodeWithTag("button_set_execution_primary").performClick()
                 composeRule.waitUntil(5_000) {
                     runCatching { composeRule.onNodeWithText("Finish Set").assertExists(); true }.getOrDefault(false)
                 }
                 repeat(2) {
                     composeRule.onNodeWithContentDescription("Add one rep").performClick()
                 }
-                composeRule.onNodeWithTag("button_set_execution_primary").performScrollTo().performClick()
+                composeRule.onNodeWithTag("button_set_execution_primary").performClick()
                 if (setIdx < 9) {
                     composeRule.waitUntil(5_000) {
                         if (runCatching { composeRule.onNodeWithText("Skip Rest").assertExists(); true }.getOrDefault(false)) {

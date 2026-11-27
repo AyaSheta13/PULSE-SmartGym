@@ -2,6 +2,7 @@ package com.ayasheta.pulsesmartgym.feature
 
 import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -68,7 +69,7 @@ class P8ManualRepCounterUiTest {
             runCatching { activityRule.onNodeWithTag("set_execution_screen").assertExists(); true }.getOrDefault(false)
         }
         activityRule.onNodeWithText("Barbell Bench Press").assertIsDisplayed()
-        activityRule.onNodeWithText("Set 1 of 2 • Ready", substring = true).assertIsDisplayed()
+        activityRule.onNodeWithText("Start Set").assertIsDisplayed()
         activityRule.onNodeWithTag("set_execution_rest_info").assertIsDisplayed()
 
         // 2. Start Set -> ManualRepCounter (starts at 0)
@@ -76,21 +77,21 @@ class P8ManualRepCounterUiTest {
         activityRule.waitUntil(5_000) {
             runCatching { activityRule.onNodeWithText("Finish Set").assertExists(); true }.getOrDefault(false)
         }
-        activityRule.onNodeWithText("0").assertIsDisplayed()
+        activityRule.onNodeWithTag("text_rep_counter_value").assertTextEquals("0")
 
         // Increment reps to 8 and adjust weight, then recreate Activity -> unsaved reps & weight survive!
         repeat(9) { activityRule.onNodeWithContentDescription("Add one rep").performClick() }
         activityRule.onNodeWithContentDescription("Subtract one rep").performClick()
         activityRule.onNodeWithContentDescription("Increase weight").performClick()
-        activityRule.onNodeWithText("8").assertIsDisplayed()
+        activityRule.onNodeWithTag("text_rep_counter_value").assertTextEquals("8")
 
         activityRule.activityRule.scenario.recreate()
         activityRule.waitForIdle()
         activityRule.waitUntil(5_000) {
             runCatching { activityRule.onNodeWithTag("set_execution_counter_card").assertExists(); true }.getOrDefault(false)
         }
-        activityRule.onNodeWithText("8").assertIsDisplayed()
-        activityRule.onNodeWithText("82.5").assertIsDisplayed()
+        activityRule.onNodeWithTag("text_rep_counter_value").assertTextEquals("8")
+        activityRule.onNodeWithText("82.5", substring = true).assertIsDisplayed()
 
         // 3. Finish Set -> returns to WorkoutSession with Rest Timer visible
         activityRule.onNodeWithTag("button_set_execution_primary").performClick()
@@ -128,7 +129,7 @@ class P8ManualRepCounterUiTest {
         activityRule.waitUntil(5_000) {
             runCatching { activityRule.onNodeWithTag("set_execution_screen").assertExists(); true }.getOrDefault(false)
         }
-        activityRule.onNodeWithText("Set 2 of 2 • Ready", substring = true).assertIsDisplayed()
+        activityRule.onNodeWithText("Start Set").assertIsDisplayed()
 
         // Complete Set 2
         activityRule.onNodeWithTag("button_set_execution_primary").performClick()

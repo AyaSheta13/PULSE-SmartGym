@@ -101,7 +101,7 @@ class P10DeviceAndSimulatorUiTest {
             runCatching { activityRule.onNodeWithTag("button_set_execution_primary").assertExists(); true }.getOrDefault(false)
         }
         activityRule.onNodeWithText("Connected (Sim)").assertIsDisplayed()
-        activityRule.onNodeWithTag("button_set_execution_primary").performScrollTo()
+        activityRule.onNodeWithTag("button_set_execution_primary").assertIsDisplayed()
         val readyLiveBounds = activityRule.onNodeWithTag("set_execution_live_performance").getUnclippedBoundsInRoot()
         activityRule.onNodeWithTag("button_set_execution_primary").performClick()
         activityRule.waitUntil(5_000) {
@@ -115,7 +115,7 @@ class P10DeviceAndSimulatorUiTest {
         repeat(8) {
             activityRule.onNodeWithTag("button_sim_full_rep").performScrollTo().performClick()
         }
-        activityRule.onNodeWithText("8").assertIsDisplayed()
+        activityRule.onAllNodesWithText("8").onFirst().assertIsDisplayed()
 
         activityRule.onNodeWithTag("button_sim_drop_ble").performScrollTo().performClick()
         activityRule.waitUntil(5_000) {
@@ -126,11 +126,11 @@ class P10DeviceAndSimulatorUiTest {
         activityRule.waitUntil(5_000) {
             runCatching { activityRule.onNodeWithText("Finish Set").assertExists(); true }.getOrDefault(false)
         }
-        activityRule.onNodeWithText("8").assertIsDisplayed()
+        activityRule.onAllNodesWithText("8").onFirst().assertIsDisplayed()
         activityRule.onNodeWithContentDescription("Add one rep").performClick()
         activityRule.onNodeWithContentDescription("Add one rep").performClick()
         activityRule.onAllNodesWithText("10").onFirst().assertIsDisplayed()
-        activityRule.onNodeWithTag("button_set_execution_primary").performScrollTo().performClick()
+        activityRule.onNodeWithTag("button_set_execution_primary").performClick()
 
         // 5. Rest timer -> Skip Rest -> End Workout Early -> Summary -> Back to Home (exits simulation)
         activityRule.waitUntil(5_000) {
@@ -264,7 +264,7 @@ class P10DeviceAndSimulatorUiTest {
         activityRule.waitUntil(5_000) {
             runCatching { activityRule.onNodeWithTag("button_set_execution_primary").assertExists(); true }.getOrDefault(false)
         }
-        activityRule.onNodeWithTag("button_set_execution_primary").performScrollTo().performClick()
+        activityRule.onNodeWithTag("button_set_execution_primary").performClick()
         activityRule.waitUntil(5_000) {
             runCatching { activityRule.onNodeWithText("Finish Set").assertExists(); true }.getOrDefault(false)
         }
@@ -277,7 +277,7 @@ class P10DeviceAndSimulatorUiTest {
         activityRule.waitUntil(5_000) {
             runCatching { activityRule.onNodeWithTag("set_execution_counter_card").assertExists(); true }.getOrDefault(false)
         }
-        activityRule.onNodeWithText("4").performScrollTo().assertIsDisplayed()
+        activityRule.onAllNodesWithText("4").onFirst().assertIsDisplayed()
 
         // Drop link -> Continue Manually -> recreate during manual fallback -> finish -> back to home
         activityRule.onNodeWithTag("button_sim_drop_ble").performScrollTo().performClick()
@@ -288,14 +288,14 @@ class P10DeviceAndSimulatorUiTest {
         activityRule.waitUntil(5_000) {
             runCatching { activityRule.onNodeWithText("Finish Set").assertExists(); true }.getOrDefault(false)
         }
-        activityRule.onNodeWithText("4").assertIsDisplayed()
+        activityRule.onAllNodesWithText("4").onFirst().assertIsDisplayed()
         activityRule.activityRule.scenario.recreate()
         activityRule.waitForIdle()
         activityRule.waitUntil(5_000) {
             runCatching { activityRule.onNodeWithText("Finish Set").assertExists(); true }.getOrDefault(false)
         }
-        activityRule.onNodeWithText("4").performScrollTo().assertIsDisplayed()
-        activityRule.onNodeWithTag("button_set_execution_primary").performScrollTo().performClick()
+        activityRule.onAllNodesWithText("4").onFirst().assertIsDisplayed()
+        activityRule.onNodeWithTag("button_set_execution_primary").performClick()
         activityRule.waitUntil(5_000) {
             runCatching { activityRule.onNodeWithText("Skip Rest").assertExists(); true }.getOrDefault(false)
         }

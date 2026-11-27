@@ -41,20 +41,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ayasheta.pulsesmartgym.core.designsystem.component.button.Button as PulsePrimaryButton
 import com.ayasheta.pulsesmartgym.core.designsystem.component.progress.PulseLoadingIndicator
-import com.ayasheta.pulsesmartgym.core.designsystem.component.workout.PulseRepCounterGauge
-import com.ayasheta.pulsesmartgym.core.designsystem.component.workout.PulseWeightSelectorCard
 import com.ayasheta.pulsesmartgym.core.designsystem.theme.PulseTheme
 import com.ayasheta.pulsesmartgym.core.designsystem.vectors.CheckMark
 import com.ayasheta.pulsesmartgym.core.model.common.WeightUnit
-import com.ayasheta.pulsesmartgym.core.model.device.MeasurementOrigin
-import com.ayasheta.pulsesmartgym.core.model.device.RepClassification
-import com.ayasheta.pulsesmartgym.core.model.device.RepMeasurement
 import com.ayasheta.pulsesmartgym.core.model.session.SessionSetTarget
 import com.ayasheta.pulsesmartgym.core.model.session.SessionStatus
 import kotlinx.coroutines.delay
-import java.util.Locale
 import com.ayasheta.pulsesmartgym.feature.session.dashboard.EndWorkoutEarlyModal
-import com.ayasheta.pulsesmartgym.feature.session.dashboard.SessionUiMapper
 import com.ayasheta.pulsesmartgym.feature.session.ready.SetExecutionTopBar
 import com.ayasheta.pulsesmartgym.feature.session.ready.SetFallbackMessage
 import com.ayasheta.pulsesmartgym.feature.session.ready.StopCircleIcon
@@ -139,6 +132,7 @@ fun SetExecutionScreen(
         onDecrementRep = viewModel::decrementRep,
         onIncrementWeight = viewModel::incrementWeight,
         onDecrementWeight = viewModel::decrementWeight,
+        onApplyDirectWeight = viewModel::setDirectWeight,
         onSimulateFullRep = viewModel::simulateFullRep,
         onSimulatePartialRep = viewModel::simulatePartialRep,
         onSimulateDrop = viewModel::simulateConnectionDrop,
@@ -161,6 +155,7 @@ fun SetExecutionScreenContent(
     onDecrementRep: () -> Unit,
     onIncrementWeight: () -> Unit,
     onDecrementWeight: () -> Unit,
+    onApplyDirectWeight: (String) -> String? = { null },
     onSimulateFullRep: () -> Unit = {},
     onSimulatePartialRep: () -> Unit = {},
     onSimulateDrop: () -> Unit = {},
@@ -172,6 +167,7 @@ fun SetExecutionScreenContent(
     modifier: Modifier = Modifier,
 ) {
     val renderInWindow = LocalRenderModalsInWindow.current
+    var showDirectWeightSheet by rememberSaveable { mutableStateOf(false) }
 
     Box(
         modifier = modifier
@@ -236,18 +232,9 @@ fun SetExecutionScreenContent(
                 }
 
                 is SetExecutionUiState.Active -> {
-                    val phaseSubtitle = when (uiState.phase) {
-                        SetExecutionPhase.Ready -> "Set ${uiState.setIndex} of ${uiState.totalSetsForExercise} • Ready"
-                        SetExecutionPhase.InProgress -> "Set ${uiState.setIndex} of ${uiState.totalSetsForExercise} • In Progress"
-                        SetExecutionPhase.Saving -> "Set ${uiState.setIndex} of ${uiState.totalSetsForExercise} • Saving"
-                        SetExecutionPhase.ConnectionLost -> "Set ${uiState.setIndex} of ${uiState.totalSetsForExercise} • Connection Lost"
-                        SetExecutionPhase.RecoverableError -> "Set ${uiState.setIndex} of ${uiState.totalSetsForExercise} • Retry Save"
-                        SetExecutionPhase.Completed -> "Set ${uiState.setIndex} of ${uiState.totalSetsForExercise} • Completed"
-                    }
-
                     SetExecutionTopBar(
                         title = uiState.exerciseName,
-                        subtitle = "$phaseSubtitle • ${uiState.modeLabel}",
+                        subtitle = uiState.planName,
                         modeLabel = uiState.modeLabel,
                         onBackClick = onBackClick,
                         bluetoothStatus = uiState.bluetoothChipStatus,
@@ -255,17 +242,25 @@ fun SetExecutionScreenContent(
                     )
 
                     val unitLabel = if (uiState.preferredWeightUnit == WeightUnit.KG) "kg" else "lbs"
-                    val targetLoadText = SessionUiMapper.formatWeightLoad(uiState.targetLoad, uiState.preferredWeightUnit)
-                    val targetPillText = if (targetLoadText != null) {
-                        "TARGET: ${uiState.targetReps} REPS @ ${targetLoadText.uppercase()}"
-                    } else {
-                        "TARGET: ${uiState.targetReps} REPS"
-                    }
                     val weightNumberText = formatLoadNumber(uiState.actualLoad, uiState.preferredWeightUnit)
-                    val targetCardLabel = if (targetLoadText != null) {
-                        "Target: $targetLoadText"
-                    } else {
-                        "Bodyweight"
+
+                    var workoutElapsedSec by remember(uiState.sessionId, uiState.sessionStartedAtEpochMs) {
+                        mutableLongStateOf(
+                            if (uiState.sessionStartedAtEpochMs > 0L) {
+                                ((System.currentTimeMillis() - uiState.sessionStartedAtEpochMs).coerceAtLeast(0L)) / 1000L
+                            } else {
+                                0L
+                            },
+                        )
+                    }
+                    LaunchedEffect(uiState.sessionId, uiState.sessionStartedAtEpochMs) {
+                        if (uiState.sessionStartedAtEpochMs > 0L) {
+                            while (true) {
+                                workoutElapsedSec =
+                                    ((System.currentTimeMillis() - uiState.sessionStartedAtEpochMs).coerceAtLeast(0L)) / 1000L
+                                delay(1_000L)
+                            }
+                        }
                     }
 
                     Column(
@@ -273,83 +268,14 @@ fun SetExecutionScreenContent(
                             .weight(1f)
                             .fillMaxWidth()
                             .verticalScroll(rememberScrollState())
-                            .navigationBarsPadding()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            BasicText(
-                                text = uiState.planName,
-                                style = PulseTheme.typography.cardTitle.copy(
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = WorkoutPalette.TextPrimary,
-                                ),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                if (uiState.sessionStartedAtEpochMs > 0L) {
-                                    var workoutElapsedSec by remember(uiState.sessionId, uiState.sessionStartedAtEpochMs) {
-                                        mutableLongStateOf(
-                                            ((System.currentTimeMillis() - uiState.sessionStartedAtEpochMs).coerceAtLeast(0L)) / 1000L,
-                                        )
-                                    }
-                                    LaunchedEffect(uiState.sessionId, uiState.sessionStartedAtEpochMs) {
-                                        while (true) {
-                                            workoutElapsedSec =
-                                                ((System.currentTimeMillis() - uiState.sessionStartedAtEpochMs).coerceAtLeast(0L)) / 1000L
-                                            delay(1_000L)
-                                        }
-                                    }
-                                    BasicText(
-                                        text = "Workout ${SessionUiMapper.formatElapsedMmSs(workoutElapsedSec)}",
-                                        style = PulseTheme.typography.label.copy(
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = WorkoutPalette.TextMuted,
-                                        ),
-                                        modifier = Modifier.testTag("set_execution_workout_elapsed"),
-                                    )
-                                }
-                                val restSeconds = uiState.targetRestSeconds
-                                if (restSeconds != null && restSeconds > 0) {
-                                    BasicText(
-                                        text = "Rest: ${restSeconds}s",
-                                        style = PulseTheme.typography.label.copy(
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = WorkoutPalette.TextMuted,
-                                        ),
-                                        modifier = Modifier.testTag("set_execution_rest_info"),
-                                    )
-                                }
-                            }
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .clip(PulseTheme.corners.fullRounded)
-                                .background(PulseTheme.color.surfaceMuted)
-                                .padding(horizontal = 14.dp, vertical = 6.dp)
-                                .testTag("set_execution_target_pill"),
-                        ) {
-                            BasicText(
-                                text = targetPillText,
-                                style = PulseTheme.typography.label.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 0.4.sp,
-                                    color = PulseTheme.color.shadeSecondary,
-                                ),
-                            )
-                        }
+                        WorkoutInfoCard(
+                            workoutElapsedSec = workoutElapsedSec,
+                            restSeconds = uiState.targetRestSeconds,
+                        )
 
                         if (uiState.trackingCompatibilityNotice != null) {
                             Box(
@@ -389,72 +315,35 @@ fun SetExecutionScreenContent(
                             }
                         }
 
-                        // Unified Counter Card — stays mounted at identical coordinates across Ready & InProgress
+                        // Unified Repetition & Weight Card
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .alpha(if (uiState.isStarted) 1f else 0.92f)
-                                .testTag("set_execution_counter_card"),
+                                .alpha(if (uiState.isStarted) 1f else 0.94f),
                         ) {
-                            PulseRepCounterGauge(
+                            UnifiedRepAndWeightCard(
                                 currentReps = uiState.totalDisplayedReps,
                                 targetReps = uiState.targetReps,
+                                weightNumberText = weightNumberText,
+                                unitLabel = unitLabel,
+                                overlineLabel = if (uiState.isDeviceAssisted) "AUTO REPS" else "REPS DONE",
+                                canAdjustReps = uiState.canAdjustRepsManually,
+                                canAdjustWeight = uiState.canAdjustWeight,
                                 onDecrementRep = { if (uiState.canAdjustRepsManually) onDecrementRep() },
                                 onIncrementRep = { if (uiState.canAdjustRepsManually) onIncrementRep() },
-                                overlineLabel = if (uiState.isDeviceAssisted) "AUTO REPS" else "REPS DONE",
-                                adjustLabel = when {
-                                    !uiState.isStarted -> "Start set to count"
-                                    uiState.isDeviceAssisted -> "Tracking via device"
-                                    else -> "Adjust count"
-                                },
+                                onDecrementWeight = { if (uiState.canAdjustWeight) onDecrementWeight() },
+                                onIncrementWeight = { if (uiState.canAdjustWeight) onIncrementWeight() },
+                                onEditWeightClick = { if (uiState.canAdjustWeight) showDirectWeightSheet = true },
                             )
                         }
 
-                        PulseWeightSelectorCard(
-                            weightText = weightNumberText,
-                            unitLabel = unitLabel,
-                            setSubtitle = "Actual load used for Set ${uiState.setIndex}",
-                            targetText = targetCardLabel,
-                            onDecrementClick = { if (uiState.canAdjustWeight) onDecrementWeight() },
-                            onIncrementClick = { if (uiState.canAdjustWeight) onIncrementWeight() },
-                            modifier = Modifier.testTag("set_execution_weight_card"),
-                        )
-
-                        var setElapsedSeconds by remember(uiState.sessionId, uiState.exerciseId, uiState.setIndex) {
-                            mutableLongStateOf(0L)
-                        }
-                        LaunchedEffect(uiState.phase, uiState.startedElapsedRealtimeMs, uiState.frozenElapsedDurationMs) {
-                            val frozenMs = uiState.frozenElapsedDurationMs
-                            val startMs = uiState.startedElapsedRealtimeMs
-                            if (frozenMs != null) {
-                                setElapsedSeconds = frozenMs.coerceAtLeast(0L) / 1000L
-                            } else if (startMs == null) {
-                                setElapsedSeconds = 0L
-                            } else {
-                                while (true) {
-                                    val elapsed = ((android.os.SystemClock.elapsedRealtime() - startMs).coerceAtLeast(0L)) / 1000L
-                                    setElapsedSeconds = elapsed
-                                    if (uiState.phase != SetExecutionPhase.InProgress &&
-                                        uiState.phase != SetExecutionPhase.ConnectionLost
-                                    ) {
-                                        break
-                                    }
-                                    delay(500L)
-                                }
-                            }
-                        }
-
-                        LivePerformanceCard(
-                            setElapsedSeconds = setElapsedSeconds,
+                        LivePerformanceWaveformCard(
                             repRecords = uiState.repRecords,
-                            totalDisplayedReps = uiState.totalDisplayedReps,
+                            targetReps = uiState.targetReps,
+                            isStarted = uiState.isStarted,
+                            isDeviceAssisted = uiState.isDeviceAssisted,
                             isFallbackManual = uiState.isFallbackManual,
-                            modifier = Modifier.testTag("set_execution_live_performance"),
-                        )
-
-                        ExpandableRepetitionBreakdown(
-                            repRecords = uiState.repRecords,
-                            modifier = Modifier.testTag("set_execution_rep_breakdown"),
+                            isSimulated = uiState.isTelemetrySimulated,
                         )
 
                         if (uiState.showSimulateButtons) {
@@ -485,9 +374,18 @@ fun SetExecutionScreenContent(
                                 )
                             }
                         }
+                    }
 
-                        Spacer(modifier = Modifier.height(4.dp))
-
+                    // Pinned Bottom Action Area — always visible without scrolling, respects system navigation insets
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(WorkoutPalette.Background)
+                            .navigationBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
                         val primaryCaption = when (uiState.phase) {
                             SetExecutionPhase.Ready -> "Start Set"
                             SetExecutionPhase.Saving -> "Saving Set..."
@@ -532,29 +430,43 @@ fun SetExecutionScreenContent(
                             )
                         }
                     }
-
-                    ConnectionLostRecoverySheet(
-                        visible = uiState.showConnectionLostModal,
-                        setIndex = uiState.setIndex,
-                        fullReps = uiState.fullReps,
-                        partialReps = uiState.partialReps,
-                        recordedSetsCount = uiState.recordedSetsCount,
-                        isReconnecting = uiState.isReconnecting,
-                        reconnectErrorMessage = uiState.reconnectError,
-                        onReconnectClick = onReconnectDevice,
-                        onContinueManuallyClick = onContinueManually,
-                    )
-
-                    EndWorkoutEarlyModal(
-                        visible = uiState.showEndEarlyConfirmation,
-                        recordedSetsCount = uiState.recordedSetsCount,
-                        isEnding = uiState.isEndingEarly,
-                        onKeepWorkingOut = onDismissEndEarly,
-                        onEndWorkout = onConfirmEndEarly,
-                        inWindow = renderInWindow,
-                    )
                 }
             }
+        }
+
+        if (uiState is SetExecutionUiState.Active) {
+            val unitLabel = if (uiState.preferredWeightUnit == WeightUnit.KG) "kg" else "lbs"
+            val weightNumberText = formatLoadNumber(uiState.actualLoad, uiState.preferredWeightUnit)
+
+            SetLoadBottomSheet(
+                visible = showDirectWeightSheet,
+                initialWeightText = weightNumberText,
+                unitLabel = unitLabel,
+                inWindow = renderInWindow,
+                onDismiss = { showDirectWeightSheet = false },
+                onApply = onApplyDirectWeight,
+            )
+
+            ConnectionLostRecoverySheet(
+                visible = uiState.showConnectionLostModal,
+                setIndex = uiState.setIndex,
+                fullReps = uiState.fullReps,
+                partialReps = uiState.partialReps,
+                recordedSetsCount = uiState.recordedSetsCount,
+                isReconnecting = uiState.isReconnecting,
+                reconnectErrorMessage = uiState.reconnectError,
+                onReconnectClick = onReconnectDevice,
+                onContinueManuallyClick = onContinueManually,
+            )
+
+            EndWorkoutEarlyModal(
+                visible = uiState.showEndEarlyConfirmation,
+                recordedSetsCount = uiState.recordedSetsCount,
+                isEnding = uiState.isEndingEarly,
+                onKeepWorkingOut = onDismissEndEarly,
+                onEndWorkout = onConfirmEndEarly,
+                inWindow = renderInWindow,
+            )
         }
     }
 }
@@ -582,257 +494,5 @@ private fun SimActionChip(
                 color = WorkoutPalette.TextPrimary,
             ),
         )
-    }
-}
-
-@Composable
-private fun LivePerformanceCard(
-    setElapsedSeconds: Long,
-    repRecords: List<RepMeasurement>,
-    totalDisplayedReps: Int,
-    isFallbackManual: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    val latestMeasuredRep = repRecords.lastOrNull {
-        it.angularRomDegrees != null ||
-            it.linearRomCm != null ||
-            it.peakAccelerationMetersPerSecondSquared != null ||
-            it.totalDurationMs != null
-    }
-    val romValueText = when {
-        latestMeasuredRep == null -> "—"
-        latestMeasuredRep.angularRomDegrees != null && latestMeasuredRep.linearRomCm != null ->
-            String.format(Locale.US, "%.0f° / %.0f cm", latestMeasuredRep.angularRomDegrees, latestMeasuredRep.linearRomCm)
-        latestMeasuredRep.angularRomDegrees != null ->
-            String.format(Locale.US, "%.1f°", latestMeasuredRep.angularRomDegrees)
-        latestMeasuredRep.linearRomCm != null ->
-            String.format(Locale.US, "%.1f cm", latestMeasuredRep.linearRomCm)
-        else -> "—"
-    }
-    val accelValueText = latestMeasuredRep?.peakAccelerationMetersPerSecondSquared?.let {
-        String.format(Locale.US, "%.2f m/s²", it)
-    } ?: "—"
-    val repDurValueText = latestMeasuredRep?.totalDurationMs?.let {
-        String.format(Locale.US, "%.2f s", it / 1000.0)
-    } ?: "—"
-
-    val repTag = when {
-        latestMeasuredRep == null -> "No measured reps"
-        isFallbackManual || latestMeasuredRep.repIndex < totalDisplayedReps ->
-            "Earlier Rep #${latestMeasuredRep.repIndex}"
-        else -> "Rep #${latestMeasuredRep.repIndex}"
-    }
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color.White)
-            .border(BorderStroke(1.dp, Color(0xFFECE8E3)), RoundedCornerShape(16.dp))
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            BasicText(
-                text = "Live Performance",
-                style = PulseTheme.typography.cardTitle.copy(
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = WorkoutPalette.TextPrimary,
-                ),
-            )
-            BasicText(
-                text = repTag,
-                style = PulseTheme.typography.label.copy(
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = WorkoutPalette.TextMuted,
-                ),
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            MetricTile(
-                label = "SET DURATION",
-                value = SessionUiMapper.formatElapsedMmSs(setElapsedSeconds),
-                modifier = Modifier.weight(1f),
-            )
-            MetricTile(
-                label = "RANGE OF MOTION",
-                value = romValueText,
-                modifier = Modifier.weight(1f),
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            MetricTile(
-                label = "PEAK ACCEL",
-                value = accelValueText,
-                modifier = Modifier.weight(1f),
-            )
-            MetricTile(
-                label = "REP DURATION",
-                value = repDurValueText,
-                modifier = Modifier.weight(1f),
-            )
-        }
-    }
-}
-
-@Composable
-private fun MetricTile(
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFFFAF8F6))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        BasicText(
-            text = label,
-            style = PulseTheme.typography.label.copy(
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.4.sp,
-                color = WorkoutPalette.TextMuted,
-            ),
-            maxLines = 1,
-        )
-        BasicText(
-            text = value,
-            style = PulseTheme.typography.cardTitle.copy(
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                color = WorkoutPalette.TextPrimary,
-            ),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun ExpandableRepetitionBreakdown(
-    repRecords: List<RepMeasurement>,
-    modifier: Modifier = Modifier,
-) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color.White)
-            .border(BorderStroke(1.dp, Color(0xFFECE8E3)), RoundedCornerShape(16.dp))
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .clickable { expanded = !expanded }
-                .padding(vertical = 2.dp)
-                .testTag("button_toggle_rep_breakdown"),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            BasicText(
-                text = "Repetition Breakdown (${repRecords.size})",
-                style = PulseTheme.typography.cardTitle.copy(
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = WorkoutPalette.TextPrimary,
-                ),
-            )
-            BasicText(
-                text = if (expanded) "Hide ▲" else "Show ▼",
-                style = PulseTheme.typography.label.copy(
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = WorkoutPalette.PrimaryCoral,
-                ),
-            )
-        }
-
-        if (expanded) {
-            if (repRecords.isEmpty()) {
-                BasicText(
-                    text = "No accepted repetitions yet.",
-                    style = PulseTheme.typography.contentPrimary.copy(
-                        fontSize = 13.sp,
-                        color = WorkoutPalette.TextMuted,
-                    ),
-                )
-            } else {
-                repRecords.forEach { rep ->
-                    val clsLabel = if (rep.classification == RepClassification.FULL) "Full" else "Partial"
-                    val romPart = listOfNotNull(
-                        rep.angularRomDegrees?.let { String.format(Locale.US, "%.0f°", it) },
-                        rep.linearRomCm?.let { String.format(Locale.US, "%.1f cm", it) },
-                    ).joinToString(" / ").ifEmpty { "—" }
-                    val accelPart = rep.peakAccelerationMetersPerSecondSquared?.let {
-                        String.format(Locale.US, "%.2f m/s²", it)
-                    } ?: "—"
-                    val durPart = rep.totalDurationMs?.let {
-                        String.format(Locale.US, "%.2fs", it / 1000.0)
-                    } ?: "—"
-                    val phasePart = listOfNotNull(
-                        rep.concentricDurationMs?.let { String.format(Locale.US, "Con %.2fs", it / 1000.0) },
-                        rep.eccentricDurationMs?.let { String.format(Locale.US, "Ecc %.2fs", it / 1000.0) },
-                    ).joinToString(" / ")
-                    val originLabel = when (rep.origin) {
-                        MeasurementOrigin.SIMULATED_TELEMETRY -> "Sim"
-                        MeasurementOrigin.SENSOR_TELEMETRY -> "BLE"
-                        MeasurementOrigin.MANUAL_CORRECTION -> "Corrected"
-                        MeasurementOrigin.MANUAL_INPUT -> "Manual"
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFFFAF8F6))
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        BasicText(
-                            text = "#${rep.repIndex} • $clsLabel ($originLabel)",
-                            style = PulseTheme.typography.label.copy(
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = WorkoutPalette.TextPrimary,
-                            ),
-                        )
-                        val rightText = if (phasePart.isNotEmpty()) {
-                            "$romPart · $accelPart · $durPart ($phasePart)"
-                        } else {
-                            "$romPart · $accelPart · $durPart"
-                        }
-                        BasicText(
-                            text = rightText,
-                            style = PulseTheme.typography.label.copy(
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = WorkoutPalette.TextMuted,
-                            ),
-                        )
-                    }
-                }
-            }
-        }
     }
 }

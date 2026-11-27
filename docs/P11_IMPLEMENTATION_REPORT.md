@@ -41,6 +41,12 @@ Completed P11 end-to-end across Android (`core:model`, `core:designsystem`, `cor
 - Welcome & Onboarding hero containers match intrinsic aspect ratios (`378:436`, `935:1024`, `377:436`) using `ContentScale.Fit` inside aspect-ratio-constrained containers with zero vertical scroll across `360x640`, `390x844`, and `412x915` viewports.
 - Synchronized Figma (`UvskyKTyxlIOd68wQkp5cQ`) including normalizing all 3 `Set Execution — Unified States` (`894:958`) variants (`894:712`, `894:794`, `894:876`) to `390 x 884` with pinned Top App Bar & bottom action bar and scrollable measurement content.
 
+### 8. Set Execution UI Redesign, Visual Fidelity Refinement & Direct Weight Input (`SetExecutionScreen.kt`, `SetExecutionComponents.kt`, `SetExecutionViewModel.kt`, `ReadyStartSetScreen.kt`)
+- **Top App Bar & Workout Info Card**: Compact top bar with back navigation, exercise title, workout plan subtitle, and reactive Bluetooth status (`Connected (Sim)` / `Disconnected`, never labeling simulated links as real hardware), followed by a single 2-column `WorkoutInfoCard` (`Workout Time` | coral divider | `Rest`).
+- **Unified Repetition & Weight Card**: Merged rep counter (`REPS DONE`, `-`/`+`, open-bottom arc, soft orange/blue halos) and compact weight capsule (`Load:`, bold orange weight value, coral divider, `-`/`+` buttons, `8.dp` gauge-to-pill spacing, `250–260.dp` capsule proportions) inside one unified card.
+- **Direct Weight Input (`Set Load` Bottom Sheet)**: Tapping the displayed weight value opens `SetLoadBottomSheet` with decimal keyboard (`0–500 kg` / `0–1100 lbs`), 2-decimal formatting (`formatLoadNumber`), validation, `Cancel`/`Apply`, `+`/`-` continuation from the entered value, kg/lbs unit conversion, and `SavedStateHandle` / `SetDraftStore` / Room persistence.
+- **Integrated Live Performance Waveform**: `LivePerformanceWaveformCard` renders a continuous smooth Bézier curve with translucent gradient fill, left vertical axis, horizontal baseline, and rep ticks directly inside the main card (no nested rounded container), displaying truthful measured telemetry (`Linear ROM cm`, `Angular ROM °`, `Peak Accel m/s²`, `Rep Duration s`) or explicit placeholder state when unmeasured.
+
 ## Actual Remaining Limitations
 - Physical BLE hardware integration depends on an agreed firmware protocol, validated calibration, actual hardware availability, and separate physical integration and measurement verification (`RealBleDeviceDataSource` remains a fail-honest stub). P12 remains the Final QA & Release phase.
 
@@ -49,7 +55,7 @@ All checks executed after the final code/test edit on `Medium_Phone_API_36.0` (A
 - `:core:model:build`: **PASS** (14 unit tests, 0 failures, 0 skipped)
 - `:core:data:testDebugUnitTest`: **PASS** (5 unit tests, 0 failures, 0 skipped)
 - `:core:designsystem:testDebugUnitTest`: **PASS** (4 unit tests, 0 failures, 0 skipped)
-- `:app:testDebugUnitTest`: **PASS** (71 unit tests, 0 failures, 0 skipped)
+- `:app:testDebugUnitTest`: **PASS** (73 unit tests, 0 failures, 0 skipped)
 - `:core:data:connectedDebugAndroidTest`: **PASS** (36 instrumentation tests, 0 failures, 0 skipped)
-- `:app:connectedDebugAndroidTest`: **PASS** (64 instrumentation tests, 0 failures, 0 skipped)
-- `:app:assembleDebug` & `:app:assembleRelease`: **PASS**
+- `:app:connectedDebugAndroidTest`: **PASS** (65 instrumentation tests, 0 failures, 0 skipped)
+- `:app:assembleDebug` & `:app:assembleRelease`: **PASS** (197 total tests, 0 failures, 0 errors, 0 skipped)
