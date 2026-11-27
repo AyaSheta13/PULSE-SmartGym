@@ -351,7 +351,7 @@ fun SetExecutionScreenContent(
                             )
                         }
 
-                        if (uiState.trackingCompatibilityNotice != null && !uiState.isStarted) {
+                        if (uiState.trackingCompatibilityNotice != null) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()

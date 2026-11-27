@@ -6,7 +6,7 @@ All application screens, dialogs, and bottom sheets in PULSE Smart Gym are wired
 | Screen / Route | Primary ViewModel / File | P11 Status |
 | --- | --- | --- |
 | Welcome / Auth Entry | `AuthEntryScreen.kt` | Hero aspect ratio fixed (`378:436`), zero scroll |
-| Onboarding (Pages 0–2) | `OnboardingScreen.kt` | Intrinsic aspect ratios (`378:436`, `1672:941`, `377:436`), badges anchored on image, zero scroll |
+| Onboarding (Pages 0–2) | `OnboardingScreen.kt` | Intrinsic aspect ratios (`378:436`, `935:1024`, `377:436`), badges anchored on image, zero scroll |
 | Sign Up / Login / Guest | `SignUpScreen.kt`, `LoginScreen.kt` | Verified via `P4AuthAndProfileUiTest` |
 | Home Dashboard | `HomeScreen.kt` | Reactive device status, quick workout actions |
 | My Workouts | `MyWorkoutsScreen.kt` | Plan list, create/edit/start actions |

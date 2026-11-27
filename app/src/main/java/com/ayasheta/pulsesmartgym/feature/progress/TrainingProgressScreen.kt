@@ -682,11 +682,12 @@ private fun PerformanceTrendsCard(
                     ).joinToString("/")
                     val ptDur = pt.averageRepDurationMs?.let { String.format(java.util.Locale.US, "%.2fs", it / 1000.0) }
                     val ptAccel = pt.maxPeakAccelerationMps2?.let { String.format(java.util.Locale.US, "%.2fm/s²", it) }
+                    val unverifiedSuffix = if (!active.isComparableTrendAvailable) " (recorded · unverified)" else ""
                     val summaryParts = listOfNotNull(
                         ptRom.takeIf { it.isNotEmpty() },
                         ptDur,
                         ptAccel,
-                    ).joinToString(" · ").ifEmpty { "${pt.measuredRepCount} measured" }
+                    ).joinToString(" · ").ifEmpty { "${pt.measuredRepCount} measured" } + unverifiedSuffix
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,

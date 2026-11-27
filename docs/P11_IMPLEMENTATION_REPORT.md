@@ -7,7 +7,7 @@ Completed P11 end-to-end across Android (`core:model`, `core:designsystem`, `cor
 
 ### 1. Performance Analytics & Measurement Formulas (`WorkoutPerformanceAnalytics.kt`)
 - **Repetition-Weighted Averages**: Session & trend averages are computed directly from eligible measured repetitions (`sum(valid_metric) / count(valid_metric)`) rather than averaging per-session averages.
-- **Null & Invalid Handling**: A repetition is counted as measured only when it has at least one valid, finite measurement (`totalDurationMs > 0`, `angularRomDegrees > 0`, `linearRomCm > 0`, `peakAccelerationMetersPerSecondSquared >= 0`). Missing/null values are excluded from denominators and never substituted with `0`.
+- **Null & Invalid Handling**: A repetition is counted as measured only when it has at least one valid, finite, non-negative measurement (`totalDurationMs >= 0`, `angularRomDegrees >= 0`, `linearRomCm >= 0`, `peakAccelerationMetersPerSecondSquared >= 0`). Valid `0` / `0.0` measurements are preserved, while missing/null, negative, and non-finite (`NaN`/`Infinity`) values are excluded from denominators and never substituted with `0`.
 - **Exercise Comparability & Compatibility**: Performance summaries are grouped by stable exercise key (`sourceExerciseId ?: "unmapped:<name>"`), keeping angular ROM (`°`) and linear ROM (`cm`) separate. `WorkoutResultScreen` and `SessionDetailsScreen` display exercise-specific ROM statistics rather than a single workout-wide ROM average across unrelated exercises. `MeasurementCompatibilityStatus` (`COMPATIBLE`, `UNCONFIGURED`, `INCOMPATIBLE`) explicitly tracks configuration compatibility without fabricating calibration metadata for historical records.
 - **Full/Partial Ratio**: Sensor-classified repetitions (`SENSOR_TELEMETRY`, `SIMULATED_TELEMETRY`) are tracked separately from manually entered counts (`MANUAL_INPUT`).
 
@@ -33,15 +33,15 @@ Completed P11 end-to-end across Android (`core:model`, `core:designsystem`, `cor
 - Verified `v3 -> v4` migration (`MIGRATION_3_4`) preserves existing sessions/sets/reps with `NULL` acceleration, new measurements (acceleration, angular/linear ROM, total/concentric/eccentric durations, provenance) survive DB reopen, manual fallback preserves measurements, weight-only edits preserve measurements, aggregate rep edits invalidate detailed measurements, failed transactions leave no corrupt state, and genuine analytics exclude simulator data.
 
 ### 7. Hero Images & Figma Reconciliation
-- Welcome & Onboarding hero containers match intrinsic aspect ratios (`378:436`, `1672:941`, `377:436`) using `ContentScale.Fit` inside aspect-ratio-constrained containers with zero vertical scroll across `360x640`, `390x844`, and `412x915` viewports.
+- Welcome & Onboarding hero containers match intrinsic aspect ratios (`378:436`, `935:1024`, `377:436`) using `ContentScale.Fit` inside aspect-ratio-constrained containers with zero vertical scroll across `360x640`, `390x844`, and `412x915` viewports.
 - Synchronized Figma (`UvskyKTyxlIOd68wQkp5cQ`) including normalizing all 3 `Set Execution — Unified States` (`894:958`) variants (`894:712`, `894:794`, `894:876`) to `390 x 884` with pinned Top App Bar & bottom action bar and scrollable measurement content.
 
 ## Actual Remaining Limitations
 - Physical BLE hardware integration depends on an agreed firmware protocol, validated calibration, actual hardware availability, and separate physical integration and measurement verification (`RealBleDeviceDataSource` remains a fail-honest stub). P12 remains the Final QA & Release phase.
 
 ## Final Regression Verification Results
-All checks executed after the final code/test edit on `Medium_Phone_API_36.0`:
-- `:core:model:build`: **PASS** (10 unit tests, 0 failures, 0 skipped)
+All checks executed after the final code/test edit on `Medium_Phone_API_36.0` (API 36):
+- `:core:model:build`: **PASS** (14 unit tests, 0 failures, 0 skipped)
 - `:core:data:testDebugUnitTest`: **PASS** (5 unit tests, 0 failures, 0 skipped)
 - `:core:designsystem:testDebugUnitTest`: **PASS** (4 unit tests, 0 failures, 0 skipped)
 - `:app:testDebugUnitTest`: **PASS** (71 unit tests, 0 failures, 0 skipped)

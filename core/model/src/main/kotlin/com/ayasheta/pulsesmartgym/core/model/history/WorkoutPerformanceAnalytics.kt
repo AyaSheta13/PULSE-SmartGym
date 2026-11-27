@@ -183,6 +183,8 @@ object WorkoutPerformanceAnalytics {
 
     private data class ProvenanceCounts(
         val totalRecordedReps: Int,
+        val fullReps: Int,
+        val partialReps: Int,
         val sensorFull: Int,
         val sensorPartial: Int,
         val manualReps: Int,
@@ -193,6 +195,8 @@ object WorkoutPerformanceAnalytics {
         includeSimulated: Boolean,
     ): ProvenanceCounts {
         var totalRecorded = 0
+        var fullReps = 0
+        var partialReps = 0
         var sensorFull = 0
         var sensorPartial = 0
         var manualReps = 0
@@ -206,6 +210,7 @@ object WorkoutPerformanceAnalytics {
                 }
                 totalRecorded += eligibleReps.size
                 for (rep in eligibleReps) {
+                    if (rep.classification == RepClassification.FULL) fullReps += 1 else partialReps += 1
                     if (isSensorOrigin(rep.origin)) {
                         if (rep.classification == RepClassification.FULL) sensorFull += 1
                         else sensorPartial += 1
@@ -214,8 +219,12 @@ object WorkoutPerformanceAnalytics {
                     }
                 }
             } else {
-                val count = set.fullReps + set.partialReps
+                val setFull = set.fullReps.coerceAtLeast(0)
+                val setPartial = set.partialReps.coerceAtLeast(0)
+                val count = setFull + setPartial
                 totalRecorded += count
+                fullReps += setFull
+                partialReps += setPartial
                 if (isManualOrigin(set.origin)) {
                     manualReps += count
                 }
@@ -223,15 +232,20 @@ object WorkoutPerformanceAnalytics {
                 // individually sensor-classified repetitions.
             }
         }
-        return ProvenanceCounts(totalRecorded, sensorFull, sensorPartial, manualReps)
+        return ProvenanceCounts(totalRecorded, fullReps, partialReps, sensorFull, sensorPartial, manualReps)
     }
 
     fun summarizeSession(
         session: WorkoutSession,
-        includeSimulated: Boolean = true,
+        includeSimulated: Boolean = false,
     ): SessionPerformanceSummary {
         val orderedExercises = session.exercises.sortedBy { it.orderIndex }
         val groupedByKey = orderedExercises.groupBy { stableExerciseKey(it) }
+
+        val allEligibleDurations = mutableListOf<Long>()
+        val allEligibleAccels = mutableListOf<Double>()
+        var sessionFullReps = 0
+        var sessionPartialReps = 0
 
         val exerciseSummaries = groupedByKey.map { (key, exercises) ->
             val first = exercises.first()
@@ -240,6 +254,9 @@ object WorkoutPerformanceAnalytics {
                 includeSimulated || it.origin != MeasurementOrigin.SIMULATED_TELEMETRY
             }
             val provenance = countProvenanceForSets(sets, includeSimulated = includeSimulated)
+            sessionFullReps += provenance.fullReps
+            sessionPartialReps += provenance.partialReps
+
             val allReps = sets.flatMap { it.repRecords }.filter {
                 includeSimulated || it.origin != MeasurementOrigin.SIMULATED_TELEMETRY
             }
@@ -255,6 +272,10 @@ object WorkoutPerformanceAnalytics {
             val accels = if (config.supportsPeakAcceleration) allReps.mapNotNull { it.validPeakAccel() } else emptyList()
             val angularRoms = if (config.supportsAngularRom) allReps.mapNotNull { it.validAngularRom() } else emptyList()
             val linearRoms = if (config.supportsLinearRom) allReps.mapNotNull { it.validLinearRom() } else emptyList()
+
+            allEligibleDurations.addAll(durations)
+            allEligibleAccels.addAll(accels)
+
             val (compat, calVersion) = assessCompatibility(
                 sourceExerciseId = first.sourceExerciseId,
                 trackingCategory = first.trackingCategorySnapshot,
@@ -283,28 +304,19 @@ object WorkoutPerformanceAnalytics {
             )
         }
 
-        val sets = orderedExercises.flatMap { it.performedSets }.filter {
-            includeSimulated || it.origin != MeasurementOrigin.SIMULATED_TELEMETRY
-        }
-        val allReps = sets.flatMap { it.repRecords }.filter {
-            includeSimulated || it.origin != MeasurementOrigin.SIMULATED_TELEMETRY
-        }
-        val durations = allReps.mapNotNull { it.validDurationMs() }
-        val accels = allReps.mapNotNull { it.validPeakAccel() }
-
         val exercisesWithAngular = exerciseSummaries.filter { it.angularRomSampleCount > 0 }
         val exercisesWithLinear = exerciseSummaries.filter { it.linearRomSampleCount > 0 }
 
         return SessionPerformanceSummary(
             totalRecordedReps = exerciseSummaries.sumOf { it.totalRecordedReps },
             measuredRepCount = exerciseSummaries.sumOf { it.measuredRepCount },
-            fullRepCount = sets.sumOf { it.fullReps },
-            partialRepCount = sets.sumOf { it.partialReps },
+            fullRepCount = sessionFullReps,
+            partialRepCount = sessionPartialReps,
             sensorClassifiedFullRepCount = exerciseSummaries.sumOf { it.sensorClassifiedFullRepCount },
             sensorClassifiedPartialRepCount = exerciseSummaries.sumOf { it.sensorClassifiedPartialRepCount },
             manualRepCount = exerciseSummaries.sumOf { it.manualRepCount },
-            averageRepDurationMs = if (durations.isEmpty()) null else durations.sum() / durations.size,
-            maxPeakAccelerationMps2 = accels.maxOrNull(),
+            averageRepDurationMs = if (allEligibleDurations.isEmpty()) null else allEligibleDurations.sum() / allEligibleDurations.size,
+            maxPeakAccelerationMps2 = allEligibleAccels.maxOrNull(),
             averageAngularRomDegrees = if (exercisesWithAngular.size == 1) exercisesWithAngular.first().averageAngularRomDegrees else null,
             averageLinearRomCm = if (exercisesWithLinear.size == 1) exercisesWithLinear.first().averageLinearRomCm else null,
             exerciseSummaries = exerciseSummaries,
@@ -411,8 +423,8 @@ object WorkoutPerformanceAnalytics {
                     durationSampleCount = durations.size,
                     maxPeakAccelerationMps2 = pointMaxAccel,
                     accelerationSampleCount = accels.size,
-                    fullRepCount = provenance.sensorFull + if (validReps.isEmpty()) eligibleSets.sumOf { it.fullReps } else validReps.count { it.classification == RepClassification.FULL },
-                    partialRepCount = provenance.sensorPartial + if (validReps.isEmpty()) eligibleSets.sumOf { it.partialReps } else validReps.count { it.classification == RepClassification.PARTIAL },
+                    fullRepCount = provenance.fullReps,
+                    partialRepCount = provenance.partialReps,
                     sensorClassifiedFullRepCount = provenance.sensorFull,
                     sensorClassifiedPartialRepCount = provenance.sensorPartial,
                     manualRepCount = provenance.manualReps,

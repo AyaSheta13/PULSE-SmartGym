@@ -872,6 +872,7 @@ fun rememberPulseEntryProvider(
                     authRepository = scopedContainer.authRepository,
                     workoutSessionRepository = scopedContainer.workoutSessionRepository,
                     userPreferencesRepository = scopedContainer.userPreferencesRepository,
+                    isDemoEnvironment = key.environment == com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind.DEMO,
                 )
             }
             WorkoutResultScreen(
@@ -909,6 +910,7 @@ fun rememberPulseEntryProvider(
                     authRepository = scopedContainer.authRepository,
                     workoutSessionRepository = scopedContainer.workoutSessionRepository,
                     userPreferencesRepository = scopedContainer.userPreferencesRepository,
+                    isDemoEnvironment = key.environment == com.ayasheta.pulsesmartgym.core.model.device.ExecutionEnvironmentKind.DEMO,
                 )
             }
             WorkoutResultScreen(

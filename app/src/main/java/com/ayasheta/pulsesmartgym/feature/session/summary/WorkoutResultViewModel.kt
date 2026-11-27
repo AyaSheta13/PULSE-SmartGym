@@ -32,6 +32,7 @@ class WorkoutResultViewModel(
     authRepository: AuthRepository,
     private val workoutSessionRepository: WorkoutSessionRepository,
     private val userPreferencesRepository: UserPreferencesRepository,
+    private val isDemoEnvironment: Boolean = false,
 ) : ViewModel() {
 
     val uiState: StateFlow<WorkoutResultUiState> = authRepository.observeAuthState()
@@ -46,7 +47,7 @@ class WorkoutResultViewModel(
                     if (session == null) {
                         WorkoutResultUiState.Missing("Workout summary not found.")
                     } else {
-                        mapSessionToResult(session, prefs.preferredWeightUnit)
+                        mapSessionToResult(session, prefs.preferredWeightUnit, includeSimulated = isDemoEnvironment)
                     }
                 }
             }
@@ -64,6 +65,7 @@ class WorkoutResultViewModel(
         fun mapSessionToResult(
             session: WorkoutSession,
             unit: WeightUnit,
+            includeSimulated: Boolean = false,
         ): WorkoutResultUiState.Loaded {
             val summary = WorkoutAnalytics.summarizeSession(session)
             val orderedExercises = session.exercises.sortedBy { it.orderIndex }
@@ -131,7 +133,7 @@ class WorkoutResultViewModel(
                 )
             }
 
-            val perfSummary = WorkoutPerformanceAnalytics.summarizeSession(session)
+            val perfSummary = WorkoutPerformanceAnalytics.summarizeSession(session, includeSimulated = includeSimulated)
                 .takeIf { it.hasAnyMeasurements }
             return WorkoutResultUiState.Loaded(
                 sessionId = session.id,

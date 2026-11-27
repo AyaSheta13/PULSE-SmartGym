@@ -437,4 +437,128 @@ class WorkoutPerformanceAnalyticsTest {
         assertEquals(0, summary.measuredRepCount)
         assertNull(summary.averageLinearRomCm)
     }
+
+    @Test
+    fun calculateExerciseTrends_andSummarizeSession_neverDoubleCountSensorReps_andIncludeAggregateManualSets() {
+        val mixedReps = (1..7).map { idx ->
+            RepMeasurement(idx, RepClassification.FULL, 1600L, linearRomCm = 42.0, origin = MeasurementOrigin.SENSOR_TELEMETRY)
+        } + listOf(
+            RepMeasurement(8, RepClassification.PARTIAL, 1200L, linearRomCm = 28.0, origin = MeasurementOrigin.SENSOR_TELEMETRY),
+            RepMeasurement(9, RepClassification.FULL, origin = MeasurementOrigin.MANUAL_CORRECTION),
+            RepMeasurement(10, RepClassification.FULL, origin = MeasurementOrigin.MANUAL_INPUT),
+        )
+        val simulatedMixedSet = PerformedSet(
+            id = "ps_sim_mix",
+            sessionId = "s_coh",
+            sessionExerciseId = "se1",
+            setIndex = 3,
+            fullReps = 2,
+            partialReps = 1,
+            actualLoad = WeightLoad(80_000L),
+            completedAtEpochMs = 58_000L,
+            trackingMode = TrackingMode.DEVICE_ASSISTED,
+            origin = MeasurementOrigin.MANUAL_CORRECTION,
+            repRecords = listOf(
+                RepMeasurement(1, RepClassification.FULL, 1000L, linearRomCm = 90.0, origin = MeasurementOrigin.SIMULATED_TELEMETRY),
+                RepMeasurement(2, RepClassification.FULL, origin = MeasurementOrigin.MANUAL_INPUT),
+                RepMeasurement(3, RepClassification.PARTIAL, origin = MeasurementOrigin.MANUAL_INPUT),
+            ),
+        )
+
+        val session = WorkoutSession(
+            id = "s_coh",
+            ownerProfileId = "o1",
+            sourcePlanId = "p1",
+            planNameSnapshot = "Push",
+            status = SessionStatus.COMPLETED,
+            startedAtEpochMs = 1_000L,
+            endedAtEpochMs = 60_000L,
+            exercises = listOf(
+                SessionExercise(
+                    id = "se1",
+                    sessionId = "s_coh",
+                    sourceExerciseId = "ex_bench_press",
+                    exerciseNameSnapshot = "Barbell Bench Press",
+                    muscleGroupSnapshot = MuscleGroup.CHEST,
+                    equipmentSnapshot = EquipmentCategory.BARBELL,
+                    trackingCategorySnapshot = TrackingCategory.LINEAR,
+                    orderIndex = 0,
+                    plannedSets = emptyList(),
+                    performedSets = listOf(
+                        PerformedSet(
+                            id = "ps1",
+                            sessionId = "s_coh",
+                            sessionExerciseId = "se1",
+                            setIndex = 1,
+                            fullReps = 9,
+                            partialReps = 1,
+                            actualLoad = WeightLoad(80_000L),
+                            completedAtEpochMs = 50_000L,
+                            trackingMode = TrackingMode.MANUAL,
+                            origin = MeasurementOrigin.MANUAL_CORRECTION,
+                            repRecords = mixedReps,
+                        ),
+                        PerformedSet(
+                            id = "ps2",
+                            sessionId = "s_coh",
+                            sessionExerciseId = "se1",
+                            setIndex = 2,
+                            fullReps = 5,
+                            partialReps = 0,
+                            actualLoad = WeightLoad(80_000L),
+                            completedAtEpochMs = 55_000L,
+                            trackingMode = TrackingMode.MANUAL,
+                            origin = MeasurementOrigin.MANUAL_INPUT,
+                            repRecords = emptyList(),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        // Regression example from P11 review: 7 sensor FULL + 1 sensor PARTIAL + 2 manual FULL + 5 aggregate manual FULL
+        val trend = WorkoutPerformanceAnalytics.calculateExerciseTrends(
+            sessions = listOf(session),
+            exerciseKey = "ex_bench_press",
+            includeSimulated = false,
+            calibrationVersion = "cal-1",
+        )!!
+        assertEquals(1, trend.points.size)
+        val pt = trend.points.first()
+        assertEquals(14, pt.fullRepCount)
+        assertEquals(1, pt.partialRepCount)
+        assertEquals(7, pt.sensorClassifiedFullRepCount)
+        assertEquals(1, pt.sensorClassifiedPartialRepCount)
+        assertEquals(7, pt.manualRepCount)
+        assertEquals(14, trend.totalFullReps)
+        assertEquals(1, trend.totalPartialReps)
+        assertEquals(7, trend.totalSensorFullReps)
+        assertEquals(1, trend.totalSensorPartialReps)
+        assertEquals(7, trend.totalManualReps)
+
+        val summary = WorkoutPerformanceAnalytics.summarizeSession(session, includeSimulated = false)
+        assertEquals(15, summary.totalRecordedReps)
+        assertEquals(14, summary.fullRepCount)
+        assertEquals(1, summary.partialRepCount)
+        assertEquals(7, summary.sensorClassifiedFullRepCount)
+        assertEquals(1, summary.sensorClassifiedPartialRepCount)
+        assertEquals(7, summary.manualRepCount)
+
+        // When a set has mixed simulated + manual records and includeSimulated = false,
+        // simulated records must be excluded from both fullRepCount and sensorClassified counts.
+        val mixedSimSession = session.copy(
+            exercises = listOf(
+                session.exercises.first().copy(
+                    performedSets = session.exercises.first().performedSets + simulatedMixedSet,
+                ),
+            ),
+        )
+        val filteredSummary = WorkoutPerformanceAnalytics.summarizeSession(mixedSimSession, includeSimulated = false)
+        assertEquals(17, filteredSummary.totalRecordedReps)
+        assertEquals(15, filteredSummary.fullRepCount)
+        assertEquals(2, filteredSummary.partialRepCount)
+        assertEquals(7, filteredSummary.sensorClassifiedFullRepCount)
+        assertEquals(1, filteredSummary.sensorClassifiedPartialRepCount)
+        assertEquals(9, filteredSummary.manualRepCount)
+    }
 }
